@@ -1,0 +1,582 @@
+/* ================================================================
+   ImpactNotion — Database View Styles
+   Table, Kanban, Calendar, List, Chart views + controls
+   ================================================================ */
+
+/* ── Database Container ── */
+.dbContainer {
+  width: 100%;
+}
+
+/* ── View Switcher Tabs ── */
+.viewTabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 0 var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  margin-bottom: var(--space-4);
+  overflow-x: auto;
+}
+
+.viewTab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  background: none;
+  border: none;
+}
+
+.viewTab:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.viewTabActive {
+  background: var(--color-bg-active);
+  color: var(--color-text-primary);
+  font-weight: var(--font-medium);
+}
+
+.viewTabAdd {
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* ── Toolbar (filters, sorts, search) ── */
+.dbToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.dbToolbarBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: none;
+  border: 1px solid var(--color-border);
+}
+
+.dbToolbarBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-hover);
+}
+
+.dbToolbarBtnActive {
+  background: var(--color-accent-primary-subtle);
+  color: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+}
+
+.dbSearchInput {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  outline: none;
+  width: 200px;
+  transition: all var(--transition-fast);
+}
+
+.dbSearchInput:focus {
+  border-color: var(--color-accent-primary);
+  width: 260px;
+}
+
+.dbSearchInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Table View ── */
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.dbTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.dbTable th {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-align: left;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+  min-width: 140px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.dbTable th:hover {
+  background: var(--color-bg-active);
+}
+
+.dbTable th:first-child {
+  min-width: 240px;
+}
+
+.dbTable td {
+  padding: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  min-width: 140px;
+  vertical-align: middle;
+}
+
+.dbTable tr:last-child td {
+  border-bottom: none;
+}
+
+.dbTable tr:hover td {
+  background: var(--color-bg-hover);
+}
+
+.cellWrapper {
+  padding: var(--space-2) var(--space-3);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  cursor: text;
+}
+
+.cellInput {
+  width: 100%;
+  font-size: var(--text-sm);
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--color-text-primary);
+  padding: 0;
+}
+
+.cellInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Select / Tag Cells ── */
+.selectBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.selectBadge:hover {
+  opacity: 0.85;
+}
+
+.multiSelectWrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ── Checkbox Cell ── */
+.cellCheckbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent-primary);
+  cursor: pointer;
+}
+
+/* ── Add Row / Add Property ── */
+.addRowBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.addRowBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.addPropertyBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-width: 80px;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-tertiary);
+  border: none;
+}
+
+.addPropertyBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.rowCount {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ── Kanban View ── */
+.kanban {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding-bottom: var(--space-4);
+  min-height: 400px;
+  align-items: flex-start;
+}
+
+.kanbanColumn {
+  min-width: 280px;
+  max-width: 320px;
+  flex-shrink: 0;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.kanbanColumnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.kanbanColumnCount {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+}
+
+.kanbanCards {
+  padding: 0 var(--space-2) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 60px;
+}
+
+.kanbanCard {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.kanbanCard:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.kanbanCardDelete {
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kanbanCardDelete:hover {
+  color: #ef4444;
+  background: var(--color-bg-hover);
+}
+
+.kanbanCard:hover .kanbanCardDelete {
+  opacity: 1;
+}
+
+.kanbanCardTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.kanbanCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.kanbanCardTag {
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.kanbanAddCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  margin: 0 var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: none;
+  border: none;
+  width: calc(100% - var(--space-4));
+}
+
+.kanbanAddCard:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+/* ── Calendar View ── */
+.calendar {
+  width: 100%;
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.calendarNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.calendarNavBtn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: none;
+  border: none;
+}
+
+.calendarNavBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.calendarTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.calendarDayHeader {
+  padding: var(--space-2);
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.calendarDay {
+  min-height: 100px;
+  padding: var(--space-1);
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  position: relative;
+}
+
+.calendarDay:nth-child(7n) {
+  border-right: none;
+}
+
+.calendarDayNumber {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  padding: var(--space-1);
+  text-align: right;
+}
+
+.calendarDayToday .calendarDayNumber {
+  color: var(--color-accent-primary);
+  font-weight: var(--font-bold);
+}
+
+.calendarDayOther {
+  opacity: 0.4;
+}
+
+.calendarEvent {
+  padding: 2px 6px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: white;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity var(--transition-fast);
+}
+
+.calendarEvent:hover {
+  opacity: 0.85;
+}
+
+/* ── List View ── */
+.listView {
+  display: flex;
+  flex-direction: column;
+}
+
+.listViewItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  transition: background var(--transition-fast);
+  cursor: pointer;
+}
+
+.listViewItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.listViewItem:last-child {
+  border-bottom: none;
+}
+
+.listViewTitle {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listViewMeta {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Property Type Badge ── */
+.propTypeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-tertiary);
+}
+
+/* ── Select Dropdown in Cell ── */
+.cellSelectDropdown {
+  position: absolute;
+  z-index: var(--z-popover);
+  min-width: 180px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-1);
+  animation: fadeInDown 0.12s ease forwards;
+}
+
+.cellSelectOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  color: var(--color-text-primary);
+}
+
+.cellSelectOption:hover {
+  background: var(--color-bg-hover);
+}
