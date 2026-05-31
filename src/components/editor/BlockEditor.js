@@ -20,6 +20,8 @@ import TableBlock from './blocks/TableBlock';
 import EmbedBlock from './blocks/EmbedBlock';
 import QuoteBlock from './blocks/QuoteBlock';
 import { BulletListBlock, NumberedListBlock } from './blocks/ListBlock';
+import ColumnsBlock from './blocks/ColumnsBlock';
+import ColumnBlock from './blocks/ColumnBlock';
 
 import styles from '@/styles/editor.module.css';
 
@@ -43,6 +45,8 @@ const BLOCK_COMPONENTS = {
   quote: QuoteBlock,
   bullet_list: BulletListBlock,
   numbered_list: NumberedListBlock,
+  columns: ColumnsBlock,
+  column: ColumnBlock,
 };
 
 /**
@@ -50,9 +54,9 @@ const BLOCK_COMPONENTS = {
  * Renders ordered blocks, handles creation/deletion/reordering,
  * slash command menu, and floating format toolbar.
  */
-export default function BlockEditor({ pageId, readOnly = false }) {
+export default function BlockEditor({ pageId, parentBlockId = null, readOnly = false }) {
   const {
-    blocks,
+    blocks: allBlocks,
     activeBlockId,
     addBlock,
     updateBlock,
@@ -61,6 +65,8 @@ export default function BlockEditor({ pageId, readOnly = false }) {
     changeBlockType,
     setActiveBlock,
   } = useEditorStore();
+
+  const blocks = allBlocks.filter((b) => b.parentBlockId === parentBlockId);
 
   // Slash command menu state
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,6 +87,7 @@ export default function BlockEditor({ pageId, readOnly = false }) {
   const editorRef = useRef(null);
 
   const handleGripClick = useCallback((e, block) => {
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const editorRect = editorRef.current?.getBoundingClientRect();
     // Position relative to the editor container
@@ -107,8 +114,10 @@ export default function BlockEditor({ pageId, readOnly = false }) {
     (type) => {
       if (readOnly) return;
       if (menuTargetBlockId) {
+        const finalType = (type === 'columns_2' || type === 'columns_3') ? 'columns' : type;
+
         // Change the existing block's type
-        changeBlockType(menuTargetBlockId, type);
+        changeBlockType(menuTargetBlockId, finalType);
 
         // Clear the '/' text from the block content
         updateBlock(menuTargetBlockId, {
@@ -135,14 +144,45 @@ export default function BlockEditor({ pageId, readOnly = false }) {
             properties: { language: 'javascript' },
             content: { text: '' },
           });
+        } else if (type === 'columns_2' || type === 'columns_3') {
+          const colsCount = type === 'columns_2' ? 2 : 3;
+          updateBlock(menuTargetBlockId, {
+            properties: { colsCount },
+          });
+
+          // Create the column blocks and their child paragraphs
+          for (let i = 0; i < colsCount; i++) {
+            const colId = crypto.randomUUID();
+            const width = `${100 / colsCount}%`;
+            addBlock({
+              id: colId,
+              type: 'column',
+              parentBlockId: menuTargetBlockId,
+              properties: { width },
+            });
+
+            const pId = crypto.randomUUID();
+            addBlock({
+              id: pId,
+              type: 'paragraph',
+              parentBlockId: colId,
+              content: { text: '' },
+            });
+
+            if (i === 0) {
+              setFocusBlockId(pId);
+            }
+          }
         }
 
-        setFocusBlockId(menuTargetBlockId);
+        if (type !== 'columns_2' && type !== 'columns_3') {
+          setFocusBlockId(menuTargetBlockId);
+        }
       }
       setMenuOpen(false);
       setMenuTargetBlockId(null);
     },
-    [menuTargetBlockId, changeBlockType, updateBlock, readOnly]
+    [menuTargetBlockId, changeBlockType, updateBlock, addBlock, readOnly]
   );
 
   const handleMenuClose = useCallback(() => {
@@ -312,12 +352,12 @@ export default function BlockEditor({ pageId, readOnly = false }) {
       if (readOnly) return;
       const newBlockId = crypto.randomUUID();
       addBlock(
-        { id: newBlockId, type: 'paragraph', content: { text: '' } },
+        { id: newBlockId, type: 'paragraph', content: { text: '' }, parentBlockId },
         afterBlockId
       );
       setFocusBlockId(newBlockId);
     },
-    [addBlock, readOnly]
+    [addBlock, readOnly, parentBlockId]
   );
 
   // ── Compute numbered list index ──
@@ -348,8 +388,13 @@ export default function BlockEditor({ pageId, readOnly = false }) {
         return (
           <div
             key={block.id}
-            className={styles.blockWrapper}
-            onClick={() => !readOnly && setActiveBlock(block.id)}
+            className={`${styles.blockWrapper} ${parentBlockId ? styles.blockWrapperNested : ''}`}
+            onClick={(e) => {
+              if (!readOnly) {
+                e.stopPropagation();
+                setActiveBlock(block.id);
+              }
+            }}
             id={`block-${block.id}`}
           >
             {/* Block Controls */}
@@ -404,8 +449,9 @@ export default function BlockEditor({ pageId, readOnly = false }) {
       {/* Empty state click area */}
       {!readOnly && (
         <div
-          style={{ minHeight: '30vh', cursor: 'text' }}
-          onClick={() => {
+          style={{ minHeight: parentBlockId ? '50px' : '30vh', cursor: 'text' }}
+          onClick={(e) => {
+            e.stopPropagation();
             if (blocks.length === 0) {
               handleAddBlock();
             } else {
@@ -420,6 +466,7 @@ export default function BlockEditor({ pageId, readOnly = false }) {
       {!readOnly && menuOpen && menuPosition && (
         <BlockMenu
           position={menuPosition}
+          isNested={parentBlockId !== null}
           onSelect={handleMenuSelect}
           onClose={handleMenuClose}
         />

@@ -19,6 +19,19 @@ const setBlocksState = (state, newBlocks, pageId) => {
 };
 
 /**
+ * Helper to recursively find all descendant IDs of a block.
+ */
+const getDescendantIds = (blocks, parentId) => {
+  let ids = [];
+  const children = blocks.filter((b) => b.parentBlockId === parentId);
+  for (const child of children) {
+    ids.push(child.id);
+    ids.push(...getDescendantIds(blocks, child.id));
+  }
+  return ids;
+};
+
+/**
  * Editor store — manages block editor state for the current page.
  * Each page has an ordered list of blocks with content and properties.
  */
@@ -63,16 +76,27 @@ export const useEditorStore = create((set, get) => ({
 
   addBlock: (block, afterBlockId = null) =>
     set((state) => {
+      let resolvedParentBlockId = block.parentBlockId;
+      if (resolvedParentBlockId === undefined) {
+        if (afterBlockId) {
+          const afterBlock = state.blocks.find((b) => b.id === afterBlockId);
+          resolvedParentBlockId = afterBlock ? afterBlock.parentBlockId : null;
+        } else {
+          resolvedParentBlockId = null;
+        }
+      }
+
       const newBlock = {
         id: block.id || crypto.randomUUID(),
         type: block.type || 'paragraph',
         content: block.content || { text: '' },
         properties: block.properties || {},
-        parentBlockId: block.parentBlockId || null,
+        parentBlockId: resolvedParentBlockId,
         sortOrder: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         ...block,
+        parentBlockId: resolvedParentBlockId,
       };
 
       let newBlocks = [];
@@ -103,11 +127,13 @@ export const useEditorStore = create((set, get) => ({
 
   deleteBlock: (blockId) =>
     set((state) => {
-      const filtered = state.blocks.filter((b) => b.id !== blockId);
+      const descendants = getDescendantIds(state.blocks, blockId);
+      const toDelete = new Set([blockId, ...descendants]);
+      const filtered = state.blocks.filter((b) => !toDelete.has(b.id));
       const newBlocks = filtered.map((b, i) => ({ ...b, sortOrder: i }));
       return {
         ...setBlocksState(state, newBlocks),
-        activeBlockId: state.activeBlockId === blockId ? null : state.activeBlockId,
+        activeBlockId: toDelete.has(state.activeBlockId) ? null : state.activeBlockId,
       };
     }),
 
@@ -129,21 +155,55 @@ export const useEditorStore = create((set, get) => ({
       const block = state.blocks.find((b) => b.id === blockId);
       if (!block) return state;
 
-      const newBlock = {
-        ...block,
-        id: crypto.randomUUID(),
+      const descendants = getDescendantIds(state.blocks, blockId);
+      const descendantBlocks = state.blocks.filter((b) => descendants.includes(b.id));
+
+      const idMap = {
+        [blockId]: crypto.randomUUID(),
+      };
+      descendants.forEach((dId) => {
+        idMap[dId] = crypto.randomUUID();
+      });
+
+      const duplicateOne = (b, newParentId) => ({
+        ...b,
+        id: idMap[b.id],
+        parentBlockId: newParentId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+      });
+
+      const newBlocksToInsert = [];
+      const newRootBlock = duplicateOne(block, block.parentBlockId);
+      newBlocksToInsert.push(newRootBlock);
+
+      const recurseDuplicate = (oldParentId, newParentId) => {
+        const children = descendantBlocks.filter((b) => b.parentBlockId === oldParentId);
+        children.forEach((child) => {
+          const newChild = duplicateOne(child, newParentId);
+          newBlocksToInsert.push(newChild);
+          recurseDuplicate(child.id, newChild.id);
+        });
       };
 
+      recurseDuplicate(blockId, newRootBlock.id);
+
       const index = state.blocks.findIndex((b) => b.id === blockId);
+      let insertIndex = index;
+      descendants.forEach((dId) => {
+        const dIndex = state.blocks.findIndex((b) => b.id === dId);
+        if (dIndex > insertIndex) {
+          insertIndex = dIndex;
+        }
+      });
+
       const newBlocks = [...state.blocks];
-      newBlocks.splice(index + 1, 0, newBlock);
+      newBlocks.splice(insertIndex + 1, 0, ...newBlocksToInsert);
       const finalBlocks = newBlocks.map((b, i) => ({ ...b, sortOrder: i }));
 
       return {
         ...setBlocksState(state, finalBlocks),
-        activeBlockId: newBlock.id,
+        activeBlockId: newRootBlock.id,
       };
     }),
 

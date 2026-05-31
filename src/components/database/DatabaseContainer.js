@@ -12,12 +12,16 @@ import {
   Search,
   X,
   LayoutDashboard,
+  Clock,
+  BarChart3,
 } from 'lucide-react';
 import { useDatabaseStore } from '@/lib/store/useDatabaseStore';
 import TableView from './views/TableView';
 import KanbanView from './views/KanbanView';
 import CalendarView from './views/CalendarView';
 import ListView from './views/ListView';
+import TimelineView from './views/TimelineView';
+import ChartView from './views/ChartView';
 import DatabaseDashboard from './views/DatabaseDashboard';
 import styles from '@/styles/database.module.css';
 
@@ -26,7 +30,9 @@ const VIEW_ICONS = {
   table: <Table size={14} />,
   kanban: <Columns3 size={14} />,
   calendar: <Calendar size={14} />,
+  timeline: <Clock size={14} />,
   list: <List size={14} />,
+  chart: <BarChart3 size={14} />,
 };
 
 const VIEW_COMPONENTS = {
@@ -34,7 +40,9 @@ const VIEW_COMPONENTS = {
   table: TableView,
   kanban: KanbanView,
   calendar: CalendarView,
+  timeline: TimelineView,
   list: ListView,
+  chart: ChartView,
 };
 
 const VIEW_TYPES = [
@@ -42,7 +50,9 @@ const VIEW_TYPES = [
   { type: 'table', label: 'Table' },
   { type: 'kanban', label: 'Board' },
   { type: 'calendar', label: 'Calendar' },
+  { type: 'timeline', label: 'Timeline' },
   { type: 'list', label: 'List' },
+  { type: 'chart', label: 'Chart' },
 ];
 
 /**

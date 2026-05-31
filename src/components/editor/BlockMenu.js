@@ -18,6 +18,8 @@ import {
   Quote,
   List,
   ListOrdered,
+  Columns2,
+  Columns3,
 } from 'lucide-react';
 import styles from '@/styles/editor.module.css';
 
@@ -56,28 +58,40 @@ const BLOCK_TYPES = [
       { type: 'table', name: 'Table', desc: 'Simple table with rows/columns', icon: <Table size={18} /> },
     ],
   },
+  {
+    category: 'Layout',
+    items: [
+      { type: 'columns_2', name: '2 Columns', desc: 'Create 2 side-by-side columns', icon: <Columns2 size={18} /> },
+      { type: 'columns_3', name: '3 Columns', desc: 'Create 3 side-by-side columns', icon: <Columns3 size={18} /> },
+    ],
+  },
 ];
 
 /**
  * BlockMenu — slash command palette for inserting block types.
  * Shows on typing '/' in an empty block.
  */
-export default function BlockMenu({ position, onSelect, onClose }) {
+export default function BlockMenu({ position, isNested = false, onSelect, onClose }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const menuRef = useRef(null);
   const inputRef = useRef(null);
 
   // Filter items by query
-  const filteredCategories = BLOCK_TYPES.map((cat) => ({
-    ...cat,
-    items: cat.items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(query.toLowerCase()) ||
-        item.desc.toLowerCase().includes(query.toLowerCase()) ||
-        item.type.toLowerCase().includes(query.toLowerCase())
-    ),
-  })).filter((cat) => cat.items.length > 0);
+  const filteredCategories = BLOCK_TYPES.map((cat) => {
+    if (isNested && cat.category === 'Layout') {
+      return null;
+    }
+    return {
+      ...cat,
+      items: cat.items.filter(
+        (item) =>
+          item.name.toLowerCase().includes(query.toLowerCase()) ||
+          item.desc.toLowerCase().includes(query.toLowerCase()) ||
+          item.type.toLowerCase().includes(query.toLowerCase())
+      ),
+    };
+  }).filter((cat) => cat !== null && cat.items.length > 0);
 
   const allItems = filteredCategories.flatMap((cat) => cat.items);
 
