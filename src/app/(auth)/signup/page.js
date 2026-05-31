@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 import {
   Eye,
   EyeOff,
@@ -20,6 +21,8 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const supabase = createClient();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -32,9 +35,22 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with Supabase auth when connected
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      router.push('/demo');
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+          },
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        router.push('/');
+        router.refresh();
+      }
     } catch (err) {
       setError('Could not create account. Please try again.');
     } finally {

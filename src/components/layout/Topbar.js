@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Star,
   MoreHorizontal,
@@ -8,17 +9,31 @@ import {
   MessageSquare,
   Clock,
   Menu,
+  Trash2,
+  Copy,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import { useToast } from '@/components/ui/Toast';
+import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
 
 /**
  * Topbar — displays breadcrumb, save status, and page actions.
  */
 export default function Topbar() {
-  const { currentPage, sidebarOpen, toggleSidebar, updatePage } = useWorkspaceStore();
+  const router = useRouter();
+  const {
+    currentPage,
+    sidebarOpen,
+    toggleSidebar,
+    updatePage,
+    toggleFavoritePage,
+    duplicatePage,
+    deletePage,
+    toggleSearch,
+    workspace,
+  } = useWorkspaceStore();
   const { isSaving, lastSaved } = useEditorStore();
   const toast = useToast();
 
@@ -265,15 +280,51 @@ export default function Topbar() {
         <button className={styles.topbarBtn} title="Comments">
           <MessageSquare size={16} />
         </button>
-        <button className={styles.topbarBtn} title="History">
+        <button className={styles.topbarBtn} title="History / Search" onClick={toggleSearch}>
           <Clock size={16} />
         </button>
-        <button className={styles.topbarBtn} title="Favorite">
-          <Star size={16} />
+        <button
+          className={`${styles.topbarBtn} ${currentPage?.isFavorite ? styles.topbarBtnActive || '' : ''}`}
+          title={currentPage?.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+          onClick={() => currentPage && toggleFavoritePage(currentPage.id)}
+        >
+          <Star size={16} style={{ fill: currentPage?.isFavorite ? 'var(--color-accent-primary)' : 'none', color: currentPage?.isFavorite ? 'var(--color-accent-primary)' : 'inherit' }} />
         </button>
-        <button className={styles.topbarBtn} title="More actions">
-          <MoreHorizontal size={16} />
-        </button>
+        {currentPage && (
+          <Dropdown
+            trigger={
+              <button className={styles.topbarBtn} title="More actions">
+                <MoreHorizontal size={16} />
+              </button>
+            }
+            align="right"
+          >
+            <DropdownItem
+              icon={<Copy size={14} />}
+              onClick={async () => {
+                const dupId = await duplicatePage(currentPage.id);
+                if (dupId && workspace) {
+                  router.push(`/${workspace.id}/${dupId}`);
+                }
+              }}
+            >
+              Duplicate Page
+            </DropdownItem>
+            <DropdownDivider />
+            <DropdownItem
+              icon={<Trash2 size={14} />}
+              danger
+              onClick={async () => {
+                await deletePage(currentPage.id);
+                if (workspace) {
+                  router.push(`/${workspace.id}`);
+                }
+              }}
+            >
+              Move to Trash
+            </DropdownItem>
+          </Dropdown>
+        )}
       </div>
     </header>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
@@ -15,23 +16,24 @@ import styles from '@/styles/layout.module.css';
 function WorkspaceShell({ children }) {
   const {
     workspace,
-    initDemoWorkspace,
+    loadWorkspace,
     theme,
     setTheme,
   } = useWorkspaceStore();
 
-  // Initialize workspace on mount (demo mode for now)
+  const params = useParams();
+  const workspaceId = params?.workspaceId;
+
+  // Initialize workspace on mount
   useEffect(() => {
-    if (!workspace) {
-      initDemoWorkspace();
-    }
+    loadWorkspace(workspaceId);
 
     // Restore theme preference
     const savedTheme = localStorage.getItem('impactnotion-theme');
     if (savedTheme) {
       setTheme(savedTheme);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={styles.workspaceShell}>

@@ -22,7 +22,7 @@ export async function getBlock(id) {
   return { data, error };
 }
 
-export async function createBlock({ pageId, type, content = {}, parentBlockId = null, sortOrder = 0 }) {
+export async function createBlock({ pageId, type, content = {}, properties = {}, parentBlockId = null, sortOrder = 0 }) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('blocks')
@@ -31,6 +31,7 @@ export async function createBlock({ pageId, type, content = {}, parentBlockId = 
       parent_block_id: parentBlockId,
       type,
       content,
+      properties,
       sort_order: sortOrder,
     })
     .select()
@@ -43,6 +44,7 @@ export async function updateBlock(id, updates) {
   const supabase = await createClient();
   const allowed = {};
   if (updates.content    !== undefined) allowed.content    = updates.content;
+  if (updates.properties !== undefined) allowed.properties = updates.properties;
   if (updates.type       !== undefined) allowed.type       = updates.type;
   if (updates.sort_order !== undefined) allowed.sort_order = updates.sort_order;
   if (updates.parent_block_id !== undefined) allowed.parent_block_id = updates.parent_block_id;

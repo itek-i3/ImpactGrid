@@ -49,27 +49,29 @@ export default function WorkspaceHomePage({ params }) {
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
     .slice(0, 6);
 
-  const handleCreatePage = (type, dbType = null) => {
+  const handleCreatePage = async (type, dbType = null) => {
     const template = dbType
       ? COMMUNITY_TEMPLATES.find((t) => t.dbType === dbType)
       : null;
 
-    const newPage = {
-      id: crypto.randomUUID(),
+    const newId = await addPage({
       title: template?.label || '',
       icon: template?.emoji || '📄',
       parentId: null,
       isDatabase: type === 'database',
       databaseType: dbType || (type === 'database' ? 'tasks' : undefined),
-    };
+    });
 
-    addPage(newPage);
-    const page = useWorkspaceStore.getState().pages.find((p) => p.id === newPage.id);
-    if (page) setCurrentPage(page);
+    if (newId && workspace) {
+      router.push(`/${workspace.id}/${newId}`);
+    }
   };
 
   const handleOpenPage = (page) => {
     setCurrentPage(page);
+    if (workspace) {
+      router.push(`/${workspace.id}/${page.id}`);
+    }
   };
 
   return (

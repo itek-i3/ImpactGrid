@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { Search, FileText, Database, ArrowRight } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
@@ -10,11 +11,14 @@ import styles from '@/styles/layout.module.css';
  * SearchModal — global search (Cmd+K) across pages and databases.
  */
 export default function SearchModal() {
+  const router = useRouter();
+  const pathname = usePathname();
   const {
     searchOpen,
     setSearchOpen,
     pages,
     setCurrentPage,
+    workspace,
   } = useWorkspaceStore();
 
   const [query, setQuery] = useState('');
@@ -64,8 +68,11 @@ export default function SearchModal() {
     (page) => {
       setCurrentPage(page);
       setSearchOpen(false);
+      if (pathname && !pathname.startsWith('/demo') && workspace) {
+        router.push(`/${workspace.id}/${page.id}`);
+      }
     },
-    [setCurrentPage, setSearchOpen]
+    [setCurrentPage, setSearchOpen, pathname, workspace, router]
   );
 
   if (!searchOpen) return null;

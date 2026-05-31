@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
-import { ChevronRight, Plus, MoreHorizontal, Trash2, Copy, FileText } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { ChevronRight, Plus, MoreHorizontal, Trash2, Copy, FileText, Star } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
@@ -11,6 +12,8 @@ import styles from '@/styles/layout.module.css';
  * Supports nesting, expand/collapse, and page actions.
  */
 export default function PageTree({ parentId = null, depth = 0 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const {
     pages,
     currentPage,
@@ -19,7 +22,29 @@ export default function PageTree({ parentId = null, depth = 0 }) {
     setCurrentPage,
     addPage,
     deletePage,
+    duplicatePage,
+    toggleFavoritePage,
+    workspace,
   } = useWorkspaceStore();
+
+  const handleSelect = (page) => {
+    setCurrentPage(page);
+    if (pathname && !pathname.startsWith('/demo') && workspace) {
+      router.push(`/${workspace.id}/${page.id}`);
+    }
+  };
+
+  const handleAddChild = async (parentId) => {
+    const newId = await addPage({
+      title: '',
+      icon: '📄',
+      parentId,
+      isDatabase: false,
+    });
+    if (newId && pathname && !pathname.startsWith('/demo') && workspace) {
+      router.push(`/${workspace.id}/${newId}`);
+    }
+  };
 
   const children = pages
     .filter((p) => p.parentId === parentId && !p.isArchived)
@@ -43,16 +68,16 @@ export default function PageTree({ parentId = null, depth = 0 }) {
           isActive={currentPage?.id === page.id}
           isExpanded={expandedPages.has(page.id)}
           onToggle={() => togglePageExpanded(page.id)}
-          onSelect={() => setCurrentPage(page)}
-          onAddChild={() =>
-            addPage({
-              title: '',
-              icon: '📄',
-              parentId: page.id,
-              isDatabase: false,
-            })
-          }
+          onSelect={() => handleSelect(page)}
+          onAddChild={() => handleAddChild(page.id)}
           onDelete={() => deletePage(page.id)}
+          onDuplicate={async () => {
+            const dupId = await duplicatePage(page.id);
+            if (dupId && pathname && !pathname.startsWith('/demo') && workspace) {
+              router.push(`/${workspace.id}/${dupId}`);
+            }
+          }}
+          onToggleFavorite={() => toggleFavoritePage(page.id)}
           hasChildren={pages.some(
             (p) => p.parentId === page.id && !p.isArchived
           )}
@@ -71,6 +96,8 @@ function PageTreeItem({
   onSelect,
   onAddChild,
   onDelete,
+  onDuplicate,
+  onToggleFavorite,
   hasChildren,
 }) {
   const handleClick = useCallback(
@@ -139,7 +166,24 @@ function PageTreeItem({
             >
               Add sub-page
             </DropdownItem>
-            <DropdownItem icon={<Copy size={14} />}>Duplicate</DropdownItem>
+            <DropdownItem
+              icon={<Star size={14} style={{ fill: page.isFavorite ? 'var(--color-accent-primary)' : 'none', color: page.isFavorite ? 'var(--color-accent-primary)' : 'inherit' }} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite();
+              }}
+            >
+              {page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+            </DropdownItem>
+            <DropdownItem
+              icon={<Copy size={14} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate();
+              }}
+            >
+              Duplicate
+            </DropdownItem>
             <DropdownDivider />
             <DropdownItem
               icon={<Trash2 size={14} />}
