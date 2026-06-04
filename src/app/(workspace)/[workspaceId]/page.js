@@ -23,7 +23,7 @@ const QUICK_ACTIONS = [
 ];
 
 const COMMUNITY_TEMPLATES = [
-  { icon: Building2, label: 'Agencies', dbType: 'agencies', emoji: '🏢', desc: 'Track agency partners & performance' },
+  { icon: Building2, label: 'TOIG HQ', dbType: 'agencies', emoji: '🏢', desc: 'Manage Itek, I360, I3x Africa, i3+, and more' },
   { icon: Wallet, label: 'Assets', dbType: 'assets', emoji: '💰', desc: 'Manage community assets & income' },
   { icon: Calendar, label: 'Events', dbType: 'events', emoji: '📅', desc: 'Plan events, budgets & attendance' },
   { icon: Users, label: 'Members', dbType: 'members', emoji: '👥', desc: 'Directory of community members' },

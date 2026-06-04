@@ -29,6 +29,7 @@ export function notFound(message = 'Not found') {
 }
 
 export function serverError(err) {
+  console.error('[API Error]', err);
   const message = err?.message ?? 'Internal server error';
   const status  = err?.status ?? 500;
   return NextResponse.json({ error: message }, { status });

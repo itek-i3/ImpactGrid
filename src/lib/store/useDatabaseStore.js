@@ -7,8 +7,29 @@ import { useWorkspaceStore } from './useWorkspaceStore';
  * Database store — manages database state: properties, rows, cells, views.
  * Mirrors the Supabase schema but operates in-memory for demo mode.
  */
+// Helper to save current database state into cache
+const saveToCache = (state) => {
+  const pageId = state.database?.pageId;
+  if (!pageId) return {};
+  return {
+    cacheByPageId: {
+      ...state.cacheByPageId,
+      [pageId]: {
+        database: state.database,
+        properties: state.properties,
+        rows: state.rows,
+        views: state.views,
+        activeViewId: state.activeViewId,
+      }
+    }
+  };
+};
+
 export const useDatabaseStore = create((set, get) => ({
-  // Current database
+  // Cache of databases by pageId
+  cacheByPageId: {},
+
+  // Current active database
   database: null,
   properties: [],
   rows: [],
@@ -26,15 +47,21 @@ export const useDatabaseStore = create((set, get) => ({
 
   // ── Actions ──
 
-  setDatabase: (database) => set({ database }),
+  setDatabase: (database) => set((state) => {
+    const nextState = { ...state, database };
+    return { database, ...saveToCache(nextState) };
+  }),
 
   // ── Properties (columns) ──
 
-  setProperties: (properties) => set({ properties }),
+  setProperties: (properties) => set((state) => {
+    const nextState = { ...state, properties };
+    return { properties, ...saveToCache(nextState) };
+  }),
 
   addProperty: (property) =>
-    set((state) => ({
-      properties: [
+    set((state) => {
+      const nextProps = [
         ...state.properties,
         {
           id: property.id || crypto.randomUUID(),
@@ -44,39 +71,62 @@ export const useDatabaseStore = create((set, get) => ({
           sortOrder: state.properties.length,
           ...property,
         },
-      ],
-    })),
+      ];
+      const nextState = { ...state, properties: nextProps };
+      return {
+        properties: nextProps,
+        ...saveToCache(nextState),
+      };
+    }),
 
   updateProperty: (propertyId, updates) =>
-    set((state) => ({
-      properties: state.properties.map((p) =>
+    set((state) => {
+      const nextProps = state.properties.map((p) =>
         p.id === propertyId ? { ...p, ...updates } : p
-      ),
-    })),
+      );
+      const nextState = { ...state, properties: nextProps };
+      return {
+        properties: nextProps,
+        ...saveToCache(nextState),
+      };
+    }),
 
   deleteProperty: (propertyId) =>
-    set((state) => ({
-      properties: state.properties.filter((p) => p.id !== propertyId),
-      // Also remove cells for this property
-      rows: state.rows.map((row) => ({
+    set((state) => {
+      const nextProps = state.properties.filter((p) => p.id !== propertyId);
+      const nextRows = state.rows.map((row) => ({
         ...row,
         cells: Object.fromEntries(
           Object.entries(row.cells || {}).filter(([key]) => key !== propertyId)
         ),
-      })),
-    })),
+      }));
+      const nextState = { ...state, properties: nextProps, rows: nextRows };
+      return {
+        properties: nextProps,
+        rows: nextRows,
+        ...saveToCache(nextState),
+      };
+    }),
 
   reorderProperties: (newOrder) =>
-    set((state) => ({
-      properties: newOrder.map((id, index) => {
+    set((state) => {
+      const nextProps = newOrder.map((id, index) => {
         const prop = state.properties.find((p) => p.id === id);
         return { ...prop, sortOrder: index };
-      }),
-    })),
+      });
+      const nextState = { ...state, properties: nextProps };
+      return {
+        properties: nextProps,
+        ...saveToCache(nextState),
+      };
+    }),
 
   // ── Rows ──
 
-  setRows: (rows) => set({ rows }),
+  setRows: (rows) => set((state) => {
+    const nextState = { ...state, rows };
+    return { rows, ...saveToCache(nextState) };
+  }),
 
   addRow: (row) =>
     set((state) => {
@@ -88,18 +138,19 @@ export const useDatabaseStore = create((set, get) => ({
         updatedAt: new Date().toISOString(),
         ...row,
       };
-      // Initialize empty cells for each property
       state.properties.forEach((prop) => {
         if (!(prop.id in newRow.cells)) {
           newRow.cells[prop.id] = getDefaultValue(prop.type);
         }
       });
-      return { rows: [...state.rows, newRow] };
+      const nextRows = [...state.rows, newRow];
+      const nextState = { ...state, rows: nextRows };
+      return { rows: nextRows, ...saveToCache(nextState) };
     }),
 
   updateCell: (rowId, propertyId, value) =>
-    set((state) => ({
-      rows: state.rows.map((r) =>
+    set((state) => {
+      const nextRows = state.rows.map((r) =>
         r.id === rowId
           ? {
               ...r,
@@ -107,35 +158,49 @@ export const useDatabaseStore = create((set, get) => ({
               updatedAt: new Date().toISOString(),
             }
           : r
-      ),
-    })),
+      );
+      const nextState = { ...state, rows: nextRows };
+      return {
+        rows: nextRows,
+        ...saveToCache(nextState),
+      };
+    }),
 
   deleteRow: (rowId) =>
-    set((state) => ({
-      rows: state.rows.filter((r) => r.id !== rowId),
-    })),
+    set((state) => {
+      const nextRows = state.rows.filter((r) => r.id !== rowId);
+      const nextState = { ...state, rows: nextRows };
+      return { rows: nextRows, ...saveToCache(nextState) };
+    }),
 
   duplicateRow: (rowId) =>
     set((state) => {
       const row = state.rows.find((r) => r.id === rowId);
       if (!row) return state;
-      return {
-        rows: [
-          ...state.rows,
-          {
-            ...row,
-            id: crypto.randomUUID(),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-      };
+      const nextRows = [
+        ...state.rows,
+        {
+          ...row,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+      const nextState = { ...state, rows: nextRows };
+      return { rows: nextRows, ...saveToCache(nextState) };
     }),
 
   // ── Views ──
 
-  setViews: (views) => set({ views }),
-  setActiveViewId: (id) => set({ activeViewId: id }),
+  setViews: (views) => set((state) => {
+    const nextState = { ...state, views };
+    return { views, ...saveToCache(nextState) };
+  }),
+
+  setActiveViewId: (id) => set((state) => {
+    const nextState = { ...state, activeViewId: id };
+    return { activeViewId: id, ...saveToCache(nextState) };
+  }),
 
   addView: (view) =>
     set((state) => {
@@ -147,30 +212,134 @@ export const useDatabaseStore = create((set, get) => ({
         sortOrder: state.views.length,
         ...view,
       };
-      return {
-        views: [...state.views, newView],
+      const nextViews = [...state.views, newView];
+      const nextState = {
+        ...state,
+        views: nextViews,
         activeViewId: newView.id,
+      };
+      return {
+        views: nextViews,
+        activeViewId: newView.id,
+        ...saveToCache(nextState),
       };
     }),
 
   updateView: (viewId, updates) =>
-    set((state) => ({
-      views: state.views.map((v) =>
+    set((state) => {
+      const nextViews = state.views.map((v) =>
         v.id === viewId ? { ...v, ...updates } : v
-      ),
-    })),
+      );
+      const nextState = { ...state, views: nextViews };
+      return {
+        views: nextViews,
+        ...saveToCache(nextState),
+      };
+    }),
 
   deleteView: (viewId) =>
     set((state) => {
       const remaining = state.views.filter((v) => v.id !== viewId);
+      const nextActiveId =
+        state.activeViewId === viewId
+          ? remaining[0]?.id || null
+          : state.activeViewId;
+      const nextState = {
+        ...state,
+        views: remaining,
+        activeViewId: nextActiveId,
+      };
       return {
         views: remaining,
-        activeViewId:
-          state.activeViewId === viewId
-            ? remaining[0]?.id || null
-            : state.activeViewId,
+        activeViewId: nextActiveId,
+        ...saveToCache(nextState),
       };
     }),
+
+  // ── Multi-DB Cross-Page Helper Actions ──
+
+  updateCachedCell: (dbPageId, rowId, propertyId, value) =>
+    set((state) => {
+      const cache = { ...state.cacheByPageId };
+      const dbData = cache[dbPageId];
+      if (!dbData) return {};
+
+      const updatedRows = dbData.rows.map((r) =>
+        r.id === rowId
+          ? {
+              ...r,
+              cells: { ...r.cells, [propertyId]: value },
+              updatedAt: new Date().toISOString(),
+            }
+          : r
+      );
+
+      cache[dbPageId] = {
+        ...dbData,
+        rows: updatedRows,
+      };
+
+      const updates = { cacheByPageId: cache };
+      if (state.database?.pageId === dbPageId) {
+        updates.rows = updatedRows;
+      }
+      return updates;
+    }),
+
+  addCachedRow: (dbPageId, row) =>
+    set((state) => {
+      const cache = { ...state.cacheByPageId };
+      const dbData = cache[dbPageId];
+      if (!dbData) return {};
+
+      const newRow = {
+        id: row?.id || crypto.randomUUID(),
+        cells: row?.cells || {},
+        isArchived: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...row,
+      };
+
+      dbData.properties.forEach((prop) => {
+        if (!(prop.id in newRow.cells)) {
+          newRow.cells[prop.id] = getDefaultValue(prop.type);
+        }
+      });
+
+      const updatedRows = [...dbData.rows, newRow];
+      cache[dbPageId] = {
+        ...dbData,
+        rows: updatedRows,
+      };
+
+      const updates = { cacheByPageId: cache };
+      if (state.database?.pageId === dbPageId) {
+        updates.rows = updatedRows;
+      }
+      return updates;
+    }),
+
+  deleteCachedRow: (dbPageId, rowId) =>
+    set((state) => {
+      const cache = { ...state.cacheByPageId };
+      const dbData = cache[dbPageId];
+      if (!dbData) return {};
+
+      const updatedRows = dbData.rows.filter((r) => r.id !== rowId);
+      cache[dbPageId] = {
+        ...dbData,
+        rows: updatedRows,
+      };
+
+      const updates = { cacheByPageId: cache };
+      if (state.database?.pageId === dbPageId) {
+        updates.rows = updatedRows;
+      }
+      return updates;
+    }),
+
+  editingCell: null,
 
   // ── Filters & Sorts ──
 
@@ -340,12 +509,147 @@ export const useDatabaseStore = create((set, get) => ({
             ],
           },
         },
+        { id: crypto.randomUUID(), name: 'Goals', type: 'text', sortOrder: 8 },
+        { id: crypto.randomUUID(), name: 'Goal Revenue/Month', type: 'number', sortOrder: 9 },
+        { id: crypto.randomUUID(), name: 'Actual Revenue/Month', type: 'number', sortOrder: 10 },
+        { id: crypto.randomUUID(), name: 'Loss Origin', type: 'text', sortOrder: 11 },
+        { id: crypto.randomUUID(), name: 'Expenditure', type: 'number', sortOrder: 12 },
+        { id: crypto.randomUUID(), name: 'Revenue Model', type: 'text', sortOrder: 13 },
+        { id: crypto.randomUUID(), name: 'Rate Card', type: 'text', sortOrder: 14 },
+        { id: crypto.randomUUID(), name: 'Growth Models', type: 'text', sortOrder: 15 },
+        { id: crypto.randomUUID(), name: 'Innovation Box', type: 'text', sortOrder: 16 },
       ];
       sampleData = [
-        { Name: 'Apex Marketing', Status: 'Active', 'Contact Person': 'Alice Johnson', Email: 'alice@apex.com', Phone: '+254711223344', 'Total Projects': 12, 'Revenue Generated': 45000, 'Performance Score': 'Excellent' },
-        { Name: 'Beacon Creative', Status: 'Active', 'Contact Person': 'Bob Smith', Email: 'bob@beacon.io', Phone: '+254722334455', 'Total Projects': 5, 'Revenue Generated': 18500, 'Performance Score': 'Good' },
-        { Name: 'Summit Digital', Status: 'Onboarding', 'Contact Person': 'Charlie Brown', Email: 'charlie@summit.net', Phone: '+254733445566', 'Total Projects': 0, 'Revenue Generated': 0, 'Performance Score': 'Average' },
-        { Name: 'Nova Agency', Status: 'Inactive', 'Contact Person': 'Diana Prince', Email: 'diana@nova.co', Phone: '+254744556677', 'Total Projects': 8, 'Revenue Generated': 32000, 'Performance Score': 'Poor' },
+        {
+          Name: 'Itek',
+          Status: 'Active',
+          'Contact Person': 'Alice Johnson',
+          Email: 'alice@itek.toig.co',
+          Phone: '+254711223344',
+          'Total Projects': 5,
+          'Revenue Generated': 42000,
+          'Performance Score': 'Excellent',
+          Goals: 'Scale operations by 40% and finish deployment of the TOIG HQ client onboarding workflow.',
+          'Goal Revenue/Month': 15000,
+          'Actual Revenue/Month': 14000,
+          'Loss Origin': 'Slight budget adjustment on cloud server scaling templates.',
+          Expenditure: 9000,
+          'Revenue Model': 'Monthly Retainer + Performance Bonus',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'Full Stack Engineering', rate: 150, quantity: 40, total: 6000, owed: 3000 },
+            { id: '2', service: 'Mobile App Architecture', rate: 180, quantity: 30, total: 5400, owed: 5400 },
+            { id: '3', service: 'UI Design Briefs', rate: 100, quantity: 20, total: 2000, owed: 1000 }
+          ]),
+          'Growth Models': 'Hire 2 senior developers to accelerate client integrations and cross-sell technical consulting.',
+          'Innovation Box': 'Deploying internal AI tools to review pull requests and suggest security patches automatically.'
+        },
+        {
+          Name: 'I360',
+          Status: 'Active',
+          'Contact Person': 'Bob Smith',
+          Email: 'bob@i360.toig.co',
+          Phone: '+254722334455',
+          'Total Projects': 3,
+          'Revenue Generated': 28500,
+          'Performance Score': 'Good',
+          Goals: 'Deliver Q2 video advertising campaigns for local small businesses.',
+          'Goal Revenue/Month': 10000,
+          'Actual Revenue/Month': 9500,
+          'Loss Origin': 'Higher than expected contractor fees for visual effects.',
+          Expenditure: 6000,
+          'Revenue Model': 'Retainer + Milestone Payments',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'Social Media Management', rate: 100, quantity: 50, total: 5000, owed: 2500 },
+            { id: '2', service: 'Video Ad Production', rate: 150, quantity: 30, total: 4500, owed: 4500 }
+          ]),
+          'Growth Models': 'Partner with localized content creators to offer cheaper short-form packages.',
+          'Innovation Box': 'Testing interactive canvas wireframes to shorten client approval loops.'
+        },
+        {
+          Name: 'I3x Africa',
+          Status: 'Active',
+          'Contact Person': 'Charlie Brown',
+          Email: 'charlie@i3x.toig.co',
+          Phone: '+254733445566',
+          'Total Projects': 4,
+          'Revenue Generated': 32000,
+          'Performance Score': 'Good',
+          Goals: 'Establish workspace layouts in Nairobi hub and prepare Outbound regional sales strategy.',
+          'Goal Revenue/Month': 12000,
+          'Actual Revenue/Month': 11500,
+          'Loss Origin': 'Increased regional logistical costs for setup materials.',
+          Expenditure: 7500,
+          'Revenue Model': 'Retainer',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'SaaS Regional Consulting', rate: 150, quantity: 40, total: 6000, owed: 2000 },
+            { id: '2', service: 'Business Setup Strategy', rate: 200, quantity: 20, total: 4000, owed: 4000 }
+          ]),
+          'Growth Models': 'Focusing on cold email outbound sequences targeting tech startups in West and East Africa.',
+          'Innovation Box': 'Integrating custom automated dashboards for regional partner analytics.'
+        },
+        {
+          Name: 'I3 studio',
+          Status: 'Onboarding',
+          'Contact Person': 'Diana Prince',
+          Email: 'diana@studio.toig.co',
+          Phone: '+254744556677',
+          'Total Projects': 0,
+          'Revenue Generated': 0,
+          'Performance Score': 'Average',
+          Goals: 'Draft brand style assets for 3 new inbound client brands.',
+          'Goal Revenue/Month': 6000,
+          'Actual Revenue/Month': 0,
+          'Loss Origin': 'Awaiting initial retainer deposits to commence discovery designs.',
+          Expenditure: 0,
+          'Revenue Model': 'Fixed Project basis',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'Brand Logo Concept Creation', rate: 120, quantity: 0, total: 0, owed: 0 }
+          ]),
+          'Growth Models': 'Acquire design contracts with regional startups to establish portfolio presence.',
+          'Innovation Box': 'Exploring automated design template distribution to speed up design execution.'
+        },
+        {
+          Name: 'i3+',
+          Status: 'Active',
+          'Contact Person': 'Erick Omondi',
+          Email: 'erick@plus.toig.co',
+          Phone: '+254755667788',
+          'Total Projects': 2,
+          'Revenue Generated': 15000,
+          'Performance Score': 'Excellent',
+          Goals: 'Initiate pilot test terms for community micro-lending programs.',
+          'Goal Revenue/Month': 5000,
+          'Actual Revenue/Month': 5000,
+          'Loss Origin': 'N/A',
+          Expenditure: 2500,
+          'Revenue Model': 'Performance Interest Retainer',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'Program Strategy Review', rate: 100, quantity: 30, total: 3000, owed: 1500 }
+          ]),
+          'Growth Models': 'Scaling community banking partnerships to leverage capital pools.',
+          'Innovation Box': 'Exploring blockchain integrations for micro-credit score distribution.'
+        },
+        {
+          Name: 'I3 launchpad',
+          Status: 'Onboarding',
+          'Contact Person': 'Faith Mutua',
+          Email: 'faith@launchpad.toig.co',
+          Phone: '+254766778899',
+          'Total Projects': 0,
+          'Revenue Generated': 0,
+          'Performance Score': 'Average',
+          Goals: 'Launch the application portal for the next tech cohort.',
+          'Goal Revenue/Month': 4000,
+          'Actual Revenue/Month': 0,
+          'Loss Origin': 'Contracts still in signing phase with the program sponsor.',
+          Expenditure: 0,
+          'Revenue Model': 'Sponsor Retainer',
+          'Rate Card': JSON.stringify([
+            { id: '1', service: 'Sponsor Strategy Consults', rate: 200, quantity: 0, total: 0, owed: 0 }
+          ]),
+          'Growth Models': 'Targeting corporate sponsors interested in local incubation initiatives.',
+          'Innovation Box': 'Developing an interactive quiz to screen early stage founders.'
+        },
       ];
     } else if (dbType === 'assets') {
       properties = [
@@ -542,17 +846,30 @@ export const useDatabaseStore = create((set, get) => ({
             { value: 'Dev', color: '#60a5fa' },
             { value: 'Marketing', color: '#34d399' },
             { value: 'Finance', color: '#fbbf24' },
+            { value: 'Strategy', color: '#818cf8' },
           ],
         }},
         { id: crypto.randomUUID(), name: 'Done', type: 'checkbox', sortOrder: 6 },
+        { id: 'tasks-agency-property-id', name: 'Agency', type: 'select', sortOrder: 7, config: {
+          options: [
+            { value: 'Itek', color: '#60a5fa' },
+            { value: 'I360', color: '#f472b6' },
+            { value: 'I3x Africa', color: '#34d399' },
+            { value: 'I3 studio', color: '#a78bfa' },
+            { value: 'i3+', color: '#fbbf24' },
+            { value: 'I3 launchpad', color: '#f87171' }
+          ]
+        }}
       ];
       sampleData = [
-        { Name: 'Design new dashboard', Status: 'In Progress', Priority: 'High', Assignee: 'Sarah K.', 'Due Date': '2025-06-15', Tags: ['Design'], Done: false },
-        { Name: 'Set up CI/CD pipeline', Status: 'Completed', Priority: 'Medium', Assignee: 'James M.', 'Due Date': '2025-06-01', Tags: ['Dev'], Done: true },
-        { Name: 'Write quarterly report', Status: 'Not Started', Priority: 'Low', Assignee: 'Admin', 'Due Date': '2025-07-01', Tags: ['Marketing'], Done: false },
-        { Name: 'Budget review meeting', Status: 'Not Started', Priority: 'Urgent', Assignee: 'David L.', 'Due Date': '2025-06-10', Tags: ['Finance'], Done: false },
-        { Name: 'Update member directory', Status: 'In Progress', Priority: 'Medium', Assignee: 'Grace N.', 'Due Date': '2025-06-20', Tags: ['Dev', 'Design'], Done: false },
-        { Name: 'Launch social campaign', Status: 'Blocked', Priority: 'High', Assignee: 'Sarah K.', 'Due Date': '2025-06-18', Tags: ['Marketing'], Done: false },
+        { Name: 'Build agency dashboard widgets', Status: 'In Progress', Priority: 'High', Assignee: 'Sarah K.', 'Due Date': '2026-06-15', Tags: ['Dev'], Done: false, Agency: 'Itek' },
+        { Name: 'Optimize SQL RLS policies', Status: 'Completed', Priority: 'Medium', Assignee: 'James M.', 'Due Date': '2026-06-01', Tags: ['Dev'], Done: true, Agency: 'Itek' },
+        { Name: 'Draft Q2 social media briefs', Status: 'Not Started', Priority: 'Low', Assignee: 'Alex N.', 'Due Date': '2026-06-25', Tags: ['Marketing'], Done: false, Agency: 'I360' },
+        { Name: 'Formulate Africa expansion blueprint', Status: 'In Progress', Priority: 'High', Assignee: 'Erick O.', 'Due Date': '2026-07-05', Tags: ['Strategy'], Done: false, Agency: 'I3x Africa' },
+        { Name: 'Setup server infra in Lagos region', Status: 'Not Started', Priority: 'Urgent', Assignee: 'John D.', 'Due Date': '2026-06-12', Tags: ['Dev'], Done: false, Agency: 'I3x Africa' },
+        { Name: 'Design brand assets for new partners', Status: 'Not Started', Priority: 'Medium', Assignee: 'Diana P.', 'Due Date': '2026-06-20', Tags: ['Design'], Done: false, Agency: 'I3 studio' },
+        { Name: 'Draft pilot test terms for program launch', Status: 'In Progress', Priority: 'Low', Assignee: 'Grace W.', 'Due Date': '2026-06-18', Tags: ['Finance'], Done: false, Agency: 'i3+' },
+        { Name: 'Establish tech cohort application portal', Status: 'Blocked', Priority: 'High', Assignee: 'Faith M.', 'Due Date': '2026-06-30', Tags: ['Dev'], Done: false, Agency: 'I3 launchpad' },
       ];
     }
 

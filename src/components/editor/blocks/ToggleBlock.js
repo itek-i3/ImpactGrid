@@ -14,12 +14,16 @@ export default function ToggleBlock({ block, onUpdate, onKeyDown, onInput, autoF
   const blockIdRef = useRef(block.id);
 
   useEffect(() => {
-    if (blockIdRef.current !== block.id) {
-      if (titleRef.current) titleRef.current.innerText = block.content?.text || '';
-      if (contentRef.current) contentRef.current.innerText = block.properties?.innerText || '';
-      blockIdRef.current = block.id;
+    if (titleRef.current && titleRef.current.innerText !== (block.content?.text || '')) {
+      titleRef.current.innerText = block.content?.text || '';
     }
-  }, [block.id, block.content?.text, block.properties?.innerText]);
+  }, [block.id, block.content?.text]);
+
+  useEffect(() => {
+    if (isOpen && contentRef.current && contentRef.current.innerText !== (block.properties?.innerText || '')) {
+      contentRef.current.innerText = block.properties?.innerText || '';
+    }
+  }, [block.id, isOpen, block.properties?.innerText]);
 
   useEffect(() => {
     if (titleRef.current && autoFocus) {

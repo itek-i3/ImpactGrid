@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import BlockEditor from '@/components/editor/BlockEditor';
 import DatabaseContainer from '@/components/database/DatabaseContainer';
+import AgencyDetailDashboard from '@/components/community/AgencyDetailDashboard';
 import styles from '@/styles/layout.module.css';
 
 const COMMON_EMOJIS = [
@@ -19,6 +20,9 @@ const COMMON_EMOJIS = [
  * container based on the page type.
  */
 export default function PageView({ params }) {
+  const unwrappedParams = React.use(params);
+  const { pageId } = unwrappedParams;
+
   const {
     pages,
     currentPage,
@@ -33,14 +37,13 @@ export default function PageView({ params }) {
 
   // Set current page based on the pageId param
   useEffect(() => {
-    const unwrapped = params;
-    if (unwrapped?.pageId) {
-      const page = pages.find((p) => p.id === unwrapped.pageId);
+    if (pageId) {
+      const page = pages.find((p) => p.id === pageId);
       if (page && page.id !== currentPage?.id) {
         setCurrentPage(page);
       }
     }
-  }, [params, pages]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pageId, pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize blocks when page changes
   useEffect(() => {
@@ -223,6 +226,25 @@ export default function PageView({ params }) {
       {/* Render Database or Block Editor based on page type */}
       {currentPage.isDatabase ? (
         <DatabaseContainer pageId={currentPage.id} />
+      ) : currentPage.parentId === 'toig-hq-database-page-id' ? (
+        <>
+          <AgencyDetailDashboard pageId={currentPage.id} />
+          <div style={{ marginTop: 'var(--space-6)' }}>
+            <h3 style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: 'var(--color-text-tertiary)',
+              marginBottom: 'var(--space-3)',
+              borderBottom: '1px solid var(--color-border-subtle)',
+              paddingBottom: 'var(--space-2)'
+            }}>
+              Custom Agency Document & Notes
+            </h3>
+            <BlockEditor pageId={currentPage.id} />
+          </div>
+        </>
       ) : (
         <BlockEditor pageId={currentPage.id} />
       )}

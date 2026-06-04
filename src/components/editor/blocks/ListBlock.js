@@ -44,7 +44,7 @@ export function BulletListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus
 /**
  * NumberedListBlock — numbered list item.
  */
-export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, index, readOnly = false }) {
+export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, listIndex, readOnly = false }) {
   const ref = useRef(null);
   const blockIdRef = useRef(block.id);
 
@@ -63,7 +63,7 @@ export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, autoFoc
 
   return (
     <div className={styles.listItem}>
-      <span className={styles.listBullet}>{(index || 0) + 1}.</span>
+      <span className={styles.listBullet}>{(listIndex || 0) + 1}.</span>
       <div
         ref={ref}
         className={styles.listContent}

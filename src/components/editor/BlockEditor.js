@@ -384,6 +384,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
         if (!BlockComponent) return null;
 
         const isAutoFocus = focusBlockId === block.id;
+        const listIndex = block.type === 'numbered_list' ? getListIndex(block.id, index) : 0;
 
         return (
           <div
@@ -435,6 +436,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
               <BlockComponent
                 block={block}
                 index={index}
+                listIndex={listIndex}
                 autoFocus={isAutoFocus && !readOnly}
                 onUpdate={(updates) => !readOnly && handleBlockUpdate(block.id, updates)}
                 onKeyDown={(e) => !readOnly && handleBlockKeyDown(e, block.id, index)}

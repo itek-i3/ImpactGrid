@@ -14,16 +14,19 @@ import {
   LayoutDashboard,
   Clock,
   BarChart3,
+  ShieldAlert,
 } from 'lucide-react';
 import { useDatabaseStore } from '@/lib/store/useDatabaseStore';
+import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import TableView from './views/TableView';
 import KanbanView from './views/KanbanView';
 import CalendarView from './views/CalendarView';
 import ListView from './views/ListView';
 import TimelineView from './views/TimelineView';
 import ChartView from './views/ChartView';
-import DatabaseDashboard from './views/DatabaseDashboard';
+import DatabaseDashboardComponent from './views/DatabaseDashboard';
 import styles from '@/styles/database.module.css';
+import communityStyles from '@/styles/community.module.css';
 
 const VIEW_ICONS = {
   dashboard: <LayoutDashboard size={14} />,
@@ -36,7 +39,7 @@ const VIEW_ICONS = {
 };
 
 const VIEW_COMPONENTS = {
-  dashboard: DatabaseDashboard,
+  dashboard: DatabaseDashboardComponent,
   table: TableView,
   kanban: KanbanView,
   calendar: CalendarView,
@@ -77,6 +80,8 @@ export default function DatabaseContainer({ pageId, readOnly = false }) {
     addFilter,
   } = useDatabaseStore();
 
+  const workspace = useWorkspaceStore((state) => state.workspace);
+
   const [showNewViewMenu, setShowNewViewMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -87,6 +92,29 @@ export default function DatabaseContainer({ pageId, readOnly = false }) {
       initDemoDatabase(pageId);
     }
   }, [pageId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Authorization Check:
+  // In demo mode (path starts with /demo) or if roles are undefined, the user defaults to owner (admin)
+  const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/demo');
+  const userRole = workspace?.workspace_members?.[0]?.role;
+  const isAuthorized = isDemo || !database || database.type !== 'agencies' || userRole === 'owner';
+
+  if (!isAuthorized) {
+    return (
+      <div className={styles.dbContainer}>
+        <div className={communityStyles.shieldContainer}>
+          <div className={communityStyles.shieldIconWrapper}>
+            <ShieldAlert size={40} />
+          </div>
+          <h2 className={communityStyles.shieldTitle}>Access Restricted</h2>
+          <p className={communityStyles.shieldDesc}>
+            Only workspace administrators (owners) have permissions to view and modify agency dashboards.
+            Please contact your system administrator if you require access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const activeView = views.find((v) => v.id === activeViewId) || views[0];
   const ViewComponent = activeView ? VIEW_COMPONENTS[activeView.type] : null;

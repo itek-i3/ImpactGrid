@@ -6,6 +6,18 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ── 2. TABLES DEFINITIONS ─────────────────────────────────────────────────────
 
+-- Drop existing tables to ensure a clean schema rebuild with all required columns
+DROP TABLE IF EXISTS form_submissions CASCADE;
+DROP TABLE IF EXISTS forms CASCADE;
+DROP TABLE IF EXISTS database_views CASCADE;
+DROP TABLE IF EXISTS database_rows CASCADE;
+DROP TABLE IF EXISTS database_properties CASCADE;
+DROP TABLE IF EXISTS databases CASCADE;
+DROP TABLE IF EXISTS blocks CASCADE;
+DROP TABLE IF EXISTS pages CASCADE;
+DROP TABLE IF EXISTS workspace_members CASCADE;
+DROP TABLE IF EXISTS workspaces CASCADE;
+
 -- WORKSPACES TABLE
 CREATE TABLE IF NOT EXISTS workspaces (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -164,6 +176,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Security definer function to check workspace ownership without RLS recursion
+CREATE OR REPLACE FUNCTION is_workspace_owner(ws_id UUID, u_id UUID)
+RETURNS BOOLEAN SECURITY DEFINER AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM workspace_members WHERE workspace_id = ws_id AND user_id = u_id AND role = 'owner'
+  );
+END;
+$$ LANGUAGE plpgsql;
+
 -- ── 5. AUTOMATIC MODIFICATION TIME TRIGGERS ───────────────────────────────────
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
@@ -173,13 +195,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_workspaces_modtime ON workspaces;
 CREATE TRIGGER update_workspaces_modtime BEFORE UPDATE ON workspaces FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_pages_modtime ON pages;
 CREATE TRIGGER update_pages_modtime BEFORE UPDATE ON pages FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_blocks_modtime ON blocks;
 CREATE TRIGGER update_blocks_modtime BEFORE UPDATE ON blocks FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_databases_modtime ON databases;
 CREATE TRIGGER update_databases_modtime BEFORE UPDATE ON databases FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_database_properties_modtime ON database_properties;
 CREATE TRIGGER update_database_properties_modtime BEFORE UPDATE ON database_properties FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_database_rows_modtime ON database_rows;
 CREATE TRIGGER update_database_rows_modtime BEFORE UPDATE ON database_rows FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_database_views_modtime ON database_views;
 CREATE TRIGGER update_database_views_modtime BEFORE UPDATE ON database_views FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+DROP TRIGGER IF EXISTS update_forms_modtime ON forms;
 CREATE TRIGGER update_forms_modtime BEFORE UPDATE ON forms FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
 -- ── 6. ROW LEVEL SECURITY (RLS) POLICIES ──────────────────────────────────────
@@ -196,14 +226,18 @@ ALTER TABLE forms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE form_submissions ENABLE ROW LEVEL SECURITY;
 
 -- Workspaces Policies
+DROP POLICY IF EXISTS select_workspaces ON workspaces;
 CREATE POLICY select_workspaces ON workspaces
   FOR SELECT USING (
-    is_workspace_member(id, auth.uid())
+    is_workspace_member(id, auth.uid()) OR
+    owner_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS insert_workspaces ON workspaces;
 CREATE POLICY insert_workspaces ON workspaces
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS update_workspaces ON workspaces;
 CREATE POLICY update_workspaces ON workspaces
   FOR UPDATE USING (
     EXISTS (
@@ -212,6 +246,7 @@ CREATE POLICY update_workspaces ON workspaces
     )
   );
 
+DROP POLICY IF EXISTS delete_workspaces ON workspaces;
 CREATE POLICY delete_workspaces ON workspaces
   FOR DELETE USING (
     EXISTS (
@@ -221,26 +256,47 @@ CREATE POLICY delete_workspaces ON workspaces
   );
 
 -- Workspace Members Policies
+DROP POLICY IF EXISTS select_workspace_members ON workspace_members;
 CREATE POLICY select_workspace_members ON workspace_members
   FOR SELECT USING (
     is_workspace_member(workspace_id, auth.uid())
   );
 
-CREATE POLICY modify_workspace_members ON workspace_members
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM workspace_members 
-      WHERE workspace_id = workspace_members.workspace_id AND user_id = auth.uid() AND role = 'owner'
-    )
+DROP POLICY IF EXISTS insert_workspace_members ON workspace_members;
+CREATE POLICY insert_workspace_members ON workspace_members
+  FOR INSERT WITH CHECK (
+    -- A user can add themselves if they are the workspace owner in workspaces table
+    (user_id = auth.uid() AND EXISTS (
+      SELECT 1 FROM workspaces WHERE id = workspace_id AND owner_id = auth.uid()
+    )) OR
+    -- Or an existing workspace owner can add anyone
+    is_workspace_owner(workspace_id, auth.uid())
   );
 
+DROP POLICY IF EXISTS update_workspace_members ON workspace_members;
+CREATE POLICY update_workspace_members ON workspace_members
+  FOR UPDATE USING (
+    is_workspace_owner(workspace_id, auth.uid())
+  );
+
+DROP POLICY IF EXISTS delete_workspace_members ON workspace_members;
+CREATE POLICY delete_workspace_members ON workspace_members
+  FOR DELETE USING (
+    is_workspace_owner(workspace_id, auth.uid())
+  );
+
+-- Remove the old modify_workspace_members policy if it exists
+DROP POLICY IF EXISTS modify_workspace_members ON workspace_members;
+
 -- Pages Policies
+DROP POLICY IF EXISTS select_pages ON pages;
 CREATE POLICY select_pages ON pages
   FOR SELECT USING (
     is_public = true OR
     is_workspace_member(workspace_id, auth.uid())
   );
 
+DROP POLICY IF EXISTS modify_pages ON pages;
 CREATE POLICY modify_pages ON pages
   FOR ALL USING (
     EXISTS (
@@ -250,84 +306,133 @@ CREATE POLICY modify_pages ON pages
   );
 
 -- Blocks Policies
+DROP POLICY IF EXISTS select_blocks ON blocks;
 CREATE POLICY select_blocks ON blocks
   FOR SELECT USING (
     page_id IN (SELECT id FROM pages WHERE is_public = true) OR
     page_id IN (SELECT id FROM pages WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
   );
 
+DROP POLICY IF EXISTS modify_blocks ON blocks;
 CREATE POLICY modify_blocks ON blocks
   FOR ALL USING (
     page_id IN (SELECT id FROM pages WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')))
   );
 
 -- Databases Policies
+DROP POLICY IF EXISTS select_databases ON databases;
 CREATE POLICY select_databases ON databases
   FOR SELECT USING (
-    is_workspace_member(workspace_id, auth.uid())
+    is_workspace_member(workspace_id, auth.uid()) AND
+    (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
   );
 
+DROP POLICY IF EXISTS modify_databases ON databases;
 CREATE POLICY modify_databases ON databases
   FOR ALL USING (
     EXISTS (
       SELECT 1 FROM workspace_members 
       WHERE workspace_id = databases.workspace_id AND user_id = auth.uid() AND role IN ('owner', 'editor')
-    )
+    ) AND
+    (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
   );
 
 -- Database Properties Policies
+DROP POLICY IF EXISTS select_database_properties ON database_properties;
 CREATE POLICY select_database_properties ON database_properties
   FOR SELECT USING (
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
+DROP POLICY IF EXISTS modify_database_properties ON database_properties;
 CREATE POLICY modify_database_properties ON database_properties
   FOR ALL USING (
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')))
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
 -- Database Rows Policies
+DROP POLICY IF EXISTS select_database_rows ON database_rows;
 CREATE POLICY select_database_rows ON database_rows
   FOR SELECT USING (
-    database_id IN (SELECT d.id FROM databases d JOIN pages p ON d.page_id = p.id WHERE p.is_public = true) OR
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
+    database_id IN (
+      SELECT d.id FROM databases d JOIN pages p ON d.page_id = p.id WHERE p.is_public = true AND d.type != 'agencies'
+    ) OR
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
+DROP POLICY IF EXISTS modify_database_rows ON database_rows;
 CREATE POLICY modify_database_rows ON database_rows
   FOR ALL USING (
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')))
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
 -- Database Views Policies
+DROP POLICY IF EXISTS select_database_views ON database_views;
 CREATE POLICY select_database_views ON database_views
   FOR SELECT USING (
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
+DROP POLICY IF EXISTS modify_database_views ON database_views;
 CREATE POLICY modify_database_views ON database_views
   FOR ALL USING (
-    database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')))
+    database_id IN (
+      SELECT id FROM databases 
+      WHERE workspace_id IN (
+        SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')
+      ) AND (type != 'agencies' OR is_workspace_owner(workspace_id, auth.uid()))
+    )
   );
 
 -- Forms Policies
+DROP POLICY IF EXISTS select_forms ON forms;
 CREATE POLICY select_forms ON forms
   FOR SELECT USING (
     is_public = true OR
     database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
   );
 
+DROP POLICY IF EXISTS modify_forms ON forms;
 CREATE POLICY modify_forms ON forms
   FOR ALL USING (
     database_id IN (SELECT id FROM databases WHERE workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'editor')))
   );
 
 -- Form Submissions Policies
+DROP POLICY IF EXISTS insert_form_submissions ON form_submissions;
 CREATE POLICY insert_form_submissions ON form_submissions
   FOR INSERT WITH CHECK (
     form_id IN (SELECT id FROM forms WHERE is_public = true)
   );
 
+DROP POLICY IF EXISTS select_form_submissions ON form_submissions;
 CREATE POLICY select_form_submissions ON form_submissions
   FOR SELECT USING (
     form_id IN (SELECT f.id FROM forms f JOIN databases d ON f.database_id = d.id WHERE d.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()))
   );
+

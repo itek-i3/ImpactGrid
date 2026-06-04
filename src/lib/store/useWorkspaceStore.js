@@ -91,7 +91,8 @@ export const useWorkspaceStore = create((set, get) => ({
     try {
       const wsRes = await fetch('/api/workspaces');
       if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
-      let workspaces = await wsRes.json();
+      const wsJson = await wsRes.json();
+      let workspaces = wsJson.data || [];
 
       if (workspaces.length === 0) {
         const createRes = await fetch('/api/workspaces', {
@@ -100,7 +101,8 @@ export const useWorkspaceStore = create((set, get) => ({
           body: JSON.stringify({ name: 'Personal Workspace', icon: '🚀' }),
         });
         if (createRes.ok) {
-          const newWs = await createRes.json();
+          const newWsJson = await createRes.json();
+          const newWs = newWsJson.data;
           workspaces = [newWs];
         }
       }
@@ -120,8 +122,14 @@ export const useWorkspaceStore = create((set, get) => ({
       let activePages = [];
       let archivedPages = [];
 
-      if (activePagesRes.ok) activePages = await activePagesRes.json();
-      if (archivedPagesRes.ok) archivedPages = await archivedPagesRes.json();
+      if (activePagesRes.ok) {
+        const activePagesJson = await activePagesRes.json();
+        activePages = activePagesJson.data || [];
+      }
+      if (archivedPagesRes.ok) {
+        const archivedPagesJson = await archivedPagesRes.json();
+        archivedPages = archivedPagesJson.data || [];
+      }
 
       const mapPageFromDb = (p) => ({
         id: p.id,
@@ -210,7 +218,8 @@ export const useWorkspaceStore = create((set, get) => ({
       });
 
       if (!res.ok) throw new Error('Failed to create page');
-      const createdPage = await res.json();
+      const createdPageJson = await res.json();
+      const createdPage = createdPageJson.data;
 
       set((state) => ({
         pages: state.pages.map((p) =>
@@ -461,7 +470,8 @@ export const useWorkspaceStore = create((set, get) => ({
       });
 
       if (!res.ok) throw new Error('Failed to duplicate page');
-      const newPage = await res.json();
+      const newPageJson = await res.json();
+      const newPage = newPageJson.data;
 
       const mapPageFromDb = (p) => ({
         id: p.id,
@@ -597,14 +607,74 @@ export const useWorkspaceStore = create((set, get) => ({
         workspaceId,
       },
       {
-        id: crypto.randomUUID(),
-        title: 'Agencies',
+        id: 'toig-hq-database-page-id', // Use a fixed string ID so we can easily reference it in page checks
+        title: 'The TOIG HQ',
         icon: '🏢',
         parentId: null,
         isDatabase: true,
         databaseType: 'agencies',
         isArchived: false,
         sortOrder: 2,
+        workspaceId,
+      },
+      {
+        id: 'itek-page-id',
+        title: 'Itek',
+        icon: '💻',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 0,
+        workspaceId,
+      },
+      {
+        id: 'i360-page-id',
+        title: 'I360',
+        icon: '🚀',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 1,
+        workspaceId,
+      },
+      {
+        id: 'i3x-africa-page-id',
+        title: 'I3x Africa',
+        icon: '🌍',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 2,
+        workspaceId,
+      },
+      {
+        id: 'i3-studio-page-id',
+        title: 'I3 studio',
+        icon: '🎨',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 3,
+        workspaceId,
+      },
+      {
+        id: 'i3-plus-page-id',
+        title: 'i3+',
+        icon: '✨',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 4,
+        workspaceId,
+      },
+      {
+        id: 'i3-launchpad-page-id',
+        title: 'I3 launchpad',
+        icon: '🔥',
+        parentId: 'toig-hq-database-page-id',
+        isDatabase: false,
+        isArchived: false,
+        sortOrder: 5,
         workspaceId,
       },
       {
@@ -652,7 +722,7 @@ export const useWorkspaceStore = create((set, get) => ({
         workspaceId,
       },
       {
-        id: crypto.randomUUID(),
+        id: 'project-tracker-database-page-id',
         title: 'Project Tracker',
         icon: '📊',
         parentId: null,

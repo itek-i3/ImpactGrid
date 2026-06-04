@@ -131,6 +131,10 @@ export const useEditorStore = create((set, get) => ({
       }
     }
 
+    const calculatedSortOrder = afterBlockId
+      ? get().blocks.findIndex((b) => b.id === afterBlockId) + 1
+      : get().blocks.length;
+
     const tempId = crypto.randomUUID();
     const optimisticBlock = {
       id: tempId,
@@ -139,7 +143,7 @@ export const useEditorStore = create((set, get) => ({
       content: block.content || { text: '' },
       properties: block.properties || {},
       parentBlockId: resolvedParentBlockId,
-      sortOrder: 0,
+      sortOrder: calculatedSortOrder,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -151,7 +155,7 @@ export const useEditorStore = create((set, get) => ({
       newBlocks.splice(index + 1, 0, optimisticBlock);
       newBlocks = newBlocks.map((b, i) => ({ ...b, sortOrder: i }));
     } else {
-      newBlocks = [...get().blocks, { ...optimisticBlock, sortOrder: get().blocks.length }];
+      newBlocks = [...get().blocks, optimisticBlock];
     }
 
     set((state) => ({
@@ -177,7 +181,8 @@ export const useEditorStore = create((set, get) => ({
       });
 
       if (!res.ok) throw new Error('Failed to add block');
-      const createdBlock = await res.json();
+      const createdBlockJson = await res.json();
+      const createdBlock = createdBlockJson.data;
 
       set((state) => {
         const finalBlocks = state.blocks.map((b) =>
@@ -340,8 +345,8 @@ export const useEditorStore = create((set, get) => ({
             type: b.type,
             content: b.content,
             properties: b.properties,
-            parentBlockId: b.parent_block_id,
-            sortOrder: b.sort_order,
+            parentBlockId: b.parentBlockId,
+            sortOrder: b.sortOrder,
           }),
         });
       }
@@ -447,6 +452,14 @@ export const useEditorStore = create((set, get) => ({
             { id: crypto.randomUUID(), type: 'h2', content: { text: 'Notes' }, pageId },
             { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Erick mentioned we need to make sure all WhatsApp group invite links are active. Faith will verify the volunteer group link and update it in the WhatsApp Groups database.' }, pageId }
           ];
+        } else if (['Itek', 'I360', 'I3x Africa', 'I3 studio', 'i3+', 'I3 launchpad'].includes(page?.title)) {
+          seededBlocks = [
+            { id: crypto.randomUUID(), type: 'h2', content: { text: `Welcome to ${page.title} Workspace! 🏢` }, pageId },
+            { id: crypto.randomUUID(), type: 'paragraph', content: { text: `This is the dedicated management space for ${page.title}. Use this document canvas to write weekly briefs, share agency guidelines, draft strategy notes, or list member tasks.` }, pageId },
+            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Weekly Deliverables Checklist' }, pageId },
+            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Deliver design assets for the new project landing page' }, properties: { checked: false }, pageId },
+            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Prepare the weekly operations report for TOIG HQ' }, properties: { checked: false }, pageId }
+          ];
         } else {
           seededBlocks = [
             { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
@@ -468,7 +481,8 @@ export const useEditorStore = create((set, get) => ({
 
       const res = await fetch(`/api/pages/${pageId}/blocks`);
       if (!res.ok) throw new Error('Failed to fetch blocks');
-      const data = await res.json();
+      const dataJson = await res.json();
+      const data = dataJson.data || [];
 
       const mapBlockFromDb = (block) => ({
         id: block.id,
@@ -518,6 +532,14 @@ export const useEditorStore = create((set, get) => ({
             { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Log recent rental income for Toyota Hiace van' }, properties: { checked: false }, pageId },
             { id: crypto.randomUUID(), type: 'h2', content: { text: 'Notes' }, pageId },
             { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Erick mentioned we need to make sure all WhatsApp group invite links are active. Faith will verify the volunteer group link and update it in the WhatsApp Groups database.' }, pageId }
+          ];
+        } else if (['Itek', 'I360', 'I3x Africa', 'I3 studio', 'i3+', 'I3 launchpad'].includes(page?.title)) {
+          seededBlocks = [
+            { id: crypto.randomUUID(), type: 'h2', content: { text: `Welcome to ${page.title} Workspace! 🏢` }, pageId },
+            { id: crypto.randomUUID(), type: 'paragraph', content: { text: `This is the dedicated management space for ${page.title}. Use this document canvas to write weekly briefs, share agency guidelines, draft strategy notes, or list member tasks.` }, pageId },
+            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Weekly Deliverables Checklist' }, pageId },
+            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Deliver design assets for the new project landing page' }, properties: { checked: false }, pageId },
+            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Prepare the weekly operations report for TOIG HQ' }, properties: { checked: false }, pageId }
           ];
         } else {
           seededBlocks = [
