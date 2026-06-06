@@ -1,0 +1,397 @@
+/* ================================================================
+   ImpactNotion — Auth Pages Styles
+   Premium glassmorphism login/signup UI
+   ================================================================ */
+
+.authContainer {
+  display: flex;
+  min-height: 100dvh;
+  background: var(--color-bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Background Effects ── */
+.authBackground {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.authOrb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.25;
+  animation: orbFloat 15s ease-in-out infinite;
+}
+
+.authOrb:nth-child(1) {
+  width: 500px;
+  height: 500px;
+  background: var(--color-accent-primary);
+  top: -10%;
+  right: -5%;
+  animation-delay: 0s;
+}
+
+.authOrb:nth-child(2) {
+  width: 400px;
+  height: 400px;
+  background: var(--color-accent-secondary);
+  bottom: -10%;
+  left: -5%;
+  animation-delay: -5s;
+}
+
+.authOrb:nth-child(3) {
+  width: 300px;
+  height: 300px;
+  background: #c084fc;
+  top: 40%;
+  left: 30%;
+  animation-delay: -10s;
+}
+
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -30px) scale(1.05); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(10px, 10px) scale(1.02); }
+}
+
+/* ── Left Panel (Branding) ── */
+.authBrandPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-12);
+  position: relative;
+  z-index: 1;
+}
+
+.brandContent {
+  max-width: 480px;
+  text-align: center;
+}
+
+.brandLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+}
+
+.brandLogoIcon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-gradient);
+  border-radius: var(--radius-xl);
+  font-size: 1.75rem;
+  box-shadow: var(--shadow-glow);
+}
+
+.brandLogoText {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-extrabold);
+  letter-spacing: var(--tracking-tight);
+  background: var(--color-accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.brandTagline {
+  font-size: var(--text-xl);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+  margin-bottom: var(--space-10);
+}
+
+.brandFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  text-align: left;
+}
+
+.brandFeature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  transition: all var(--transition-base);
+}
+
+.brandFeature:hover {
+  background: var(--color-bg-active);
+  color: var(--color-text-primary);
+}
+
+.brandFeatureIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-primary-subtle);
+  color: var(--color-accent-primary);
+  flex-shrink: 0;
+}
+
+/* ── Right Panel (Form) ── */
+.authFormPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  position: relative;
+  z-index: 1;
+}
+
+.authCard {
+  width: 100%;
+  max-width: 420px;
+  background: var(--glass-bg-heavy);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-10);
+  box-shadow: var(--shadow-xl);
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.authTitle {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-2);
+}
+
+.authSubtitle {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.authSubtitle a {
+  color: var(--color-accent-primary);
+  font-weight: var(--font-medium);
+}
+
+.authSubtitle a:hover {
+  color: var(--color-accent-primary-hover);
+}
+
+/* ── Form ── */
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.formLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+}
+
+.formInput {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  transition: all var(--transition-base);
+}
+
+.formInput:hover {
+  border-color: var(--color-border-hover);
+}
+
+.formInput:focus {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px var(--color-accent-primary-subtle);
+  outline: none;
+}
+
+.formInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.formInputWrapper {
+  position: relative;
+}
+
+.formInputIcon {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.formInputIcon:hover {
+  color: var(--color-text-secondary);
+}
+
+.formInputWithIcon {
+  padding-right: var(--space-10);
+}
+
+/* ── Submit Button ── */
+.authSubmitBtn {
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-accent-gradient);
+  color: #fff;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-base);
+  border-radius: var(--radius-lg);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.authSubmitBtn:hover {
+  background: var(--color-accent-gradient-hover);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.authSubmitBtn:active {
+  transform: translateY(0);
+}
+
+.authSubmitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.authSubmitBtnLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.authSpinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ── Divider ── */
+.authDivider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+.authDividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.authDividerText {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ── Demo Button ── */
+.authDemoBtn {
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.authDemoBtn:hover {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-hover);
+}
+
+/* ── Error Message ── */
+.authError {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-bg);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--text-sm);
+  animation: fadeInDown 0.3s ease;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .authBrandPanel {
+    display: none;
+  }
+
+  .authFormPanel {
+    padding: var(--space-6);
+  }
+
+  .authCard {
+    max-width: 100%;
+    padding: var(--space-8);
+  }
+}
+
+@media (max-width: 480px) {
+  .authCard {
+    padding: var(--space-6);
+    border-radius: var(--radius-xl);
+  }
+}

@@ -1,9 +1,22 @@
-import { Inter } from 'next/font/google';
+import { Inter, League_Spartan, DM_Sans } from 'next/font/google';
+import ThemeInitializer from '@/components/layout/ThemeInitializer';
 import '@/styles/globals.css';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
+  display: 'swap',
+});
+
+const leagueSpartan = League_Spartan({
+  subsets: ['latin'],
+  variable: '--font-spartan',
+  display: 'swap',
+});
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dmsans',
   display: 'swap',
 });
 
@@ -16,20 +29,11 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                const theme = localStorage.getItem('impactnotion-theme') || 'dark';
-                document.documentElement.setAttribute('data-theme', theme);
-              } catch (e) {}
-            `,
-          }}
-        />
-      </head>
-      <body>{children}</body>
+    <html lang="en" className={`${inter.variable} ${leagueSpartan.variable} ${dmSans.variable}`} suppressHydrationWarning>
+      <body>
+        <ThemeInitializer />
+        {children}
+      </body>
     </html>
   );
 }

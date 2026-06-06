@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Rocket,
 } from 'lucide-react';
+import Logo from '@/components/ui/Logo';
 import styles from '@/styles/auth.module.css';
 
 export default function LoginPage() {
@@ -66,9 +67,8 @@ export default function LoginPage() {
       {/* Left: Branding Panel */}
       <div className={styles.authBrandPanel}>
         <div className={styles.brandContent}>
-          <div className={styles.brandLogo}>
-            <div className={styles.brandLogoIcon}>⚡</div>
-            <span className={styles.brandLogoText}>ImpactNotion</span>
+          <div style={{ marginBottom: '2.5rem' }}>
+            <Logo variant="primary" showText={true} textType="grid" width={48} height={48} />
           </div>
 
           <p className={styles.brandTagline}>
