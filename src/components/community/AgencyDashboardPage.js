@@ -2314,8 +2314,8 @@ const ALL_AGENCIES = [
   { slug:'itek',      name:'iTek',                 logo:'/ITEK.png',               logoScale:1.8 },
   { slug:'i3x',       name:'i3x Africa',            logo:'/I3xAfrica.png'           },
   { slug:'i3studios', name:'i3 Studios',             logo:'/I3Studios.png',          logoScale:1.8 },
-  { slug:'assets',    name:'Productions & Assets',  logo:'/logo3.png'               },
-  { slug:'i3kingdom', name:'i3 Launchpad',           logo:'/i3KingdomHubTeam.png'    },
+  { slug:'assets',    name:'Assets',                 logo:'/logo3.png'               },
+  { slug:'i3kingdom', name:'i3 Launchpad',           logo:'/I3LAUNCHPAD LOGO.png'    },
   { slug:'i3plus',    name:'i3+',                   logo:'/5 (2).png',              logoScale:1.8 },
 ];
 
@@ -2569,7 +2569,7 @@ const AGENCY_LOGOS = {
   i3x:        '/I3xAfrica.png',
   i3studios:  '/I3Studios.png',
   assets:     '/logo3.png',
-  i3kingdom:  '/i3KingdomHubTeam.png',
+  i3kingdom:  '/I3LAUNCHPAD LOGO.png',
   i3plus:     '/5 (2).png',
 };
 
