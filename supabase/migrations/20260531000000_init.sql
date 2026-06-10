@@ -1,5 +1,7 @@
--- ImpactNotion — Supabase Database Schema Migration
--- Initializes workspaces, pages, blocks, databases, properties, rows, views, forms, and submissions with RLS and indexing.
+-- DEPRECATED — superseded by 20260609000000_agency_schema.sql
+-- This file is intentionally left as a no-op; all objects it creates are
+-- dropped by the newer migration. Do not add anything here.
+-- Original comment kept for reference: ImpactNotion workspace/Notion schema.
 
 -- ── 1. CORE SCHEMAS AND EXTENSIONS ───────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
