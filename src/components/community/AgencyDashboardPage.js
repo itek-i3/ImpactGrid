@@ -588,16 +588,66 @@ function MilestoneInput({ onAdd }) {
   );
 }
 
-function RevenueView({ monthly: initial, isManager }) {
-  const [monthly,  setMonthly] = useState(initial);
-  const [editing,  setEditing] = useState(false);
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const setCell = (idx, key, raw) => {
-    const val = raw === '' ? null : Number(raw);
-    setMonthly((p) => p.map((m, i) => i === idx ? { ...m, [key]: isNaN(val) ? m[key] : val } : m));
+function RevenueView({ agencyUUID, isManager }) {
+  const [monthly,  setMonthly] = useState([]);
+  const [loading,  setLoading] = useState(true);
+  const [editing,  setEditing] = useState(false);
+  const supabase = createClient();
+  const curYear  = new Date().getFullYear();
+
+  const fromRow = (r) => ({ id: r.id, m: r.month_label, goal: r.goal, actual: r.actual });
+
+  useEffect(() => {
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+    supabase.from('monthly_revenue').select('*')
+      .eq('agency_id', agencyUUID).eq('year', curYear)
+      .order('month_order', { ascending: true })
+      .then(({ data }) => { setMonthly((data || []).map(fromRow)); setLoading(false); });
+
+    const channel = supabase.channel('revenue:' + agencyUUID)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_revenue', filter: `agency_id=eq.${agencyUUID}` },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            setMonthly(p => p.map(x => x.id === payload.new.id ? fromRow(payload.new) : x));
+          } else if (payload.eventType === 'INSERT') {
+            setMonthly(p => {
+              const next = p.find(x => x.id === payload.new.id) ? p : [...p, fromRow(payload.new)];
+              return next.sort((a, b) => MONTHS.indexOf(a.m) - MONTHS.indexOf(b.m));
+            });
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [agencyUUID]);
+
+  const initYear = async () => {
+    const rows = MONTHS.map((m, i) => ({
+      agency_id: agencyUUID, month_label: m, month_order: i + 1,
+      year: curYear, goal: 0, actual: null,
+    }));
+    const { data } = await supabase.from('monthly_revenue').insert(rows).select().order('month_order', { ascending: true });
+    if (data) setMonthly(data.map(fromRow));
   };
 
-  if (!monthly.length) return <Card style={{ marginTop:16, textAlign:'center', padding:'48px 24px' }}><p style={{ color:C.inkSoft }}>No revenue data available.</p></Card>;
+  const saveCell = async (idx, key, raw) => {
+    const val = raw === '' ? null : Number(raw);
+    if (isNaN(val) && val !== null) return;
+    const row = monthly[idx];
+    setMonthly(p => p.map((m, i) => i === idx ? { ...m, [key]: val } : m));
+    if (row?.id) await supabase.from('monthly_revenue').update({ [key]: val }).eq('id', row.id);
+  };
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading revenue data…</div>;
+
+  if (!monthly.length) return (
+    <Card style={{ marginTop:16, textAlign:'center', padding:'48px 24px' }}>
+      <p style={{ color:C.inkSoft, marginBottom:16 }}>No revenue data for {curYear} yet.</p>
+      {isManager && <button onClick={initYear} className="ig-fadd">Initialise {curYear}</button>}
+    </Card>
+  );
   const real     = monthly.filter((m) => m.actual != null);
   const fyGoal   = monthly.reduce((a, m) => a + m.goal, 0);
   const ytdA     = real.reduce((a, m) => a + m.actual, 0);
@@ -657,12 +707,12 @@ function RevenueView({ monthly: initial, isManager }) {
                     <td style={{ fontWeight:600, color:C.ink }}>{m.m}</td>
                     <td className="mono" style={{ textAlign:'right', color:C.inkSoft }}>
                       {isManager && editing
-                        ? <input className="ig-finput mono" type="number" defaultValue={m.goal} onBlur={(e) => setCell(idx,'goal',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
+                        ? <input className="ig-finput mono" type="number" defaultValue={m.goal} onBlur={(e) => saveCell(idx,'goal',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : kes(m.goal)}
                     </td>
                     <td className="mono" style={{ textAlign:'right', fontWeight:600, color:hasActual ? C.ink : C.inkFaint }}>
                       {isManager && editing
-                        ? <input className="ig-finput mono" type="number" defaultValue={m.actual ?? ''} placeholder="—" onBlur={(e) => setCell(idx,'actual',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
+                        ? <input className="ig-finput mono" type="number" defaultValue={m.actual ?? ''} placeholder="—" onBlur={(e) => saveCell(idx,'actual',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : hasActual ? kes(m.actual) : '—'}
                     </td>
                     <td className="mono" style={{ textAlign:'right', color: diff == null ? C.inkFaint : diff >= 0 ? C.pos : C.alert }}>
@@ -2552,7 +2602,7 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
     switch (active) {
       case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} agencyUUID={userProfile?.agency_id} isManager={isManager} userId={userProfile?.id} />;
       case 'goals':      return <GoalsView      agencyUUID={userProfile?.agency_id} isManager={isManager} />;
-      case 'fin-revenue': return <RevenueView monthly={d.monthly || []} isManager={isManager} />;
+      case 'fin-revenue': return <RevenueView agencyUUID={userProfile?.agency_id} isManager={isManager} />;
       case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} isManager={isManager} />;
       case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} isManager={isManager} />;
       case 'fin-models': return <ModelsView     models={d.models || []} isManager={isManager} />;
