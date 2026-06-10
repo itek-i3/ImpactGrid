@@ -1264,7 +1264,7 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
         {t.assignee && <div style={{ fontSize:12, color:C.inkSoft, marginTop:3 }}>{t.assignee}</div>}
       </div>
       <Pill tone={PRIO_TONE[t.priority]||'neutral'}>{t.priority}</Pill>
-      <button className="ig-delrow" onClick={() => remove(t.id)} title="Remove">✕</button>
+      {isManager && <button className="ig-delrow" onClick={() => remove(t.id)} title="Remove">✕</button>}
     </div>
   );
 
@@ -1277,12 +1277,12 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
           <div style={{ width:pct+'%', height:'100%', background:C.pos, borderRadius:99, transition:'width .4s' }} />
         </div>
         <span className="mono" style={{ fontSize:12, color:C.inkSoft, flexShrink:0, minWidth:32, textAlign:'right' }}>{pct}%</span>
-        <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
+        {isManager && <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
           <Plus size={14} /> Add task
-        </button>
+        </button>}
       </div>
 
-      {adding && (
+      {isManager && adding && (
         <div className="ig-card" style={{ padding:16, marginBottom:18, display:'flex', flexWrap:'wrap', gap:8 }}>
           <input className="ig-finput" placeholder="Task description…" value={form.task} onChange={set('task')} style={{ flex:'1 1 220px', minWidth:0 }} onKeyDown={(e) => e.key==='Enter' && addTask()} autoFocus />
           <select className="ig-fselect" value={form.assignee} onChange={set('assignee')} style={{ width:180 }}>
