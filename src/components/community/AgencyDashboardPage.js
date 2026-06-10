@@ -1587,12 +1587,34 @@ const EMPTY_IDEA = { t:'', problem:'', hypothesis:'', metric:'', next_step:'', o
 const INNOVATION_STAGES = ['Idea','Exploring','Piloting','Scaling','Parked'];
 
 function InnovationView({ agencyUUID, isManager }) {
-  const { rows: ideas, loading, dbInsert, dbDelete } = useSimpleTable('innovation_ideas', agencyUUID);
+  const { rows: ideas, loading, dbInsert, dbDelete, dbUpdate } = useSimpleTable('innovation_ideas', agencyUUID);
   const [addingStage, setAddingStage] = useState(null);
-  const [expanded,    setExpanded]    = useState(null);
+  const [selId,       setSelId]       = useState(null);
+  const [editing,     setEditing]     = useState(false);
+  const [editForm,    setEditForm]    = useState({});
   const [ideaForm,    setIdeaForm]    = useState(EMPTY_IDEA);
 
-  const setF = (k) => (e) => setIdeaForm(p => ({ ...p, [k]:e.target.value }));
+  const selIdea = ideas.find(i => i.id === selId) || null;
+
+  const setF  = (k) => (e) => setIdeaForm(p => ({ ...p, [k]:e.target.value }));
+  const setEF = (k) => (e) => setEditForm(p => ({ ...p, [k]:e.target.value }));
+
+  const openIdea  = (idea) => { setSelId(idea.id); setEditing(false); };
+  const closeIdea = () => { setSelId(null); setEditing(false); };
+  const startEdit = () => {
+    setEditForm({ title:selIdea.title, problem:selIdea.problem || '', hypothesis:selIdea.hypothesis || '', metric:selIdea.metric || '', next_step:selIdea.next_step || '', owner:selIdea.owner || '', impact:selIdea.impact, stage:selIdea.stage });
+    setEditing(true);
+  };
+  const saveEdit = async () => {
+    if (!editForm.title?.trim()) return;
+    await dbUpdate(selId, { title:editForm.title, problem:editForm.problem, hypothesis:editForm.hypothesis, metric:editForm.metric, next_step:editForm.next_step, owner:editForm.owner, impact:editForm.impact, stage:editForm.stage });
+    setEditing(false);
+  };
+  const deleteIdea = async () => {
+    if (!window.confirm('Delete this idea? This cannot be undone.')) return;
+    await dbDelete(selId);
+    closeIdea();
+  };
 
   const toggleAdd = (stage) => { setIdeaForm(EMPTY_IDEA); setAddingStage(v => v === stage ? null : stage); };
   const addIdea   = async (stage) => {
@@ -1601,97 +1623,182 @@ function InnovationView({ agencyUUID, isManager }) {
     setIdeaForm(EMPTY_IDEA);
     setAddingStage(null);
   };
-  const toggleExpand = (key) => setExpanded(v => v === key ? null : key);
 
-  const stageTone = { Idea:C.inkFaint, Exploring:C.signal, Piloting:C.pos, Scaling:C.brand, Parked:C.inkSoft };
+  const stageTone  = { Idea:C.inkFaint, Exploring:C.signal, Piloting:C.pos, Scaling:C.brand, Parked:C.inkSoft };
+  const stageColor = (s) => stageTone[s] || C.inkSoft;
 
   if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
 
-  const Field = ({ label, value }) => value ? (
-    <div style={{ marginTop:10 }}>
-      <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, marginBottom:3 }}>{label}</div>
-      <div style={{ fontSize:12.5, color:C.inkSoft, lineHeight:1.5 }}>{value}</div>
+  const ReadField = ({ label, value }) => !value ? null : (
+    <div style={{ marginBottom:18 }}>
+      <div style={{ fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, marginBottom:5 }}>{label}</div>
+      <div style={{ fontSize:13.5, color:C.ink, lineHeight:1.65 }}>{value}</div>
     </div>
-  ) : null;
+  );
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(200px,1fr))', gap:14, overflowX:'auto', paddingBottom:4 }}>
-      {INNOVATION_STAGES.map((s, si) => {
-        const stageIdeas = ideas.filter(idea => idea.stage === s);
-        return (
-          <div key={s} className="rise" style={{ animationDelay:si*60+'ms' }}>
-            {/* column header */}
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-              <span style={{ width:8, height:8, borderRadius:99, background:stageTone[s] || C.inkSoft, flexShrink:0 }} />
-              <span className="display" style={{ fontWeight:700, fontSize:13.5, color:C.ink }}>{s}</span>
-              <span className="mono" style={{ fontSize:11, color:C.inkFaint, marginLeft:'auto' }}>{stageIdeas.length}</span>
+    <>
+      {/* ── Detail / Edit modal ── */}
+      {selId && selIdea && (
+        <div
+          onClick={closeIdea}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(4px)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background:C.paper, borderRadius:20, padding:'28px 32px', width:'100%', maxWidth:560, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.50)', border:'1px solid '+C.line }}
+          >
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:22 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                {editing ? (
+                  <input
+                    className="ig-finput"
+                    value={editForm.title}
+                    onChange={setEF('title')}
+                    style={{ fontSize:17, fontWeight:700, width:'100%', padding:'6px 10px' }}
+                    autoFocus
+                  />
+                ) : (
+                  <div style={{ fontSize:17, fontWeight:700, color:C.ink, lineHeight:1.3 }}>{selIdea.title}</div>
+                )}
+                <div style={{ display:'flex', gap:8, marginTop:9, flexWrap:'wrap', alignItems:'center' }}>
+                  {editing ? (
+                    <>
+                      <select className="ig-fselect" value={editForm.stage}  onChange={setEF('stage')}  style={{ fontSize:12 }}>
+                        {INNOVATION_STAGES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                      <select className="ig-fselect" value={editForm.impact} onChange={setEF('impact')} style={{ fontSize:12 }}>
+                        {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize:12, fontWeight:700, color:stageColor(selIdea.stage), padding:'2px 10px', borderRadius:99, border:'1.5px solid '+stageColor(selIdea.stage) }}>{selIdea.stage}</span>
+                      <Pill tone={selIdea.impact==='High'?'pos':selIdea.impact==='Medium'?'warn':'neutral'}>{selIdea.impact} impact</Pill>
+                      {selIdea.owner && <span style={{ fontSize:12, color:C.inkSoft }}>Owner: <strong style={{ color:C.ink }}>{selIdea.owner}</strong></span>}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:6, flexShrink:0, marginTop:2 }}>
+                {isManager && !editing && (
+                  <button onClick={startEdit} className="ig-kbtn" style={{ width:34, height:34, borderRadius:9, color:C.inkSoft }} title="Edit"><Pencil size={15} /></button>
+                )}
+                {editing && (
+                  <button onClick={saveEdit} className="ig-kbtn" style={{ width:'auto', padding:'0 16px', height:34, borderRadius:9, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>Save</button>
+                )}
+                <button onClick={closeIdea} style={{ width:34, height:34, borderRadius:9, background:'none', border:'1px solid '+C.line, cursor:'pointer', color:C.inkSoft, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              </div>
             </div>
 
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {stageIdeas.map((idea) => {
-                const key  = idea.id;
-                const open = expanded === key;
-                const tone = stageTone[s] || C.inkSoft;
-                return (
-                  <div key={idea.id} className="ig-card ig-taskrow" style={{ padding:0, borderTop:'3px solid '+tone, overflow:'hidden' }}>
-                    <div
-                      onClick={() => toggleExpand(key)}
-                      style={{ padding:'12px 14px', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}
-                    >
-                      <div style={{ fontWeight:600, color:C.ink, fontSize:13, lineHeight:1.35, flex:1 }}>{idea.title}</div>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                        <Pill tone={idea.impact==='High'?'pos':idea.impact==='Medium'?'warn':'neutral'}>{idea.impact}</Pill>
-                        <span style={{ fontSize:13, color:C.inkFaint, lineHeight:1 }}>{open ? '▲' : '▼'}</span>
-                      </div>
+            {/* Body */}
+            <div style={{ borderTop:'1px solid '+C.line, paddingTop:20 }}>
+              {editing ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                  {[
+                    { key:'problem',    label:'Problem being solved *', multi:true },
+                    { key:'hypothesis', label:'Hypothesis',             multi:true },
+                    { key:'metric',     label:'Success metric',         multi:false },
+                    { key:'next_step',  label:'Next step',              multi:false },
+                    { key:'owner',      label:'Owner',                  multi:false },
+                  ].map(({ key, label, multi }) => (
+                    <div key={key}>
+                      <label style={{ fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, display:'block', marginBottom:5 }}>{label}</label>
+                      {multi ? (
+                        <textarea className="ig-finput" value={editForm[key] || ''} onChange={setEF(key)} rows={3} style={{ width:'100%', resize:'vertical', fontFamily:'inherit', fontSize:13 }} />
+                      ) : (
+                        <input className="ig-finput" value={editForm[key] || ''} onChange={setEF(key)} style={{ width:'100%', fontSize:13 }} />
+                      )}
                     </div>
-
-                    {open && (
-                      <div style={{ padding:'0 14px 14px', borderTop:'1px solid '+C.line }}>
-                        <Field label="Problem being solved" value={idea.problem} />
-                        <Field label="Hypothesis"           value={idea.hypothesis} />
-                        <Field label="Success metric"       value={idea.metric} />
-                        <Field label="Next step"            value={idea.next_step} />
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
-                          <span style={{ fontSize:12, color:C.inkFaint, fontWeight:600 }}>{idea.owner || '—'}</span>
-                          {isManager && <button className="ig-delrow" onClick={() => dbDelete(idea.id)} title="Remove" style={{ fontSize:11, opacity:1, color:C.alert }}>✕ Remove</button>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* add form */}
-              {isManager && addingStage === s ? (
-                <div style={{ display:'flex', flexDirection:'column', gap:8, padding:12, background:C.paper, borderRadius:11, border:'1px dashed '+C.line }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:C.inkFaint, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>New idea</div>
-                  <input className="ig-finput" placeholder="Title *" value={ideaForm.t} onChange={setF('t')} style={{ fontSize:12.5 }} autoFocus />
-                  <textarea className="ig-finput" placeholder="What problem does this solve? *" value={ideaForm.problem} onChange={setF('problem')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
-                  <textarea className="ig-finput" placeholder="Hypothesis — We believe that…" value={ideaForm.hypothesis} onChange={setF('hypothesis')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
-                  <input className="ig-finput" placeholder="Success metric — How will we know it worked?" value={ideaForm.metric} onChange={setF('metric')} style={{ fontSize:12.5 }} />
-                  <input className="ig-finput" placeholder="Immediate next step" value={ideaForm.next_step} onChange={setF('next_step')} style={{ fontSize:12.5 }} />
-                  <div style={{ display:'flex', gap:8 }}>
-                    <input className="ig-finput" placeholder="Owner" value={ideaForm.owner} onChange={setF('owner')} style={{ fontSize:12.5, flex:1 }} />
-                    <select className="ig-fselect" value={ideaForm.impact} onChange={setF('impact')} style={{ fontSize:12.5 }}>
-                      {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  {(!ideaForm.t.trim() || !ideaForm.problem.trim()) && (
-                    <div style={{ fontSize:11.5, color:C.signal }}>Title and problem statement are required.</div>
-                  )}
-                  <div style={{ display:'flex', gap:6 }}>
-                    <button className="ig-fadd" onClick={() => addIdea(s)} style={{ flex:1, padding:'6px 0', fontSize:12 }}>Add idea</button>
-                    <button className="ig-fcancel" onClick={() => setAddingStage(null)} style={{ padding:'6px 10px', fontSize:12 }}>✕</button>
+                  ))}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:6, paddingTop:14, borderTop:'1px solid '+C.line }}>
+                    <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+                      <Trash2 size={14} /> Delete
+                    </button>
+                    <button onClick={() => setEditing(false)} className="ig-fcancel" style={{ padding:'0 14px', fontSize:12.5 }}>Cancel</button>
                   </div>
                 </div>
               ) : (
-                isManager && <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
+                <>
+                  <ReadField label="Problem being solved" value={selIdea.problem} />
+                  <ReadField label="Hypothesis"           value={selIdea.hypothesis} />
+                  <ReadField label="Success metric"       value={selIdea.metric} />
+                  <ReadField label="Next step"            value={selIdea.next_step} />
+                  {isManager && (
+                    <div style={{ marginTop:20, paddingTop:16, borderTop:'1px solid '+C.line }}>
+                      <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+                        <Trash2 size={14} /> Delete idea
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
-        );
-      })}
-    </div>
+        </div>
+      )}
+
+      {/* ── Kanban board ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(200px,1fr))', gap:14, overflowX:'auto', paddingBottom:4 }}>
+        {INNOVATION_STAGES.map((s, si) => {
+          const stageIdeas = ideas.filter(idea => idea.stage === s);
+          const tone = stageColor(s);
+          return (
+            <div key={s} className="rise" style={{ animationDelay:si*60+'ms' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                <span style={{ width:8, height:8, borderRadius:99, background:tone, flexShrink:0 }} />
+                <span className="display" style={{ fontWeight:700, fontSize:13.5, color:C.ink }}>{s}</span>
+                <span className="mono" style={{ fontSize:11, color:C.inkFaint, marginLeft:'auto' }}>{stageIdeas.length}</span>
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {stageIdeas.map((idea) => (
+                  <div
+                    key={idea.id}
+                    onClick={() => openIdea(idea)}
+                    className="ig-card ig-taskrow"
+                    style={{ padding:'12px 14px', cursor:'pointer', borderTop:'3px solid '+tone, transition:'box-shadow .15s' }}
+                  >
+                    <div style={{ fontWeight:600, color:C.ink, fontSize:13, lineHeight:1.35 }}>{idea.title}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:7, flexWrap:'wrap' }}>
+                      <Pill tone={idea.impact==='High'?'pos':idea.impact==='Medium'?'warn':'neutral'}>{idea.impact}</Pill>
+                      {idea.owner && <span style={{ fontSize:11.5, color:C.inkFaint }}>{idea.owner}</span>}
+                    </div>
+                  </div>
+                ))}
+
+                {isManager && addingStage === s ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, padding:12, background:C.paper, borderRadius:11, border:'1px dashed '+C.line }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.inkFaint, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>New idea</div>
+                    <input className="ig-finput" placeholder="Title *" value={ideaForm.t} onChange={setF('t')} style={{ fontSize:12.5 }} autoFocus />
+                    <textarea className="ig-finput" placeholder="What problem does this solve? *" value={ideaForm.problem} onChange={setF('problem')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
+                    <textarea className="ig-finput" placeholder="Hypothesis — We believe that…" value={ideaForm.hypothesis} onChange={setF('hypothesis')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
+                    <input className="ig-finput" placeholder="Success metric" value={ideaForm.metric} onChange={setF('metric')} style={{ fontSize:12.5 }} />
+                    <input className="ig-finput" placeholder="Immediate next step" value={ideaForm.next_step} onChange={setF('next_step')} style={{ fontSize:12.5 }} />
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input className="ig-finput" placeholder="Owner" value={ideaForm.owner} onChange={setF('owner')} style={{ fontSize:12.5, flex:1 }} />
+                      <select className="ig-fselect" value={ideaForm.impact} onChange={setF('impact')} style={{ fontSize:12.5 }}>
+                        {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    {(!ideaForm.t.trim() || !ideaForm.problem.trim()) && (
+                      <div style={{ fontSize:11.5, color:C.signal }}>Title and problem statement are required.</div>
+                    )}
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button className="ig-fadd" onClick={() => addIdea(s)} style={{ flex:1, padding:'6px 0', fontSize:12 }}>Add idea</button>
+                      <button className="ig-fcancel" onClick={() => setAddingStage(null)} style={{ padding:'6px 10px', fontSize:12 }}>✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  isManager && <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -2210,7 +2317,7 @@ const ALL_AGENCIES = [
   { slug:'i3x',       name:'i3x Africa',            logo:'/I3xAfrica.png'           },
   { slug:'i3studios', name:'i3 Studios',             logo:'/I3Studios.png',          logoScale:1.8 },
   { slug:'assets',    name:'Productions & Assets',  logo:'/logo3.png'               },
-  { slug:'i3kingdom', name:'i3 Kingdom Hub',        logo:'/i3KingdomHubTeam.png'    },
+  { slug:'i3kingdom', name:'i3 Launchpad',           logo:'/i3KingdomHubTeam.png'    },
   { slug:'i3plus',    name:'i3+',                   logo:'/5 (2).png',              logoScale:1.8 },
 ];
 

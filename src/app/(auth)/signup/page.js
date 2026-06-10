@@ -11,7 +11,7 @@ const AGENCIES = [
   { id: 'i3x',       label: 'i3x Africa' },
   { id: 'i3studios', label: 'i3 Studios' },
   { id: 'assets',    label: 'Productions & Assets' },
-  { id: 'i3kingdom', label: 'i3 Kingdom Hub' },
+  { id: 'i3kingdom', label: 'i3 Launchpad' },
   { id: 'i3plus',    label: 'i3+' },
 ];
 
