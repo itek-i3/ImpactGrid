@@ -1235,9 +1235,10 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
   useEffect(() => {
     if (!agencyId) return;
     const supabase = createClient();
-    supabase.from('profiles').select('id, full_name').eq('agency_id', agencyId).eq('approved', true)
+    supabase.from('profiles').select('id, full_name')
+      .eq('agency_id', agencyId).eq('approved', true)
       .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyId]);
+  }, [agencyId]); // agencyId here is the UUID passed from TasksView
 
   const set    = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
   const toggle = (id) => setTasks((p) => p.map((t) => t.id === id ? { ...t, done:!t.done } : t));
@@ -1708,7 +1709,7 @@ function AllAgenciesView({ currentAgencyId, onSwitch }) {
   );
 }
 
-function TasksView({ weeklyTasks, userName, agencyId, isManager, userId }) {
+function TasksView({ weeklyTasks, userName, agencyId, agencyUUID, isManager, userId }) {
   const [tab,         setTab]         = useState('daily');
   const [tasks,       setTasks]       = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -1728,14 +1729,14 @@ function TasksView({ weeklyTasks, userName, agencyId, isManager, userId }) {
 
   // Load agency members list for head/admin member picker
   useEffect(() => {
-    if (!isManager || !agencyId) return;
+    if (!isManager || !agencyUUID) return;
     supabase
       .from('profiles')
       .select('id, full_name')
-      .eq('agency_id', agencyId)
+      .eq('agency_id', agencyUUID)
       .eq('approved', true)
       .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyId, isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agencyUUID, isManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tasks whenever the viewed user changes
   useEffect(() => {
@@ -1867,7 +1868,7 @@ function TasksView({ weeklyTasks, userName, agencyId, isManager, userId }) {
       {/* Content */}
       {tab === 'daily'
         ? <DailyTasksView tasks={tasks} loading={loading} onAdd={onAdd} onToggle={onToggle} onRemove={onRemove} />
-        : <WeeklyTasksView tasks={weeklyTasks} agencyId={agencyId} isManager={isManager} />
+        : <WeeklyTasksView tasks={weeklyTasks} agencyId={agencyUUID} isManager={isManager} />
       }
     </div>
   );
@@ -2167,7 +2168,7 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
 
   function renderView() {
     switch (active) {
-      case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} isManager={isManager} userId={userProfile?.id} />;
+      case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} agencyUUID={userProfile?.agency_id} isManager={isManager} userId={userProfile?.id} />;
       case 'goals':      return <GoalsView      projects={d.projects || []} isManager={isManager} />;
       case 'fin-revenue': return <RevenueView monthly={d.monthly || []} isManager={isManager} />;
       case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} isManager={isManager} />;
