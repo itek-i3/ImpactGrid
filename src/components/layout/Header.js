@@ -1,4 +1,6 @@
-function Header({ currentProject }) {
+import Logo from '@/components/ui/Logo';
+
+export default function Header({ currentProject }) {
   // Define all your groups here
   const groupLogoMap = {
     'i3+': 'i3+',

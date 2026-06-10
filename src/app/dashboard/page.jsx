@@ -6,7 +6,12 @@ export default function DashboardPage() {
     goalRevenue: 5000,
     actualRevenue: 4200,
     lossSource: "Delayed client approval",
-    expenditure: 1500
+    expenditure: 1500,
+    financialTracking: {
+      monthlyGoals: { goalRevenue: 5000, actualRevenue: 4200 },
+      lossAnalysis: "Delayed client approval",
+      expenditure: 1500,
+    }
   };
 
   return (
