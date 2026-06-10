@@ -826,7 +826,7 @@ const DEFAULT_GROWTH_LEVERS = [
 const PIPELINE_STAGES = ['Prospect','Proposal','Negotiation','Won','Lost'];
 const STAGE_TONE = { Prospect:'neutral', Proposal:'brand', Negotiation:'warn', Won:'pos', Lost:'neg' };
 
-function GrowthView({ agencyId }) {
+function GrowthView({ agencyId, isManager }) {
   const STORAGE_KEY = `ig_growth_${agencyId}`;
 
   const [quarterly,    setQuarterly]    = useState(DEFAULT_QUARTERLY_DATA);
@@ -920,8 +920,8 @@ function GrowthView({ agencyId }) {
       {/* Charts row */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginTop:20 }}>
         <Card title="Revenue vs. Target"
-          action={<button onClick={() => setAddingQ(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add quarter</button>}>
-          {addingQ && (
+          action={isManager && <button onClick={() => setAddingQ(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add quarter</button>}>
+          {isManager && addingQ && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, paddingBottom:14, borderBottom:'1px solid '+C.line, marginBottom:16 }}>
               <input className="ig-finput" placeholder="Period (e.g. Q1 2026) *" value={qForm.q}       onChange={setQF('q')}       style={{ flex:'1 1 130px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addQuarter()} />
               <input className="ig-finput" placeholder="Actual (KES)"            value={qForm.actual}  onChange={setQF('actual')}  style={{ width:120 }} type="number" />
@@ -971,9 +971,9 @@ function GrowthView({ agencyId }) {
 
       {/* Sales Pipeline */}
       <Card title="Sales Pipeline" style={{ marginTop:20 }}
-        action={<button onClick={() => setAddingDeal(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add deal</button>}>
+        action={isManager && <button onClick={() => setAddingDeal(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add deal</button>}>
 
-        {addingDeal && (
+        {isManager && addingDeal && (
           <div style={{ display:'flex', flexWrap:'wrap', gap:8, paddingBottom:14, borderBottom:'1px solid '+C.line, marginBottom:16 }}>
             <input  className="ig-finput" placeholder="Client / Prospect *" value={dealForm.client}      onChange={setDF('client')}      style={{ flex:'1 1 160px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addDeal()} />
             <input  className="ig-finput" placeholder="Deal value (KES)"    value={dealForm.value}       onChange={setDF('value')}       style={{ width:140 }} type="number" />
@@ -1017,10 +1017,12 @@ function GrowthView({ agencyId }) {
                 <div style={{ fontSize:11, color:C.inkFaint, marginTop:2 }}>{deal.probability}%</div>
               </div>
               <div style={{ flex:1 }} />
-              <select value={deal.stage} onChange={(e) => moveDeal(deal.id, e.target.value)} className="ig-fselect" style={{ fontSize:11.5, padding:'4px 8px', height:28, width:120 }}>
-                {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
-              </select>
-              <button className="ig-delrow" onClick={() => removeDeal(deal.id)} title="Remove">✕</button>
+              {isManager && <>
+                <select value={deal.stage} onChange={(e) => moveDeal(deal.id, e.target.value)} className="ig-fselect" style={{ fontSize:11.5, padding:'4px 8px', height:28, width:120 }}>
+                  {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
+                </select>
+                <button className="ig-delrow" onClick={() => removeDeal(deal.id)} title="Remove">✕</button>
+              </>}
             </div>
           ))}
           {pipeline.length === 0 && (
@@ -1031,8 +1033,8 @@ function GrowthView({ agencyId }) {
 
       {/* Agency Revenue Breakdown */}
       <Card title="Revenue by Client / Project" style={{ marginTop:20 }}
-        action={<button onClick={() => setAddingClient(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add client</button>}>
-        {addingClient && (
+        action={isManager && <button onClick={() => setAddingClient(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add client</button>}>
+        {isManager && addingClient && (
           <div style={{ display:'flex', flexWrap:'wrap', gap:8, paddingBottom:14, borderBottom:'1px solid '+C.line, marginBottom:16 }}>
             <input className="ig-finput" placeholder="Client / Project name *" value={clientForm.name}  onChange={setCF('name')}  style={{ flex:'1 1 160px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addClient()} />
             <input className="ig-finput" placeholder="Revenue (KES)"           value={clientForm.value} onChange={setCF('value')} style={{ width:140 }} type="number" />
@@ -1052,7 +1054,7 @@ function GrowthView({ agencyId }) {
                 </div>
                 <div className="mono" style={{ width:80, textAlign:'right', fontSize:12.5, color:C.brand, fontWeight:600, flexShrink:0 }}>{kesC(cl.value)}</div>
                 <div style={{ width:34, textAlign:'right', fontSize:12, color:C.inkFaint, flexShrink:0 }}>{pct}%</div>
-                <button className="ig-delrow" onClick={() => removeClient(cl.id)} title="Remove" style={{ flexShrink:0 }}>✕</button>
+                {isManager && <button className="ig-delrow" onClick={() => removeClient(cl.id)} title="Remove" style={{ flexShrink:0 }}>✕</button>}
               </div>
             );
           })}
@@ -1066,7 +1068,7 @@ function GrowthView({ agencyId }) {
       <div style={{ marginTop:20 }}>
         <h3 className="display" style={{ fontSize:13, fontWeight:700, color:C.inkSoft, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:14 }}>Growth Levers</h3>
         <div className="ig-kpis">
-          {levers.map((l, i) => editingLever === i ? (
+          {levers.map((l, i) => isManager && editingLever === i ? (
             <div key={i} className="ig-card" style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:8 }}>
               <input className="ig-finput" placeholder="Label" value={leverForm.k}    onChange={setLF('k')}    style={{ fontSize:12.5 }} autoFocus />
               <input className="ig-finput" placeholder="Value" value={leverForm.v}    onChange={setLF('v')}    style={{ fontSize:12.5 }} onKeyDown={(e) => e.key==='Enter' && saveLever()} />
@@ -1081,7 +1083,7 @@ function GrowthView({ agencyId }) {
               <div style={{ fontSize:12.5, color:C.inkSoft, fontWeight:500 }}>{l.k}</div>
               <div className="mono display" style={{ fontSize:22, fontWeight:600, color:C.brand, marginTop:6 }}>{l.v}</div>
               <div style={{ fontSize:11.5, color:C.inkFaint, marginTop:4 }}>{l.note}</div>
-              <button className="ig-delrow" onClick={() => startEditLever(i)} title="Edit" style={{ position:'absolute', top:12, right:12 }}><Pencil size={13}/></button>
+              {isManager && <button className="ig-delrow" onClick={() => startEditLever(i)} title="Edit" style={{ position:'absolute', top:12, right:12 }}><Pencil size={13}/></button>}
             </div>
           ))}
         </div>
@@ -2175,7 +2177,7 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
       case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} />;
       case 'fin-models': return <ModelsView     models={d.models || []} />;
       case 'fin-rates':  return <RatesView      rateCard={d.rateCard || []} receivables={d.receivables || []} />;
-      case 'growth':     return <GrowthView agencyId={agencyId} />;
+      case 'growth':     return <GrowthView agencyId={agencyId} isManager={isManager} />;
       case 'innovation': return <InnovationView innovationBoard={d.innovationBoard || { Idea:[], Exploring:[], Piloting:[], Scaling:[], Parked:[] }} />;
       case 'members':       return <MembersView agencyId={agencyId} isAdmin={isAdmin} />;
       case 'all-agencies':  return <AllAgenciesView currentAgencyId={agencyId} onSwitch={(slug) => router.push(`/demo/agencies/${slug}`)} />;
