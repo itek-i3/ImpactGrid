@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
