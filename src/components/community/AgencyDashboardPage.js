@@ -317,6 +317,15 @@ function GoalsView({ agencyUUID, isManager }) {
     updateProject(pi, { memberRoles });
   };
 
+  const deleteProject = async (i) => {
+    const proj = projects[i];
+    if (!proj?.id) return;
+    setProjects(p => p.filter((_, idx) => idx !== i));
+    setExpanded(null);
+    setEditing(false);
+    await supabase.from('projects').delete().eq('id', proj.id);
+  };
+
   const counts = projects.reduce((a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a), {});
 
   if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading projects…</div>;
@@ -441,10 +450,16 @@ function GoalsView({ agencyUUID, isManager }) {
                     </button>
                   )}
                   {editing && (
-                    <button onClick={() => setEditing(false)}
-                      style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:C.brand, cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:'#fff', transition:'all .15s' }}>
-                      <Check size={13} /> Done
-                    </button>
+                    <>
+                      <button onClick={() => { if (window.confirm('Delete this project? This cannot be undone.')) deleteProject(expanded); }}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:10, border:'1px solid '+C.alert+'55', background:C.alert+'11', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:C.alert, transition:'all .15s' }}>
+                        <Trash2 size={13} /> Delete
+                      </button>
+                      <button onClick={() => setEditing(false)}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:C.brand, cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:'#fff', transition:'all .15s' }}>
+                        <Check size={13} /> Done
+                      </button>
+                    </>
                   )}
                   <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:22, lineHeight:1, padding:'2px 4px' }}>✕</button>
                 </div>
