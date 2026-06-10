@@ -1,7 +1,6 @@
 import { Inter, League_Spartan, DM_Sans } from 'next/font/google';
 import ThemeInitializer from '@/components/layout/ThemeInitializer';
 import '@/styles/globals.css';
-import Header from '@/components/layout/Header';
 
 // Keep your font configurations here
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -22,8 +21,7 @@ export default function RootLayout({ children }) {
       <body>
         <ThemeInitializer />
         <div className="app-container">
-          <Header /> 
-          <main>{children}</main>
+          {children}
         </div>
       </body>
     </html>

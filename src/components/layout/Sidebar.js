@@ -13,7 +13,9 @@ import {
   Star,
   Sun,
   Moon,
+  LogOut,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
@@ -74,6 +76,12 @@ export default function Sidebar() {
     if (workspace) {
       router.push(`/${workspace.id}/settings`);
     }
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   return (
@@ -266,6 +274,11 @@ export default function Sidebar() {
               <button className={styles.sidebarFooterBtn} onClick={handleSettingsClick}>
                 <Settings size={16} />
                 Settings
+              </button>
+
+              <button className={styles.sidebarFooterBtn} onClick={handleLogout}>
+                <LogOut size={16} />
+                Log out
               </button>
             </div>
           </>
