@@ -946,8 +946,10 @@ function ExpenditureView({ agencyUUID, isManager }) {
   const { rows: expRows,   loading: loadExp,   dbInsert: insExp,   dbDelete: delExp }   = useSimpleTable('expenditures',  agencyUUID);
   const { rows: spendRows, loading: loadSpend, dbInsert: insSpend, dbUpdate: updSpend } = useSimpleTable('monthly_spend',  agencyUUID, 'month_order');
 
-  const [adding, setAdding] = useState(false);
-  const [form,   setForm]   = useState({ cat:'', amount:'' });
+  const [adding,     setAdding]     = useState(false);
+  const [form,       setForm]       = useState({ cat:'', amount:'' });
+  const [spendEdits, setSpendEdits] = useState({});
+  const [saving,     setSaving]     = useState(false);
 
   const expenses = [...expRows].sort((a, b) => b.amount - a.amount);
   const expTrend = spendRows.map(r => ({ id:r.id, m:r.month_label, amount:r.amount || 0 }));
@@ -966,10 +968,17 @@ function ExpenditureView({ agencyUUID, isManager }) {
     const { data } = await createClient().from('monthly_spend').insert(rows).select().order('month_order', { ascending: true });
     if (data) { /* real-time will push these in */ }
   };
-  const saveSpend = async (id, raw) => {
-    const val = raw === '' ? 0 : Number(raw);
-    if (isNaN(val)) return;
-    await updSpend(id, { amount: val });
+  const saveAllSpend = async () => {
+    if (!Object.keys(spendEdits).length) return;
+    setSaving(true);
+    await Promise.all(
+      Object.entries(spendEdits).map(([id, raw]) => {
+        const val = raw === '' ? 0 : Number(raw);
+        return isNaN(val) ? null : updSpend(id, { amount: val });
+      })
+    );
+    setSpendEdits({});
+    setSaving(false);
   };
 
   const total     = expenses.reduce((a, e) => a + e.amount, 0);
@@ -1014,19 +1023,43 @@ function ExpenditureView({ agencyUUID, isManager }) {
                 </BarChart>
               </ResponsiveContainer>
               {isManager && (
-                <div style={{ marginTop:14, display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {expTrend.map((row) => (
-                    <div key={row.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                      <span style={{ fontSize:10.5, color:C.inkFaint }}>{row.m}</span>
-                      <input
-                        className="ig-finput mono"
-                        defaultValue={row.amount || ''}
-                        onBlur={(e) => saveSpend(row.id, e.target.value)}
-                        style={{ width:74, textAlign:'right', padding:'4px 6px', fontSize:11.5 }}
-                        type="number" min="0"
-                      />
+                <div style={{ marginTop:14 }}>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {expTrend.map((row) => (
+                      <div key={row.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                        <span style={{ fontSize:10.5, color:C.inkFaint }}>{row.m}</span>
+                        <input
+                          className="ig-finput mono"
+                          value={spendEdits[row.id] !== undefined ? spendEdits[row.id] : (row.amount || '')}
+                          onChange={(e) => setSpendEdits(p => ({ ...p, [row.id]: e.target.value }))}
+                          style={{ width:74, textAlign:'right', padding:'4px 6px', fontSize:11.5, borderColor: spendEdits[row.id] !== undefined ? C.brand : undefined }}
+                          type="number" min="0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {Object.keys(spendEdits).length > 0 && (
+                    <div style={{ marginTop:12, display:'flex', gap:8, alignItems:'center' }}>
+                      <button
+                        onClick={saveAllSpend}
+                        disabled={saving}
+                        className="ig-kbtn"
+                        style={{ width:'auto', padding:'0 16px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, opacity: saving ? 0.6 : 1 }}
+                      >
+                        {saving ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button
+                        onClick={() => setSpendEdits({})}
+                        className="ig-fcancel"
+                        style={{ padding:'0 12px', fontSize:12.5 }}
+                      >
+                        Discard
+                      </button>
+                      <span style={{ fontSize:12, color:C.inkSoft }}>
+                        {Object.keys(spendEdits).length} month{Object.keys(spendEdits).length > 1 ? 's' : ''} edited
+                      </span>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </>
