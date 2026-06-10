@@ -99,7 +99,7 @@ const Delta = ({ v }) => (
 );
 
 /* ── Views ── */
-function GoalsView({ projects: initial }) {
+function GoalsView({ projects: initial, isManager }) {
   const [projects,  setProjects] = useState(initial);
   const [adding,    setAdding]   = useState(false);
   const [expanded,  setExpanded] = useState(null);
@@ -132,13 +132,13 @@ function GoalsView({ projects: initial }) {
         <Stat label="Completed"        value={counts['Completed'] || 0}                            sub="delivered"              tone="brand"   delay={180} />
       </div>
 
-      <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, marginBottom: adding ? 0 : 4 }}>
+      {isManager && <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, marginBottom: adding ? 0 : 4 }}>
         <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
           <Plus size={14} /> Add goal
         </button>
-      </div>
+      </div>}
 
-      {adding && (
+      {isManager && adding && (
         <div className="ig-card" style={{ padding:20, marginTop:12, marginBottom:4 }}>
           <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
             <input  className="ig-finput" placeholder="Project name *"       value={form.name}   onChange={set('name')}   style={{ flex:'1 1 200px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addGoal()} />
@@ -199,7 +199,7 @@ function GoalsView({ projects: initial }) {
                   onClick={e => e.stopPropagation()}>
 
                   {/* update progress */}
-                  <div>
+                  {isManager && <div>
                     <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Update progress</div>
                     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                       <input className="ig-finput mono" type="number" min="0" max={p.target}
@@ -208,10 +208,10 @@ function GoalsView({ projects: initial }) {
                         style={{ width:110 }} />
                       <span style={{ color:C.inkSoft, fontSize:13 }}>/ {p.target.toLocaleString()} {p.unit}</span>
                     </div>
-                  </div>
+                  </div>}
 
                   {/* status */}
-                  <div>
+                  {isManager && <div>
                     <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Status</div>
                     <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                       {['On track','At risk','Behind','Completed'].map(s => (
@@ -225,7 +225,7 @@ function GoalsView({ projects: initial }) {
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </div>}
 
                   {/* milestones */}
                   <div>
@@ -234,25 +234,28 @@ function GoalsView({ projects: initial }) {
                       {milestones.length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{mDone}/{milestones.length} done</span>}
                     </div>
                     {milestones.map((m, mi) => (
-                      <div key={mi} onClick={() => toggleMilestone(i, mi)}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor:'pointer' }}>
+                      <div key={mi} onClick={() => isManager && toggleMilestone(i, mi)}
+                        style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
                         <div style={{ width:16, height:16, borderRadius:4, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
                           {m.done && <Check size={10} color="#fff" />}
                         </div>
                         <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
                       </div>
                     ))}
-                    <MilestoneInput onAdd={text => addMilestone(i, text)} />
+                    {isManager && <MilestoneInput onAdd={text => addMilestone(i, text)} />}
                   </div>
 
                   {/* notes */}
                   <div>
                     <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Notes</div>
-                    <textarea className="ig-finput" rows={3}
-                      defaultValue={p.notes || ''}
-                      onBlur={e => updateProject(i, { notes: e.target.value })}
-                      placeholder="Add notes, blockers, or context…"
-                      style={{ width:'100%', resize:'vertical', minHeight:72, lineHeight:1.5, fontSize:13 }} />
+                    {isManager
+                      ? <textarea className="ig-finput" rows={3}
+                          defaultValue={p.notes || ''}
+                          onBlur={e => updateProject(i, { notes: e.target.value })}
+                          placeholder="Add notes, blockers, or context…"
+                          style={{ width:'100%', resize:'vertical', minHeight:72, lineHeight:1.5, fontSize:13 }} />
+                      : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.notes || '—'}</p>
+                    }
                   </div>
 
                 </div>
@@ -277,7 +280,7 @@ function MilestoneInput({ onAdd }) {
   );
 }
 
-function RevenueView({ monthly: initial }) {
+function RevenueView({ monthly: initial, isManager }) {
   const [monthly,  setMonthly] = useState(initial);
   const [editing,  setEditing] = useState(false);
 
@@ -317,13 +320,13 @@ function RevenueView({ monthly: initial }) {
           </ComposedChart>
         </ResponsiveContainer>
 
-        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:20 }}>
+        {isManager && <div style={{ display:'flex', justifyContent:'flex-end', marginTop:20 }}>
           <button onClick={() => setEditing((v) => !v)} className="ig-kbtn"
             style={{ width:'auto', padding:'0 14px', gap:6, fontFamily:'inherit', fontSize:12.5, fontWeight:600,
               background: editing ? C.pos : C.brand, color:'#fff', border:'none' }}>
             {editing ? 'Done' : 'Edit'}
           </button>
-        </div>
+        </div>}
 
         <div style={{ marginTop:16, borderTop:'1px solid '+C.line, paddingTop:20 }}>
           <table className="ig-table">
@@ -345,12 +348,12 @@ function RevenueView({ monthly: initial }) {
                   <tr key={m.m}>
                     <td style={{ fontWeight:600, color:C.ink }}>{m.m}</td>
                     <td className="mono" style={{ textAlign:'right', color:C.inkSoft }}>
-                      {editing
+                      {isManager && editing
                         ? <input className="ig-finput mono" type="number" defaultValue={m.goal} onBlur={(e) => setCell(idx,'goal',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : kes(m.goal)}
                     </td>
                     <td className="mono" style={{ textAlign:'right', fontWeight:600, color:hasActual ? C.ink : C.inkFaint }}>
-                      {editing
+                      {isManager && editing
                         ? <input className="ig-finput mono" type="number" defaultValue={m.actual ?? ''} placeholder="—" onBlur={(e) => setCell(idx,'actual',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : hasActual ? kes(m.actual) : '—'}
                     </td>
@@ -387,7 +390,7 @@ function RevenueView({ monthly: initial }) {
   );
 }
 
-function LossView({ losses: initial, ytdActual }) {
+function LossView({ losses: initial, ytdActual, isManager }) {
   const [losses,  setLosses] = useState(initial);
   const [adding,  setAdding] = useState(false);
   const [form,    setForm]   = useState({ source:'', amount:'', note:'' });
@@ -424,12 +427,12 @@ function LossView({ losses: initial, ytdActual }) {
 
   if (!losses.length) return (
     <>
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+      {isManager && <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
         <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
           <Plus size={14} /> Add loss
         </button>
-      </div>
-      {adding && (
+      </div>}
+      {isManager && adding && (
         <div className="ig-card" style={{ padding:20, marginBottom:12 }}>
           <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
             <input  className="ig-finput" placeholder="Source *"       value={form.source} onChange={set('source')} style={{ flex:'1 1 180px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addLoss()} />
@@ -482,12 +485,10 @@ function LossView({ losses: initial, ytdActual }) {
         </Card>
       </div>
       <Card title="Detail" style={{ marginTop:16 }}
-        action={
-          <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+        action={isManager && <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
             <Plus size={14} /> Add loss
-          </button>
-        }>
-        {adding && (
+          </button>}>
+        {isManager && adding && (
           <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:16 }}>
             <input  className="ig-finput" placeholder="Source *"       value={form.source} onChange={set('source')} style={{ flex:'1 1 180px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addLoss()} />
             <input  className="ig-finput" placeholder="Amount (KES) *" value={form.amount} onChange={set('amount')} style={{ width:160 }} type="number" min="0" />
@@ -506,7 +507,7 @@ function LossView({ losses: initial, ytdActual }) {
             </tr>
           </thead>
           <tbody>
-            {losses.map((l, idx) => editingIdx === idx ? (
+            {losses.map((l, idx) => isManager && editingIdx === idx ? (
               <tr key={idx}>
                 <td><input className="ig-finput" value={editForm.source} onChange={setE('source')} style={{ width:'100%', padding:'5px 8px', fontSize:12.5 }} autoFocus /></td>
                 <td><input className="ig-finput" value={editForm.note}   onChange={setE('note')}   style={{ width:'100%', padding:'5px 8px', fontSize:12.5 }} /></td>
@@ -525,12 +526,12 @@ function LossView({ losses: initial, ytdActual }) {
                 <td style={{ color:C.inkSoft }}>{l.note}</td>
                 <td className="mono" style={{ textAlign:'right', color:C.alert, fontWeight:600 }}>{kes(l.amount)}</td>
                 <td className="mono" style={{ textAlign:'right', color:C.inkSoft }}>{Math.round((l.amount/total)*100)}%</td>
-                <td>
+                {isManager && <td>
                   <div className="ig-rowactions" style={{ display:'flex', gap:4, justifyContent:'flex-end', opacity:0, transition:'opacity .15s' }}>
                     <button onClick={() => startEdit(idx)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.inkSoft }} title="Edit"><Pencil size={13} /></button>
                     <button onClick={() => removeLoss(idx)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.alert, borderColor:'rgba(224,72,90,.25)' }} title="Delete"><Trash2 size={13} /></button>
                   </div>
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -540,7 +541,7 @@ function LossView({ losses: initial, ytdActual }) {
   );
 }
 
-function ExpenditureView({ expenses: initial, expTrend }) {
+function ExpenditureView({ expenses: initial, expTrend, isManager }) {
   const [expenses, setExpenses] = useState(initial);
   const [adding,   setAdding]   = useState(false);
   const [form,     setForm]     = useState({ cat:'', amount:'' });
@@ -592,12 +593,10 @@ function ExpenditureView({ expenses: initial, expTrend }) {
         </Card>
       </div>
       <Card title="Category breakdown" style={{ marginTop:16 }}
-        action={
-          <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+        action={isManager && <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
             <Plus size={14} /> Add expenditure
-          </button>
-        }>
-        {adding && (
+          </button>}>
+        {isManager && adding && (
           <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:16 }}>
             <input  className="ig-finput" placeholder="Category *"     value={form.cat}    onChange={set('cat')}    style={{ flex:'1 1 200px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addExp()} />
             <input  className="ig-finput" placeholder="Amount (KES) *" value={form.amount} onChange={set('amount')} style={{ width:160 }} type="number" min="0" />
@@ -613,7 +612,7 @@ function ExpenditureView({ expenses: initial, expTrend }) {
               <div style={{ width:(e.amount/(top.amount||1))*100+'%', height:'100%', background:PIE[i % PIE.length], borderRadius:99 }} />
             </div>
             <span className="mono" style={{ width:120, textAlign:'right', fontWeight:600, color:C.ink, fontSize:13 }}>{kes(e.amount)}</span>
-            <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>
+            {isManager && <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>}
           </div>
         ))}
       </Card>
@@ -621,7 +620,7 @@ function ExpenditureView({ expenses: initial, expTrend }) {
   );
 }
 
-function ModelsView({ models: initial }) {
+function ModelsView({ models: initial, isManager }) {
   const [models,  setModels] = useState(initial);
   const [adding,  setAdding] = useState(false);
   const [form,    setForm]   = useState({ name:'', desc:'', mtd:'', trend:'', share:'', tracked:true });
@@ -659,12 +658,10 @@ function ModelsView({ models: initial }) {
           </ResponsiveContainer>
         </Card>
         <Card title="Streams — tracking status"
-          action={
-            <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+          action={isManager && <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
               <Plus size={14} /> Add model
-            </button>
-          }>
-          {adding && (
+            </button>}>
+          {isManager && adding && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:14 }}>
               <input  className="ig-finput" placeholder="Model name *"        value={form.name}  onChange={set('name')}  style={{ flex:'1 1 160px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addModel()} />
               <input  className="ig-finput" placeholder="Description"         value={form.desc}  onChange={set('desc')}  style={{ flex:'1 1 200px' }} />
@@ -690,7 +687,7 @@ function ModelsView({ models: initial }) {
                 <Delta v={m.trend} />
                 <span className="mono" style={{ width:88, textAlign:'right', fontWeight:600, color:C.ink, fontSize:13 }}>{kesC(m.mtd)}</span>
                 <Pill tone={m.tracked ? 'pos' : 'neutral'}>{m.tracked ? 'Tracked' : 'Not tracked'}</Pill>
-                <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>
+                {isManager && <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>}
               </div>
             ))}
           </div>
@@ -700,7 +697,7 @@ function ModelsView({ models: initial }) {
   );
 }
 
-function RatesView({ rateCard: initialRC, receivables: initialRec }) {
+function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) {
   const [rateCard,    setRateCard]    = useState(initialRC);
   const [receivables, setReceivables] = useState(initialRec);
   const [addingRate,  setAddingRate]  = useState(false);
@@ -739,8 +736,8 @@ function RatesView({ rateCard: initialRC, receivables: initialRec }) {
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:24, marginTop:20 }} className="ig-2col">
         <Card title="Rate card"
-          action={<button onClick={() => setAddingRate((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add service</button>}>
-          {addingRate && (
+          action={isManager && <button onClick={() => setAddingRate((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add service</button>}>
+          {isManager && addingRate && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:12 }}>
               <input  className="ig-finput" placeholder="Service *"         value={rateForm.service} onChange={setR('service')} style={{ flex:'1 1 150px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addRate()} />
               <input  className="ig-finput" placeholder="Unit (e.g. /day)" value={rateForm.unit}    onChange={setR('unit')}    style={{ flex:'1 1 130px' }} />
@@ -750,21 +747,21 @@ function RatesView({ rateCard: initialRC, receivables: initialRec }) {
             </div>
           )}
           <table className="ig-table">
-            <thead><tr><th>Service</th><th style={{ textAlign:'right' }}>Rate</th><th style={{ width:32 }} /></tr></thead>
+            <thead><tr><th>Service</th><th style={{ textAlign:'right' }}>Rate</th>{isManager && <th style={{ width:32 }} />}</tr></thead>
             <tbody>
               {rateCard.map((r, idx) => (
                 <tr key={idx}>
                   <td><div style={{ fontWeight:600, color:C.ink }}>{r.service}</div><div style={{ fontSize:11.5, color:C.inkFaint }}>{r.unit}</div></td>
                   <td className="mono" style={{ textAlign:'right', fontWeight:600, color:C.brand }}>{kes(r.rate)}</td>
-                  <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRate(idx)} title="Remove"><Trash2 size={13} /></button></td>
+                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRate(idx)} title="Remove"><Trash2 size={13} /></button></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </Card>
         <Card title="Receivables — amount owed"
-          action={<button onClick={() => setAddingRec((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add receivable</button>}>
-          {addingRec && (
+          action={isManager && <button onClick={() => setAddingRec((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add receivable</button>}>
+          {isManager && addingRec && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:12 }}>
               <input  className="ig-finput" placeholder="Client *"      value={recForm.client}  onChange={setRec('client')}  style={{ flex:'1 1 130px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addRec()} />
               <input  className="ig-finput" placeholder="Service"       value={recForm.service} onChange={setRec('service')} style={{ flex:'1 1 130px' }} />
@@ -778,7 +775,7 @@ function RatesView({ rateCard: initialRC, receivables: initialRec }) {
             </div>
           )}
           <table className="ig-table">
-            <thead><tr><th>Client</th><th>Service</th><th>Due</th><th style={{ textAlign:'right' }}>Owed</th><th style={{ textAlign:'right' }}>Status</th><th style={{ width:32 }} /></tr></thead>
+            <thead><tr><th>Client</th><th>Service</th><th>Due</th><th style={{ textAlign:'right' }}>Owed</th><th style={{ textAlign:'right' }}>Status</th>{isManager && <th style={{ width:32 }} />}</tr></thead>
             <tbody>
               {receivables.map((r, idx) => (
                 <tr key={idx} style={r.status === 'Overdue' ? { background: C.alert+'0D' } : undefined}>
@@ -787,7 +784,7 @@ function RatesView({ rateCard: initialRC, receivables: initialRec }) {
                   <td className="mono" style={{ color:C.inkSoft, fontSize:12 }}>{r.due}</td>
                   <td className="mono" style={{ textAlign:'right', fontWeight:600, color:C.ink }}>{kes(r.amount)}</td>
                   <td style={{ textAlign:'right' }}><Pill tone={statusTone(r.status)}>{r.status}</Pill></td>
-                  <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRec(idx)} title="Remove"><Trash2 size={13} /></button></td>
+                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRec(idx)} title="Remove"><Trash2 size={13} /></button></td>}
                 </tr>
               ))}
             </tbody>
@@ -2171,12 +2168,12 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
   function renderView() {
     switch (active) {
       case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} isManager={isManager} userId={userProfile?.id} />;
-      case 'goals':      return <GoalsView      projects={d.projects || []} />;
-      case 'fin-revenue': return <RevenueView monthly={d.monthly || []} />;
-      case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} />;
-      case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} />;
-      case 'fin-models': return <ModelsView     models={d.models || []} />;
-      case 'fin-rates':  return <RatesView      rateCard={d.rateCard || []} receivables={d.receivables || []} />;
+      case 'goals':      return <GoalsView      projects={d.projects || []} isManager={isManager} />;
+      case 'fin-revenue': return <RevenueView monthly={d.monthly || []} isManager={isManager} />;
+      case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} isManager={isManager} />;
+      case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} isManager={isManager} />;
+      case 'fin-models': return <ModelsView     models={d.models || []} isManager={isManager} />;
+      case 'fin-rates':  return <RatesView      rateCard={d.rateCard || []} receivables={d.receivables || []} isManager={isManager} />;
       case 'growth':     return <GrowthView agencyId={agencyId} isManager={isManager} />;
       case 'innovation': return <InnovationView innovationBoard={d.innovationBoard || { Idea:[], Exploring:[], Piloting:[], Scaling:[], Parked:[] }} />;
       case 'members':       return <MembersView agencyId={agencyId} isAdmin={isAdmin} />;
