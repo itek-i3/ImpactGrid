@@ -29,7 +29,7 @@ export default function Logo({
       case 'i3x': return <Image src="/i3x-logo.png" width={width} height={height} alt="i3x Africa" />;
       case 'i360': return <Image src="/i360-logo.png" width={width} height={height} alt="i360" />;
       case 'i3studio': return <Image src="/i3studio-logo.png" width={width} height={height} alt="i3studio" />;
-      case 'i3kingdom': return <Image src="/i3kingdom-logo.png" width={width} height={height} alt="i3KingdomHub" />;
+      case 'i3kingdom': return <Image src="/i3kingdom-logo.png" width={width} height={height} alt="i3 Launchpad" />;
       default: return null;
     }
   };
