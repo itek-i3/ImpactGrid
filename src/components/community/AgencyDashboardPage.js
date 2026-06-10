@@ -1682,7 +1682,7 @@ function InnovationView({ agencyUUID, isManager }) {
                 </div>
               </div>
               <div style={{ display:'flex', gap:6, flexShrink:0, marginTop:2 }}>
-                {isManager && !editing && (
+                {!editing && (
                   <button onClick={startEdit} className="ig-kbtn" style={{ width:34, height:34, borderRadius:9, color:C.inkSoft }} title="Edit"><Pencil size={15} /></button>
                 )}
                 {editing && (
@@ -1725,13 +1725,11 @@ function InnovationView({ agencyUUID, isManager }) {
                   <ReadField label="Hypothesis"           value={selIdea.hypothesis} />
                   <ReadField label="Success metric"       value={selIdea.metric} />
                   <ReadField label="Next step"            value={selIdea.next_step} />
-                  {isManager && (
-                    <div style={{ marginTop:20, paddingTop:16, borderTop:'1px solid '+C.line }}>
-                      <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
-                        <Trash2 size={14} /> Delete idea
-                      </button>
-                    </div>
-                  )}
+                  <div style={{ marginTop:20, paddingTop:16, borderTop:'1px solid '+C.line }}>
+                    <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+                      <Trash2 size={14} /> Delete idea
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -1768,7 +1766,7 @@ function InnovationView({ agencyUUID, isManager }) {
                   </div>
                 ))}
 
-                {isManager && addingStage === s ? (
+                {addingStage === s ? (
                   <div style={{ display:'flex', flexDirection:'column', gap:8, padding:12, background:C.paper, borderRadius:11, border:'1px dashed '+C.line }}>
                     <div style={{ fontSize:11, fontWeight:700, color:C.inkFaint, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>New idea</div>
                     <input className="ig-finput" placeholder="Title *" value={ideaForm.t} onChange={setF('t')} style={{ fontSize:12.5 }} autoFocus />
@@ -1791,7 +1789,7 @@ function InnovationView({ agencyUUID, isManager }) {
                     </div>
                   </div>
                 ) : (
-                  isManager && <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
+                  <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
                 )}
               </div>
             </div>
