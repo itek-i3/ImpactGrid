@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -23,6 +23,7 @@ const LIGHT_C = {
   signal: '#F5A623', alert: '#E0485A', pos: '#16A36B',
   card: '#FFFFFF', line: 'rgba(20,33,61,0.10)',
   sidebar: '#0E1A3A', sidebarLine: 'rgba(255,255,255,0.08)', sidebarSoft: '#8FA0C4',
+  inputBg: '#FFFFFF',
 };
 const DARK_C = {
   paper: '#02040A', ink: '#E2EEFF', inkSoft: '#7EB3FF', inkFaint: '#3D5A8A',
@@ -30,6 +31,7 @@ const DARK_C = {
   signal: '#F5A623', alert: '#E0485A', pos: '#16A36B',
   card: 'rgba(255,255,255,0.04)', line: 'rgba(48,108,236,0.22)',
   sidebar: '#000000', sidebarLine: 'rgba(48,108,236,0.20)', sidebarSoft: '#7EB3FF',
+  inputBg: '#0d1b38',
 };
 let C = { ...LIGHT_C };
 const PIE = ['#306CEC','#F5A623','#16A36B','#7E6CF0','#19C4D9','#E0485A','#5B9BFF'];
@@ -1226,38 +1228,59 @@ const DEFAULT_DAILY_TASKS = [
   { id:'d8', task:'EOD status report',               outcome:'',                                       time:'17:00', priority:'High',   done:false },
 ];
 
-function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isManager }) {
-  const [tasks,   setTasks]  = useState(() => initial.map((t) => ({ ...t, done: t.status === 'Done' })));
-  const [adding,  setAdding] = useState(false);
-  const [form,    setForm]   = useState({ task:'', assignee:'', priority:'Medium' });
-  const [members, setMembers] = useState([]);
+function WeeklyTasksView({ agencyUUID, members = [], isManager }) {
+  const [tasks,   setTasks]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding,  setAdding]  = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [form,    setForm]    = useState({ task:'', assignee:'', priority:'Medium' });
+
+  const supabase = createClient();
 
   useEffect(() => {
-    if (!agencyId) return;
-    const supabase = createClient();
-    supabase.from('profiles').select('id, full_name')
-      .eq('agency_id', agencyId).eq('approved', true)
-      .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyId]); // agencyId here is the UUID passed from TasksView
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+    supabase.from('weekly_tasks')
+      .select('*')
+      .eq('agency_id', agencyUUID)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error('weekly_tasks fetch:', error);
+        setTasks(data || []);
+        setLoading(false);
+      });
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set    = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const toggle = (id) => setTasks((p) => p.map((t) => t.id === id ? { ...t, done:!t.done } : t));
-  const remove = (id) => setTasks((p) => p.filter((t) => t.id !== id));
-  const addTask = () => {
-    if (!form.task.trim()) return;
-    setTasks((p) => [{ ...form, id:'w'+Date.now(), done:false }, ...p]);
-    setForm({ task:'', assignee:'', priority:'Medium' });
-    setAdding(false);
+  const toggle = async (id, current) => {
+    setTasks(p => p.map(t => t.id === id ? { ...t, done: !current } : t));
+    await supabase.from('weekly_tasks').update({ done: !current }).eq('id', id);
   };
 
-  const done      = tasks.filter((t) => t.done).length;
-  const pct       = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
-  const pending   = tasks.filter((t) => !t.done);
-  const completed = tasks.filter((t) =>  t.done);
+  const remove = async (id) => {
+    setTasks(p => p.filter(t => t.id !== id));
+    await supabase.from('weekly_tasks').delete().eq('id', id);
+  };
+
+  const addTask = async () => {
+    if (!form.task.trim() || !agencyUUID) return;
+    setSaving(true);
+    const { data, error } = await supabase.from('weekly_tasks')
+      .insert({ agency_id: agencyUUID, task: form.task.trim(), assignee: form.assignee, priority: form.priority, done: false })
+      .select().single();
+    if (!error && data) setTasks(p => [...p, data]);
+    setForm({ task:'', assignee:'', priority:'Medium' });
+    setAdding(false);
+    setSaving(false);
+  };
+
+  const doneCount = tasks.filter(t => t.done).length;
+  const pct       = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
+  const pending   = tasks.filter(t => !t.done);
+  const completed = tasks.filter(t =>  t.done);
 
   const WeeklyRow = ({ t }) => (
-    <div className="ig-taskrow" style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 10px', borderBottom:'1px solid '+C.line, transition:'opacity .2s', opacity: t.done ? 0.50 : 1 }}>
-      <button onClick={() => toggle(t.id)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, marginTop:2, transition:'all .15s' }}>
+    <div className="ig-taskrow" style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 10px', borderBottom:'1px solid '+C.line, opacity: t.done ? 0.5 : 1, transition:'opacity .2s' }}>
+      <button onClick={() => toggle(t.id, t.done)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, marginTop:2, transition:'all .15s' }}>
         {t.done && <Check size={13} color="#fff" />}
       </button>
       <div style={{ flex:1, minWidth:0 }}>
@@ -1266,6 +1289,13 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
       </div>
       <Pill tone={PRIO_TONE[t.priority]||'neutral'}>{t.priority}</Pill>
       {isManager && <button className="ig-delrow" onClick={() => remove(t.id)} title="Remove">✕</button>}
+    </div>
+  );
+
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'60px 0', color:C.inkFaint, fontSize:13, gap:10 }}>
+      <span style={{ width:16, height:16, borderRadius:'50%', border:'2px solid '+C.inkFaint, borderTopColor:C.brand, animation:'ig-spin .7s linear infinite', display:'inline-block' }} />
+      Loading…
     </div>
   );
 
@@ -1278,23 +1308,65 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
           <div style={{ width:pct+'%', height:'100%', background:C.pos, borderRadius:99, transition:'width .4s' }} />
         </div>
         <span className="mono" style={{ fontSize:12, color:C.inkSoft, flexShrink:0, minWidth:32, textAlign:'right' }}>{pct}%</span>
-        {isManager && <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
-          <Plus size={14} /> Add task
-        </button>}
+        {isManager && (
+          <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
+            <Plus size={14} /> Add task
+          </button>
+        )}
       </div>
 
       {isManager && adding && (
-        <div className="ig-card" style={{ padding:16, marginBottom:18, display:'flex', flexWrap:'wrap', gap:8 }}>
-          <input className="ig-finput" placeholder="Task description…" value={form.task} onChange={set('task')} style={{ flex:'1 1 220px', minWidth:0 }} onKeyDown={(e) => e.key==='Enter' && addTask()} autoFocus />
-          <select className="ig-fselect" value={form.assignee} onChange={set('assignee')} style={{ width:180 }}>
-            <option value="">Assign to…</option>
-            {members.map(m => <option key={m.id} value={m.full_name}>{m.full_name}</option>)}
-          </select>
-          <select className="ig-fselect" value={form.priority} onChange={set('priority')}>
-            {['High','Medium','Low'].map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <button className="ig-fadd"    onClick={addTask}>Add</button>
-          <button className="ig-fcancel" onClick={() => setAdding(false)}>Cancel</button>
+        <div className="ig-card" style={{ padding:'16px 20px', marginBottom:18, display:'flex', flexDirection:'column', gap:12 }}>
+          {/* Row 1: task description */}
+          <input className="ig-finput" placeholder="Task description…" value={form.task}
+            onChange={e => setForm(p => ({ ...p, task: e.target.value }))}
+            style={{ width:'100%', background: C.inputBg, color: C.ink, borderColor: C.line, fontSize:13.5, padding:'10px 14px' }}
+            onKeyDown={e => e.key === 'Enter' && addTask()} autoFocus />
+
+          {/* Row 2: assignee + priority + actions */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+            {/* Assignee select */}
+            <div style={{ position:'relative', flex:'1 1 180px', minWidth:160 }}>
+              <select
+                value={form.assignee}
+                onChange={e => setForm(p => ({ ...p, assignee: e.target.value }))}
+                style={{
+                  width:'100%', appearance:'none', WebkitAppearance:'none',
+                  background: C.inputBg, color: C.ink,
+                  border:'1px solid '+C.line, borderRadius:8,
+                  padding:'9px 34px 9px 12px', fontSize:13, fontFamily:'inherit',
+                  cursor:'pointer', outline:'none', colorScheme: C.inputBg === '#FFFFFF' ? 'light' : 'dark',
+                  transition:'border-color .15s',
+                }}>
+                <option value="">Assign to…</option>
+                {members.map(m => <option key={m.id} value={m.full_name}>{m.full_name}</option>)}
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.inkSoft, fontSize:11 }}>▾</span>
+            </div>
+
+            {/* Priority select */}
+            <div style={{ position:'relative', flex:'0 0 130px' }}>
+              <select
+                value={form.priority}
+                onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                style={{
+                  width:'100%', appearance:'none', WebkitAppearance:'none',
+                  background: C.inputBg, color: C.ink,
+                  border:'1px solid '+C.line, borderRadius:8,
+                  padding:'9px 34px 9px 12px', fontSize:13, fontFamily:'inherit',
+                  cursor:'pointer', outline:'none', colorScheme: C.inputBg === '#FFFFFF' ? 'light' : 'dark',
+                  transition:'border-color .15s',
+                }}>
+                {['High','Medium','Low'].map(p => <option key={p}>{p}</option>)}
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.inkSoft, fontSize:11 }}>▾</span>
+            </div>
+
+            <div style={{ display:'flex', gap:8, marginLeft:'auto' }}>
+              <button className="ig-fadd" onClick={addTask} disabled={saving} style={{ padding:'9px 20px' }}>{saving ? 'Saving…' : 'Add task'}</button>
+              <button className="ig-fcancel" onClick={() => setAdding(false)} style={{ padding:'9px 14px' }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1313,7 +1385,7 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
         <div className="ig-card rise" style={{ padding:0, overflow:'hidden' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px', borderBottom:'1px solid '+C.line }}>
             <h3 className="display" style={{ fontSize:14, fontWeight:700, color:C.ink, margin:0 }}>Completed</h3>
-            <span style={{ fontSize:12, color:C.pos, fontWeight:600 }}>{done} done</span>
+            <span style={{ fontSize:12, color:C.pos, fontWeight:600 }}>{doneCount} done</span>
           </div>
           {completed.length === 0
             ? <p style={{ color:C.inkSoft, fontSize:13, textAlign:'center', padding:'32px 20px' }}>Nothing completed yet.</p>
@@ -1727,16 +1799,18 @@ function TasksView({ weeklyTasks, userName, agencyId, agencyUUID, isManager, use
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load agency members list for head/admin member picker
+  // Load agency members list
   useEffect(() => {
-    if (!isManager || !agencyUUID) return;
+    if (!agencyUUID) return;
     supabase
       .from('profiles')
       .select('id, full_name')
       .eq('agency_id', agencyUUID)
-      .eq('approved', true)
-      .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyUUID, isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+      .then(({ data, error }) => {
+        if (error) { console.error('TasksView members fetch error:', error); return; }
+        if (data) setMembers(data);
+      });
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tasks whenever the viewed user changes
   useEffect(() => {
@@ -1868,7 +1942,7 @@ function TasksView({ weeklyTasks, userName, agencyId, agencyUUID, isManager, use
       {/* Content */}
       {tab === 'daily'
         ? <DailyTasksView tasks={tasks} loading={loading} onAdd={onAdd} onToggle={onToggle} onRemove={onRemove} />
-        : <WeeklyTasksView tasks={weeklyTasks} agencyId={agencyUUID} isManager={isManager} />
+        : <WeeklyTasksView agencyUUID={agencyUUID} members={members} isManager={isManager} />
       }
     </div>
   );
@@ -2058,9 +2132,9 @@ const DARK_CSS = `
   .ig-dark .ig-table th{color:#3D5A8A !important;border-color:rgba(48,108,236,0.15) !important;}
   .ig-dark .ig-table td{border-color:rgba(48,108,236,0.12) !important;color:#B8D4FF !important;}
   .ig-dark .ig-table tbody tr:hover{background:rgba(48,108,236,0.08) !important;}
-  .ig-dark .ig-finput{background:rgba(48,108,236,0.10) !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;}
+  .ig-dark .ig-finput{background:#0d1b38 !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;color-scheme:dark;}
   .ig-dark .ig-finput:focus{border-color:#5B9BFF !important;box-shadow:0 0 0 3px rgba(48,108,236,0.20) !important;}
-  .ig-dark .ig-fselect{background:rgba(48,108,236,0.10) !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;}
+  .ig-dark .ig-fselect{background:#0d1b38 !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;color-scheme:dark;}
   .ig-dark .ig-fcancel{color:#7EB3FF !important;border-color:rgba(48,108,236,0.25) !important;}
   .ig-dark .ig-addidea{border-color:rgba(48,108,236,0.25) !important;color:#3D5A8A !important;}
   .ig-dark .ig-addidea:hover{color:#5B9BFF !important;border-color:rgba(48,108,236,0.60) !important;background:rgba(48,108,236,0.08) !important;}
@@ -2113,7 +2187,7 @@ const CSS = `
   .ig-addtask:hover{color:#306CEC;border-color:#306CEC66;background:#306CEC0A;}
   .ig-finput{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 11px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;transition:border-color .15s;}
   .ig-finput:focus{border-color:#306CEC;box-shadow:0 0 0 3px rgba(48,108,236,.12);}
-  .ig-fselect{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;cursor:pointer;transition:border-color .15s;}
+  .ig-fselect{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;cursor:pointer;transition:border-color .15s;appearance:none;-webkit-appearance:none;}
   .ig-fselect:focus{border-color:#306CEC;}
   .ig-fadd{padding:8px 18px;background:#306CEC;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap;}
   .ig-fadd:hover{background:#1E4FB8;}
