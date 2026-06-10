@@ -222,40 +222,104 @@ function MemberRoleInput({ onAdd }) {
   );
 }
 
-function GoalsView({ projects: initial, isManager }) {
-  const [projects,  setProjects] = useState(initial);
+function GoalsView({ agencyUUID, isManager }) {
+  const [projects,  setProjects] = useState([]);
+  const [loading,   setLoading]  = useState(true);
   const [adding,    setAdding]   = useState(false);
   const [expanded,  setExpanded] = useState(null);
+  const [editing,   setEditing]  = useState(false);
   const [form,      setForm]     = useState({ name:'', description:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
+  const supabase = createClient();
 
-  const set     = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const addGoal = () => {
-    if (!form.name.trim()) return;
-    setProjects((p) => [{ ...form, target: Number(form.target) || 0, current: 0, notes:'', milestones:[], memberRoles:[] }, ...p]);
+  const fromRow = (r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description || '',
+    goal: r.goal || '',
+    owner: r.owner || '',
+    due: r.due || '',
+    status: r.status || 'On track',
+    current: r.progress || 0,
+    target: r.target || 0,
+    unit: r.unit || '',
+    notes: r.notes || '',
+    milestones: r.milestones || [],
+    memberRoles: r.member_roles || [],
+  });
+
+  useEffect(() => {
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+
+    supabase.from('projects').select('*').eq('agency_id', agencyUUID)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { setProjects((data || []).map(fromRow)); setLoading(false); });
+
+    const channel = supabase
+      .channel('projects:' + agencyUUID)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects', filter: `agency_id=eq.${agencyUUID}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setProjects(p => p.find(x => x.id === payload.new.id) ? p : [...p, fromRow(payload.new)]);
+          } else if (payload.eventType === 'UPDATE') {
+            setProjects(p => p.map(x => x.id === payload.new.id ? fromRow(payload.new) : x));
+          } else if (payload.eventType === 'DELETE') {
+            setProjects(p => p.filter(x => x.id !== payload.old.id));
+          }
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [agencyUUID]);
+
+  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const addGoal = async () => {
+    if (!form.name.trim() || !agencyUUID) return;
+    const row = {
+      agency_id: agencyUUID,
+      name: form.name, description: form.description, goal: form.goal,
+      owner: form.owner, due: form.due, status: form.status,
+      progress: 0, target: Number(form.target) || 0, unit: form.unit,
+      notes: '', milestones: [], member_roles: [],
+    };
+    const { data, error } = await supabase.from('projects').insert([row]).select().single();
+    if (data) setProjects(p => p.find(x => x.id === data.id) ? p : [...p, fromRow(data)]);
     setForm({ name:'', description:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
     setAdding(false);
   };
-  const updateProject   = (i, patch) => setProjects(p => p.map((x, idx) => idx === i ? { ...x, ...patch } : x));
-  const addMilestone    = (i, text) => {
-    if (!text.trim()) return;
-    setProjects(p => p.map((x, idx) => idx === i ? { ...x, milestones: [...(x.milestones||[]), { text, done:false }] } : x));
+
+  const updateProject = async (i, patch) => {
+    const proj = projects[i];
+    if (!proj?.id) return;
+    const dbPatch = { ...patch };
+    if ('memberRoles' in patch) { dbPatch.member_roles = patch.memberRoles; delete dbPatch.memberRoles; }
+    if ('current' in patch)     { dbPatch.progress = patch.current;         delete dbPatch.current; }
+    setProjects(p => p.map((x, idx) => idx === i ? { ...x, ...patch } : x));
+    await supabase.from('projects').update(dbPatch).eq('id', proj.id);
   };
-  const toggleMilestone = (pi, mi) => setProjects(p => p.map((x, idx) => idx === pi ? {
-    ...x, milestones: x.milestones.map((m, j) => j === mi ? { ...m, done:!m.done } : m)
-  } : x));
-  const addMemberRole   = (i, name, role) => setProjects(p => p.map((x, idx) => idx === i ? {
-    ...x, memberRoles: [...(x.memberRoles||[]), { name, role }]
-  } : x));
-  const removeMemberRole = (pi, ri) => setProjects(p => p.map((x, idx) => idx === pi ? {
-    ...x, memberRoles: (x.memberRoles||[]).filter((_, j) => j !== ri)
-  } : x));
 
-  const counts  = projects.reduce((a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a), {});
-  const selProj = expanded !== null ? projects[expanded] : null;
+  const addMilestone = (i, text) => {
+    if (!text.trim()) return;
+    const milestones = [...(projects[i].milestones || []), { text, done: false }];
+    updateProject(i, { milestones });
+  };
+  const toggleMilestone = (pi, mi) => {
+    const milestones = projects[pi].milestones.map((m, j) => j === mi ? { ...m, done: !m.done } : m);
+    updateProject(pi, { milestones });
+  };
+  const addMemberRole = (i, name, role) => {
+    const memberRoles = [...(projects[i].memberRoles || []), { name, role }];
+    updateProject(i, { memberRoles });
+  };
+  const removeMemberRole = (pi, ri) => {
+    const memberRoles = (projects[pi].memberRoles || []).filter((_, j) => j !== ri);
+    updateProject(pi, { memberRoles });
+  };
 
-  const SectionLabel = ({ children }) => (
-    <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>{children}</div>
-  );
+  const counts = projects.reduce((a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a), {});
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading projects…</div>;
 
   return (
     <>
@@ -309,17 +373,14 @@ function GoalsView({ projects: initial, isManager }) {
       )}
 
       {/* ── Compact cards grid ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16, marginTop:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16, marginTop:20 }}>
         {projects.map((p, i) => {
-          const pct  = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
-          const t    = statusTone(p.status);
-          const open = expanded === i;
+          const pct = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
+          const t   = statusTone(p.status);
           return (
-            <div key={p.name+i} className="ig-card rise" onClick={() => setExpanded(open ? null : i)}
-              style={{ padding:'18px 20px', animationDelay:i*40+'ms', cursor:'pointer', transition:'border-color .15s',
-                borderColor: open ? C.brand : undefined,
-                boxShadow: open ? '0 0 0 2px '+C.brand+'44' : undefined,
-              }}>
+            <div key={p.name+i} className="ig-card ig-hover rise"
+              onClick={() => setExpanded(i)}
+              style={{ padding:'18px 20px', animationDelay:i*40+'ms', cursor:'pointer' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:12 }}>
                 <div style={{ minWidth:0 }}>
                   <div className="display" style={{ fontWeight:700, fontSize:14.5, color:C.ink, lineHeight:1.3 }}>{p.name}</div>
@@ -350,17 +411,152 @@ function GoalsView({ projects: initial, isManager }) {
         })}
       </div>
 
-      {/* ── Full-width detail panel ── */}
-      {selProj && <ProjectDetail
-        p={selProj} i={expanded}
-        isManager={isManager}
-        onClose={() => setExpanded(null)}
-        onUpdate={(patch) => updateProject(expanded, patch)}
-        onAddMilestone={(text) => addMilestone(expanded, text)}
-        onToggleMilestone={(mi) => toggleMilestone(expanded, mi)}
-        onAddMemberRole={(name, role) => addMemberRole(expanded, name, role)}
-        onRemoveMemberRole={(ri) => removeMemberRole(expanded, ri)}
-      />}
+      {/* ── Project modal ── */}
+      {expanded !== null && projects[expanded] && (() => {
+        const p   = projects[expanded];
+        const t   = statusTone(p.status);
+        const pct = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
+        const close = () => { setExpanded(null); setEditing(false); };
+        return (
+          <div onClick={close}
+            style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: C.card === 'rgba(255,255,255,0.04)' ? '#0d1525' : '#fff', borderRadius:20, border:'1px solid '+C.line, boxShadow:'0 24px 64px rgba(0,0,0,0.35)', width:'100%', maxWidth:620, maxHeight:'90vh', overflowY:'auto', padding:'32px 36px', display:'flex', flexDirection:'column', gap:24 }}>
+
+              {/* ── Header ── */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                <div style={{ flex:1 }}>
+                  <div className="display" style={{ fontSize:20, fontWeight:800, color:C.ink, lineHeight:1.2, marginBottom:8 }}>{p.name}</div>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <Pill tone={t}>{p.status}</Pill>
+                    <span style={{ fontSize:13, color:C.inkSoft }}>Lead · <strong style={{ color:C.ink }}>{p.owner || '—'}</strong></span>
+                    <span style={{ fontSize:13, color:C.inkSoft }}>Due <strong style={{ color:C.ink }}>{p.due || '—'}</strong></span>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+                  {isManager && !editing && (
+                    <button onClick={() => setEditing(true)}
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'1px solid '+C.line, background:'transparent', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:C.ink, transition:'all .15s' }}>
+                      <Pencil size={13} /> Edit
+                    </button>
+                  )}
+                  {editing && (
+                    <button onClick={() => setEditing(false)}
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:C.brand, cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:'#fff', transition:'all .15s' }}>
+                      <Check size={13} /> Done
+                    </button>
+                  )}
+                  <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:22, lineHeight:1, padding:'2px 4px' }}>✕</button>
+                </div>
+              </div>
+
+              {/* ── Progress bar ── */}
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8 }}>
+                  <span style={{ fontSize:13, color:C.inkSoft }}>Progress</span>
+                  <span className="mono" style={{ fontSize:14, fontWeight:700, color:toneColor[t] }}>{pct}%</span>
+                </div>
+                <div className="ig-track" style={{ height:10 }}>
+                  <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
+                </div>
+                <div style={{ fontSize:12, color:C.inkFaint, marginTop:6 }}>
+                  {(p.current||0).toLocaleString()} / {(p.target||0).toLocaleString()} {p.unit}
+                </div>
+              </div>
+
+              {/* ── Description ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Description</div>
+                {editing
+                  ? <textarea className="ig-finput" rows={3} key={'desc-'+expanded} defaultValue={p.description || ''} onBlur={e => updateProject(expanded, { description: e.target.value })} placeholder="What is this project about?" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.description || '—'}</p>
+                }
+              </div>
+
+              {/* ── Goal / Outcome ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Goal / Outcome</div>
+                {editing
+                  ? <input className="ig-finput" key={'goal-'+expanded} defaultValue={p.goal || ''} onBlur={e => updateProject(expanded, { goal: e.target.value })} placeholder="What does success look like?" style={{ width:'100%', background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.goal || '—'}</p>
+                }
+              </div>
+
+              {/* ── Team roles ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:10 }}>Team roles</div>
+                {(p.memberRoles || []).length === 0 && <p style={{ fontSize:13, color:C.inkFaint, margin:'0 0 8px' }}>No roles added yet.</p>}
+                {(p.memberRoles || []).map((r, ri) => (
+                  <div key={ri} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid '+C.line }}>
+                    <div style={{ width:32, height:32, borderRadius:'50%', background:C.brand, color:'#fff', fontSize:12, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.name}</div>
+                      <div style={{ fontSize:12, color:C.inkSoft }}>{r.role}</div>
+                    </div>
+                    {editing && <button onClick={() => removeMemberRole(expanded, ri)} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:16, padding:'0 4px' }}>✕</button>}
+                  </div>
+                ))}
+                {editing && <MemberRoleInput onAdd={(name, role) => addMemberRole(expanded, name, role)} />}
+              </div>
+
+              {/* ── Milestones ── */}
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Milestones</div>
+                  {(p.milestones||[]).length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{(p.milestones||[]).filter(m=>m.done).length} / {(p.milestones||[]).length} done</span>}
+                </div>
+                {(p.milestones||[]).length === 0 && <p style={{ fontSize:13, color:C.inkFaint, margin:'0 0 8px' }}>No milestones yet.</p>}
+                {(p.milestones||[]).map((m, mi) => (
+                  <div key={mi} onClick={() => isManager && toggleMilestone(expanded, mi)}
+                    style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
+                    <div style={{ width:18, height:18, borderRadius:5, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
+                      {m.done && <Check size={11} color="#fff" />}
+                    </div>
+                    <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
+                  </div>
+                ))}
+                {editing && <MilestoneInput onAdd={text => addMilestone(expanded, text)} />}
+              </div>
+
+              {/* ── Update progress + status (edit mode, managers only) ── */}
+              {editing && (
+                <div style={{ display:'flex', flexDirection:'column', gap:12, padding:'20px', borderRadius:12, background: C.card === 'rgba(255,255,255,0.04)' ? 'rgba(255,255,255,0.04)' : 'rgba(20,33,61,0.03)', border:'1px solid '+C.line }}>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Update progress</div>
+                  <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                    <input className="ig-finput mono" type="number" min="0" key={'prog-'+expanded} defaultValue={p.current||0}
+                      onBlur={e => updateProject(expanded, { current: Number(e.target.value) })}
+                      style={{ width:110, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                    <span style={{ color:C.inkSoft, fontSize:13 }}>/ {(p.target||0).toLocaleString()} {p.unit}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Status</div>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {['On track','At risk','Behind','Completed'].map(s => (
+                      <button key={s} onClick={() => updateProject(expanded, { status:s })}
+                        style={{ padding:'6px 16px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:13, fontWeight:600, cursor:'pointer', transition:'all .15s',
+                          background:  p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
+                          color:       p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
+                          borderColor: p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
+                        }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Notes ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Notes</div>
+                {editing
+                  ? <textarea className="ig-finput" rows={4} key={'notes-'+expanded} defaultValue={p.notes || ''} onBlur={e => updateProject(expanded, { notes: e.target.value })} placeholder="Add notes, blockers, or context…" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.notes || '—'}</p>
+                }
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
@@ -2340,7 +2536,7 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
   function renderView() {
     switch (active) {
       case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} agencyUUID={userProfile?.agency_id} isManager={isManager} userId={userProfile?.id} />;
-      case 'goals':      return <GoalsView      projects={d.projects || []} isManager={isManager} />;
+      case 'goals':      return <GoalsView      agencyUUID={userProfile?.agency_id} isManager={isManager} />;
       case 'fin-revenue': return <RevenueView monthly={d.monthly || []} isManager={isManager} />;
       case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} isManager={isManager} />;
       case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} isManager={isManager} />;
