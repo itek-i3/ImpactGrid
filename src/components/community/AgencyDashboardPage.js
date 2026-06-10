@@ -1280,9 +1280,11 @@ function WeeklyTasksView({ agencyUUID, members = [], isManager }) {
 
   const WeeklyRow = ({ t }) => (
     <div className="ig-taskrow" style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 10px', borderBottom:'1px solid '+C.line, opacity: t.done ? 0.5 : 1, transition:'opacity .2s' }}>
-      <button onClick={() => isManager && toggle(t.id, t.done)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor: isManager ? 'pointer' : 'default', flexShrink:0, marginTop:2, transition:'all .15s', opacity: isManager ? 1 : 0.5 }}>
-        {t.done && <Check size={13} color="#fff" />}
-      </button>
+      {isManager && (
+        <button onClick={() => toggle(t.id, t.done)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, marginTop:2, transition:'all .15s' }}>
+          {t.done && <Check size={13} color="#fff" />}
+        </button>
+      )}
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:13.5, fontWeight:500, color:t.done?C.inkFaint:C.ink, textDecoration:t.done?'line-through':'none', lineHeight:1.4 }}>{t.task}</div>
         {t.assignee && <div style={{ fontSize:12, color:C.inkSoft, marginTop:3 }}>{t.assignee}</div>}
