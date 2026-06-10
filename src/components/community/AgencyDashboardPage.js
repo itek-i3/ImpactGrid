@@ -202,178 +202,183 @@ function GoalsView({ projects: initial, isManager }) {
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))', gap:20, marginTop:20 }}>
+      {/* ── Compact cards grid ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16, marginTop:20 }}>
         {projects.map((p, i) => {
-          const pct        = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
-          const t          = statusTone(p.status);
-          const open       = expanded === i;
-          const milestones = p.milestones  || [];
-          const roles      = p.memberRoles || [];
-          const mDone      = milestones.filter(m => m.done).length;
-
+          const pct  = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
+          const t    = statusTone(p.status);
+          const open = expanded === i;
           return (
-            <div key={p.name+i} className="ig-card rise" style={{ padding:0, overflow:'hidden', animationDelay:i*50+'ms' }}>
-
-              {/* ── Card header (always visible) ── */}
-              <div onClick={() => setExpanded(open ? null : i)} style={{ padding:'20px 22px', cursor:'pointer' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                  <div style={{ minWidth:0 }}>
-                    <div className="display" style={{ fontWeight:700, fontSize:15.5, color:C.ink, lineHeight:1.2 }}>{p.name}</div>
-                    {p.description && (
-                      <div style={{ fontSize:12.5, color:C.inkSoft, marginTop:4, lineHeight:1.5, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-                        {p.description}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                    <Pill tone={t}>{p.status}</Pill>
-                    <span style={{ color:C.inkFaint, fontSize:13, transition:'transform .2s', display:'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-                  </div>
+            <div key={p.name+i} className="ig-card rise" onClick={() => setExpanded(open ? null : i)}
+              style={{ padding:'18px 20px', animationDelay:i*40+'ms', cursor:'pointer', transition:'border-color .15s',
+                borderColor: open ? C.brand : undefined,
+                boxShadow: open ? '0 0 0 2px '+C.brand+'44' : undefined,
+              }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:12 }}>
+                <div style={{ minWidth:0 }}>
+                  <div className="display" style={{ fontWeight:700, fontSize:14.5, color:C.ink, lineHeight:1.3 }}>{p.name}</div>
+                  {p.description && (
+                    <div style={{ fontSize:12, color:C.inkSoft, marginTop:3, lineHeight:1.4, display:'-webkit-box', WebkitLineClamp:1, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                      {p.description}
+                    </div>
+                  )}
                 </div>
-
-                {/* progress */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:14 }}>
-                  <span className="mono" style={{ fontSize:18, fontWeight:600, color:C.ink }}>
-                    {(p.current||0).toLocaleString()}
-                    <span style={{ color:C.inkFaint, fontWeight:400, fontSize:13 }}> / {(p.target||0).toLocaleString()} {p.unit}</span>
-                  </span>
-                  <span className="mono" style={{ fontSize:13, fontWeight:600, color:toneColor[t] }}>{pct}%</span>
-                </div>
-                <div className="ig-track" style={{ marginTop:8 }}>
-                  <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginTop:10, fontSize:12, color:C.inkSoft }}>
-                  <span>Lead · {p.owner || '—'}</span>
-                  <span>Due {p.due || '—'}</span>
-                </div>
+                <Pill tone={t}>{p.status}</Pill>
               </div>
-
-              {/* ── Expanded detail ── */}
-              {open && (
-                <div style={{ borderTop:'1px solid '+C.line, padding:'20px 22px', display:'flex', flexDirection:'column', gap:20 }}
-                  onClick={e => e.stopPropagation()}>
-
-                  {/* 1. Description */}
-                  <div>
-                    <SectionLabel>Description</SectionLabel>
-                    {isManager
-                      ? <textarea className="ig-finput" rows={3} defaultValue={p.description || ''}
-                          onBlur={e => updateProject(i, { description: e.target.value })}
-                          placeholder="What is this project about?"
-                          style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background: C.inputBg, color: C.ink, borderColor: C.line }} />
-                      : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.description || '—'}</p>
-                    }
-                  </div>
-
-                  {/* 2. Goal / outcome */}
-                  <div>
-                    <SectionLabel>Goal / Outcome</SectionLabel>
-                    {isManager
-                      ? <input className="ig-finput" defaultValue={p.goal || ''}
-                          onBlur={e => updateProject(i, { goal: e.target.value })}
-                          placeholder="What does success look like?"
-                          style={{ width:'100%', background: C.inputBg, color: C.ink, borderColor: C.line }} />
-                      : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.goal || '—'}</p>
-                    }
-                  </div>
-
-                  {/* 3. Member roles */}
-                  <div>
-                    <SectionLabel>Team roles</SectionLabel>
-                    {roles.length === 0
-                      ? <p style={{ fontSize:13, color:C.inkFaint, margin:0 }}>No roles added yet.</p>
-                      : (
-                        <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
-                          {roles.map((r, ri) => (
-                            <div key={ri} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid '+C.line }}>
-                              <div style={{ width:30, height:30, borderRadius:'50%', background:C.brand, color:'#fff', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                                {r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
-                              </div>
-                              <div style={{ flex:1, minWidth:0 }}>
-                                <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.name}</div>
-                                <div style={{ fontSize:12, color:C.inkSoft }}>{r.role}</div>
-                              </div>
-                              {isManager && (
-                                <button className="ig-delrow" onClick={() => removeMemberRole(i, ri)} title="Remove" style={{ opacity:1 }}>✕</button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }
-                    {isManager && <MemberRoleInput onAdd={(name, role) => addMemberRole(i, name, role)} />}
-                  </div>
-
-                  {/* 4. Milestones */}
-                  <div>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                      <SectionLabel>Milestones</SectionLabel>
-                      {milestones.length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{mDone}/{milestones.length} done</span>}
-                    </div>
-                    {milestones.map((m, mi) => (
-                      <div key={mi} onClick={() => isManager && toggleMilestone(i, mi)}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
-                        <div style={{ width:16, height:16, borderRadius:4, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
-                          {m.done && <Check size={10} color="#fff" />}
-                        </div>
-                        <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
-                      </div>
-                    ))}
-                    {isManager && <MilestoneInput onAdd={text => addMilestone(i, text)} />}
-                  </div>
-
-                  {/* 5. Update progress (managers only) */}
-                  {isManager && (
-                    <div>
-                      <SectionLabel>Update progress</SectionLabel>
-                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                        <input className="ig-finput mono" type="number" min="0" max={p.target}
-                          defaultValue={p.current||0}
-                          onBlur={e => updateProject(i, { current: Number(e.target.value) })}
-                          style={{ width:110, background: C.inputBg, color: C.ink, borderColor: C.line }} />
-                        <span style={{ color:C.inkSoft, fontSize:13 }}>/ {(p.target||0).toLocaleString()} {p.unit}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 6. Status (managers only) */}
-                  {isManager && (
-                    <div>
-                      <SectionLabel>Status</SectionLabel>
-                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                        {['On track','At risk','Behind','Completed'].map(s => (
-                          <button key={s} onClick={() => updateProject(i, { status:s })}
-                            style={{ padding:'5px 14px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:12.5, fontWeight:600, cursor:'pointer', transition:'all .15s',
-                              background:   p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
-                              color:        p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
-                              borderColor:  p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
-                            }}>
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 7. Notes */}
-                  <div>
-                    <SectionLabel>Notes</SectionLabel>
-                    {isManager
-                      ? <textarea className="ig-finput" rows={3}
-                          defaultValue={p.notes || ''}
-                          onBlur={e => updateProject(i, { notes: e.target.value })}
-                          placeholder="Add notes, blockers, or context…"
-                          style={{ width:'100%', resize:'vertical', minHeight:72, lineHeight:1.5, fontSize:13, background: C.inputBg, color: C.ink, borderColor: C.line }} />
-                      : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.notes || '—'}</p>
-                    }
-                  </div>
-
-                </div>
-              )}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+                <span className="mono" style={{ fontSize:16, fontWeight:600, color:C.ink }}>
+                  {(p.current||0).toLocaleString()}
+                  <span style={{ color:C.inkFaint, fontWeight:400, fontSize:12 }}> / {(p.target||0).toLocaleString()} {p.unit}</span>
+                </span>
+                <span className="mono" style={{ fontSize:12, fontWeight:600, color:toneColor[t] }}>{pct}%</span>
+              </div>
+              <div className="ig-track">
+                <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', marginTop:10, fontSize:11.5, color:C.inkFaint }}>
+                <span>Lead · {p.owner || '—'}</span>
+                <span>Due {p.due || '—'}</span>
+              </div>
             </div>
           );
         })}
       </div>
+
+      {/* ── Full-width detail panel ── */}
+      {expanded !== null && (() => {
+        const i          = expanded;
+        const p          = projects[i];
+        if (!p) return null;
+        const t          = statusTone(p.status);
+        const milestones = p.milestones  || [];
+        const roles      = p.memberRoles || [];
+        const mDone      = milestones.filter(m => m.done).length;
+        return (
+          <div className="ig-card rise" style={{ marginTop:16, padding:'24px 28px', display:'flex', flexDirection:'column', gap:24 }}>
+            {/* header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+              <div>
+                <div className="display" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{p.name}</div>
+                <div style={{ fontSize:13, color:C.inkSoft, marginTop:2 }}>Lead · {p.owner || '—'} &nbsp;·&nbsp; Due {p.due || '—'}</div>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <Pill tone={t}>{p.status}</Pill>
+                <button onClick={() => setExpanded(null)} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:18, lineHeight:1 }}>✕</button>
+              </div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }} className="ig-2col">
+              {/* Left column */}
+              <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+                {/* Description */}
+                <div>
+                  <SectionLabel>Description</SectionLabel>
+                  {isManager
+                    ? <textarea className="ig-finput" rows={3} defaultValue={p.description || ''}
+                        onBlur={e => updateProject(i, { description: e.target.value })}
+                        placeholder="What is this project about?"
+                        style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background: C.inputBg, color: C.ink, borderColor: C.line }} />
+                    : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.description || '—'}</p>
+                  }
+                </div>
+
+                {/* Goal / outcome */}
+                <div>
+                  <SectionLabel>Goal / Outcome</SectionLabel>
+                  {isManager
+                    ? <input className="ig-finput" defaultValue={p.goal || ''}
+                        onBlur={e => updateProject(i, { goal: e.target.value })}
+                        placeholder="What does success look like?"
+                        style={{ width:'100%', background: C.inputBg, color: C.ink, borderColor: C.line }} />
+                    : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.goal || '—'}</p>
+                  }
+                </div>
+
+                {/* Team roles */}
+                <div>
+                  <SectionLabel>Team roles</SectionLabel>
+                  {roles.length === 0
+                    ? <p style={{ fontSize:13, color:C.inkFaint, margin:0 }}>No roles added yet.</p>
+                    : roles.map((r, ri) => (
+                      <div key={ri} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid '+C.line }}>
+                        <div style={{ width:30, height:30, borderRadius:'50%', background:C.brand, color:'#fff', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          {r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.name}</div>
+                          <div style={{ fontSize:12, color:C.inkSoft }}>{r.role}</div>
+                        </div>
+                        {isManager && <button className="ig-delrow" onClick={() => removeMemberRole(i, ri)} style={{ opacity:1 }}>✕</button>}
+                      </div>
+                    ))
+                  }
+                  {isManager && <MemberRoleInput onAdd={(name, role) => addMemberRole(i, name, role)} />}
+                </div>
+              </div>
+
+              {/* Right column */}
+              <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+                {/* Milestones */}
+                <div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                    <SectionLabel>Milestones</SectionLabel>
+                    {milestones.length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{mDone}/{milestones.length} done</span>}
+                  </div>
+                  {milestones.map((m, mi) => (
+                    <div key={mi} onClick={() => isManager && toggleMilestone(i, mi)}
+                      style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
+                      <div style={{ width:16, height:16, borderRadius:4, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
+                        {m.done && <Check size={10} color="#fff" />}
+                      </div>
+                      <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
+                    </div>
+                  ))}
+                  {isManager && <MilestoneInput onAdd={text => addMilestone(i, text)} />}
+                </div>
+
+                {/* Update progress + status (managers only) */}
+                {isManager && (
+                  <div>
+                    <SectionLabel>Update progress</SectionLabel>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:16 }}>
+                      <input className="ig-finput mono" type="number" min="0" max={p.target}
+                        defaultValue={p.current||0}
+                        onBlur={e => updateProject(i, { current: Number(e.target.value) })}
+                        style={{ width:110, background: C.inputBg, color: C.ink, borderColor: C.line }} />
+                      <span style={{ color:C.inkSoft, fontSize:13 }}>/ {(p.target||0).toLocaleString()} {p.unit}</span>
+                    </div>
+                    <SectionLabel>Status</SectionLabel>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                      {['On track','At risk','Behind','Completed'].map(s => (
+                        <button key={s} onClick={() => updateProject(i, { status:s })}
+                          style={{ padding:'5px 14px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:12.5, fontWeight:600, cursor:'pointer', transition:'all .15s',
+                            background:  p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
+                            color:       p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
+                            borderColor: p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
+                          }}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                <div>
+                  <SectionLabel>Notes</SectionLabel>
+                  {isManager
+                    ? <textarea className="ig-finput" rows={4} defaultValue={p.notes || ''}
+                        onBlur={e => updateProject(i, { notes: e.target.value })}
+                        placeholder="Add notes, blockers, or context…"
+                        style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background: C.inputBg, color: C.ink, borderColor: C.line }} />
+                    : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.notes || '—'}</p>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
