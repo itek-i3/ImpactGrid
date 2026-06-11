@@ -647,18 +647,35 @@ export default function DemoAgencyPage({ params }) {
         .select('id, full_name, email, role, approved, agency_id')
         .eq('id', user.id)
         .single()
-        .then(({ data: profile }) => {
-          const role        = profile?.role || user.user_metadata?.role || 'member';
-          const agencySlug  = user.user_metadata?.agency || '';
+        .then(async ({ data: profile }) => {
+          const role       = profile?.role || user.user_metadata?.role || 'member';
+          const agencySlug = user.user_metadata?.agency || '';
 
-          // Non-admins can only view their own agency
+          // Non-admins can only view their own agency dashboard
           if (role !== 'admin' && agencySlug && agencySlug !== agencyId?.toLowerCase()) {
             router.replace(`/demo/agencies/${agencySlug}`);
             return;
           }
 
+          // Resolve the UUID of the agency currently being viewed from the URL slug.
+          // This is the source of truth for which data to display — not the profile's
+          // agency_id (which is irrelevant for admins and can be wrong for members if
+          // profiles were created before the agencies table was populated).
+          const { data: ag } = await supabase
+            .from('agencies')
+            .select('id')
+            .eq('slug', agencyId?.toLowerCase())
+            .single();
+
+          const viewedAgencyId = ag?.id || null;
+
           if (profile) {
-            setUserProfile(profile);
+            // Always use the URL-resolved UUID as the agencyUUID for data fetching.
+            // Supabase RLS still enforces server-side isolation — a member who somehow
+            // bypasses the redirect will get zero rows back from any query. This also
+            // fixes admins (whose profile agency_id is null) and members whose profile
+            // agency_id was incorrectly set at signup time.
+            setUserProfile({ ...profile, agency_id: viewedAgencyId });
           } else {
             setUserProfile({
               id: user.id,
@@ -666,7 +683,7 @@ export default function DemoAgencyPage({ params }) {
               email: user.email,
               role,
               approved: true,
-              agency_id: null,
+              agency_id: viewedAgencyId,
             });
           }
         });
