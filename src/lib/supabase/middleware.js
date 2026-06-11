@@ -57,17 +57,16 @@ export async function updateSession(request) {
 
   // Redirect to login if not authenticated and trying to access protected route
   if (!user && !isPublicRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
+    const origin = new URL(request.url).origin;
+    const url = new URL('/os/login', origin);
     url.searchParams.set('redirect', pathname);
     return NextResponse.redirect(url);
   }
 
-  // Redirect to workspace if authenticated and trying to access auth pages
+  // Redirect to home if authenticated and trying to access auth pages
   if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+    const origin = new URL(request.url).origin;
+    return NextResponse.redirect(new URL('/os/', origin));
   }
 
   return supabaseResponse;
