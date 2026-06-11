@@ -9,7 +9,7 @@ export default function Header({ currentProject }) {
     'I3x AFRICA': 'i3x',
     'I360': 'i360',
     'I3STUDIO': 'i3studio',
-    'i3KingdomHub': 'i3kingdom',
+    'i3 Launchpad': 'i3kingdom',
     'GENERAL': 'default',
     'ASSESTS': 'default',
     'PRODUCTION ASSESTS': 'default',

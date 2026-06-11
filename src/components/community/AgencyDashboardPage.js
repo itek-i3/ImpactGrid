@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -23,6 +23,7 @@ const LIGHT_C = {
   signal: '#F5A623', alert: '#E0485A', pos: '#16A36B',
   card: '#FFFFFF', line: 'rgba(20,33,61,0.10)',
   sidebar: '#0E1A3A', sidebarLine: 'rgba(255,255,255,0.08)', sidebarSoft: '#8FA0C4',
+  inputBg: '#FFFFFF',
 };
 const DARK_C = {
   paper: '#02040A', ink: '#E2EEFF', inkSoft: '#7EB3FF', inkFaint: '#3D5A8A',
@@ -30,6 +31,7 @@ const DARK_C = {
   signal: '#F5A623', alert: '#E0485A', pos: '#16A36B',
   card: 'rgba(255,255,255,0.04)', line: 'rgba(48,108,236,0.22)',
   sidebar: '#000000', sidebarLine: 'rgba(48,108,236,0.20)', sidebarSoft: '#7EB3FF',
+  inputBg: '#0d1b38',
 };
 let C = { ...LIGHT_C };
 const PIE = ['#306CEC','#F5A623','#16A36B','#7E6CF0','#19C4D9','#E0485A','#5B9BFF'];
@@ -99,171 +101,477 @@ const Delta = ({ v }) => (
 );
 
 /* ── Views ── */
-function GoalsView({ projects: initial, isManager }) {
-  const [projects,  setProjects] = useState(initial);
+function ProjectDetail({ p, i, isManager, onClose, onUpdate, onAddMilestone, onToggleMilestone, onAddMemberRole, onRemoveMemberRole }) {
+  const t          = statusTone(p.status);
+  const milestones = p.milestones  || [];
+  const roles      = p.memberRoles || [];
+  const mDone      = milestones.filter(m => m.done).length;
+  return (
+    <div className="ig-card rise" style={{ marginTop:16, padding:'24px 28px', display:'flex', flexDirection:'column', gap:24 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <div>
+          <div className="display" style={{ fontSize:18, fontWeight:700, color:C.ink }}>{p.name}</div>
+          <div style={{ fontSize:13, color:C.inkSoft, marginTop:2 }}>Lead · {p.owner || '—'} &nbsp;·&nbsp; Due {p.due || '—'}</div>
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <Pill tone={t}>{p.status}</Pill>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:18, lineHeight:1, padding:'0 4px' }}>✕</button>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+        <div>
+          <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Description</div>
+          {isManager
+            ? <textarea className="ig-finput" rows={3} defaultValue={p.description || ''} onBlur={e => onUpdate({ description: e.target.value })} placeholder="What is this project about?" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+            : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.description || '—'}</p>
+          }
+        </div>
+
+        <div>
+          <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Goal / Outcome</div>
+          {isManager
+            ? <input className="ig-finput" defaultValue={p.goal || ''} onBlur={e => onUpdate({ goal: e.target.value })} placeholder="What does success look like?" style={{ width:'100%', background:C.inputBg, color:C.ink, borderColor:C.line }} />
+            : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.goal || '—'}</p>
+          }
+        </div>
+
+        <div>
+          <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Team roles</div>
+          {roles.length === 0 && <p style={{ fontSize:13, color:C.inkFaint, margin:0 }}>No roles added yet.</p>}
+          {roles.map((r, ri) => (
+            <div key={ri} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid '+C.line }}>
+              <div style={{ width:30, height:30, borderRadius:'50%', background:C.brand, color:'#fff', fontSize:11, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                {r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.name}</div>
+                <div style={{ fontSize:12, color:C.inkSoft }}>{r.role}</div>
+              </div>
+              {isManager && <button className="ig-delrow" onClick={() => onRemoveMemberRole(ri)} style={{ opacity:1 }}>✕</button>}
+            </div>
+          ))}
+          {isManager && <MemberRoleInput onAdd={onAddMemberRole} />}
+        </div>
+
+        <div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+            <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Milestones</div>
+            {milestones.length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{mDone}/{milestones.length} done</span>}
+          </div>
+          {milestones.map((m, mi) => (
+            <div key={mi} onClick={() => isManager && onToggleMilestone(mi)}
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
+              <div style={{ width:16, height:16, borderRadius:4, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
+                {m.done && <Check size={10} color="#fff" />}
+              </div>
+              <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
+            </div>
+          ))}
+          {isManager && <MilestoneInput onAdd={onAddMilestone} />}
+        </div>
+
+        {isManager && (
+          <div>
+            <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Update progress</div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:16 }}>
+              <input className="ig-finput mono" type="number" min="0" max={p.target} defaultValue={p.current||0}
+                onBlur={e => onUpdate({ current: Number(e.target.value) })}
+                style={{ width:110, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+              <span style={{ color:C.inkSoft, fontSize:13 }}>/ {(p.target||0).toLocaleString()} {p.unit}</span>
+            </div>
+            <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Status</div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {['On track','At risk','Behind','Completed'].map(s => (
+                <button key={s} onClick={() => onUpdate({ status:s })}
+                  style={{ padding:'5px 14px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:12.5, fontWeight:600, cursor:'pointer', transition:'all .15s',
+                    background:  p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
+                    color:       p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
+                    borderColor: p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
+                  }}>{s}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Notes</div>
+          {isManager
+            ? <textarea className="ig-finput" rows={4} defaultValue={p.notes || ''} onBlur={e => onUpdate({ notes: e.target.value })} placeholder="Add notes, blockers, or context…" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+            : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.notes || '—'}</p>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MemberRoleInput({ onAdd }) {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  return (
+    <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
+      <input className="ig-finput" placeholder="Member name" value={name} onChange={e => setName(e.target.value)}
+        style={{ flex:'1 1 130px', fontSize:12.5, background: C.inputBg, color: C.ink, borderColor: C.line }} />
+      <input className="ig-finput" placeholder="Role in project" value={role} onChange={e => setRole(e.target.value)}
+        style={{ flex:'1 1 130px', fontSize:12.5, background: C.inputBg, color: C.ink, borderColor: C.line }}
+        onKeyDown={e => { if (e.key==='Enter' && name.trim() && role.trim()) { onAdd(name, role); setName(''); setRole(''); } }} />
+      <button className="ig-fadd" onClick={() => { if (name.trim() && role.trim()) { onAdd(name, role); setName(''); setRole(''); } }}
+        style={{ padding:'5px 12px', fontSize:12 }}>Add</button>
+    </div>
+  );
+}
+
+function GoalsView({ agencyUUID, isManager }) {
+  const [projects,  setProjects] = useState([]);
+  const [loading,   setLoading]  = useState(true);
   const [adding,    setAdding]   = useState(false);
   const [expanded,  setExpanded] = useState(null);
-  const [form,      setForm]     = useState({ name:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
+  const [editing,   setEditing]  = useState(false);
+  const [form,      setForm]     = useState({ name:'', description:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
+  const supabase = createClient();
 
-  const set     = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const addGoal = () => {
-    if (!form.name.trim()) return;
-    setProjects((p) => [{ ...form, target: Number(form.target) || 0, current: 0, notes:'', milestones:[] }, ...p]);
-    setForm({ name:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
+  const fromRow = (r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description || '',
+    goal: r.goal || '',
+    owner: r.owner || '',
+    due: r.due || '',
+    status: r.status || 'On track',
+    current: r.progress || 0,
+    target: r.target || 0,
+    unit: r.unit || '',
+    notes: r.notes || '',
+    milestones: r.milestones || [],
+    memberRoles: r.member_roles || [],
+  });
+
+  useEffect(() => {
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+
+    supabase.from('projects').select('*').eq('agency_id', agencyUUID)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { setProjects((data || []).map(fromRow)); setLoading(false); });
+
+    const channel = supabase
+      .channel('projects:' + agencyUUID)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects', filter: `agency_id=eq.${agencyUUID}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setProjects(p => p.find(x => x.id === payload.new.id) ? p : [...p, fromRow(payload.new)]);
+          } else if (payload.eventType === 'UPDATE') {
+            setProjects(p => p.map(x => x.id === payload.new.id ? fromRow(payload.new) : x));
+          } else if (payload.eventType === 'DELETE') {
+            setProjects(p => p.filter(x => x.id !== payload.old.id));
+          }
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [agencyUUID]);
+
+  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const addGoal = async () => {
+    if (!form.name.trim() || !agencyUUID) return;
+    const row = {
+      agency_id: agencyUUID,
+      name: form.name, description: form.description, goal: form.goal,
+      owner: form.owner, due: form.due, status: form.status,
+      progress: 0, target: Number(form.target) || 0, unit: form.unit,
+      notes: '', milestones: [], member_roles: [],
+    };
+    const { data, error } = await supabase.from('projects').insert([row]).select().single();
+    if (data) setProjects(p => p.find(x => x.id === data.id) ? p : [...p, fromRow(data)]);
+    setForm({ name:'', description:'', goal:'', owner:'', target:'', unit:'', due:'', status:'On track' });
     setAdding(false);
   };
-  const updateProject = (i, patch) => setProjects(p => p.map((x, idx) => idx === i ? { ...x, ...patch } : x));
-  const addMilestone  = (i, text) => {
-    if (!text.trim()) return;
-    setProjects(p => p.map((x, idx) => idx === i ? { ...x, milestones: [...(x.milestones||[]), { text, done:false }] } : x));
+
+  const updateProject = async (i, patch) => {
+    const proj = projects[i];
+    if (!proj?.id) return;
+    const dbPatch = { ...patch };
+    if ('memberRoles' in patch) { dbPatch.member_roles = patch.memberRoles; delete dbPatch.memberRoles; }
+    if ('current' in patch)     { dbPatch.progress = patch.current;         delete dbPatch.current; }
+    setProjects(p => p.map((x, idx) => idx === i ? { ...x, ...patch } : x));
+    await supabase.from('projects').update(dbPatch).eq('id', proj.id);
   };
-  const toggleMilestone = (pi, mi) => setProjects(p => p.map((x, idx) => idx === pi ? {
-    ...x, milestones: x.milestones.map((m, j) => j === mi ? { ...m, done:!m.done } : m)
-  } : x));
+
+  const addMilestone = (i, text) => {
+    if (!text.trim()) return;
+    const milestones = [...(projects[i].milestones || []), { text, done: false }];
+    updateProject(i, { milestones });
+  };
+  const toggleMilestone = (pi, mi) => {
+    const milestones = projects[pi].milestones.map((m, j) => j === mi ? { ...m, done: !m.done } : m);
+    updateProject(pi, { milestones });
+  };
+  const addMemberRole = (i, name, role) => {
+    const memberRoles = [...(projects[i].memberRoles || []), { name, role }];
+    updateProject(i, { memberRoles });
+  };
+  const removeMemberRole = (pi, ri) => {
+    const memberRoles = (projects[pi].memberRoles || []).filter((_, j) => j !== ri);
+    updateProject(pi, { memberRoles });
+  };
+
+  const deleteProject = async (i) => {
+    const proj = projects[i];
+    if (!proj?.id) return;
+    setProjects(p => p.filter((_, idx) => idx !== i));
+    setExpanded(null);
+    setEditing(false);
+    await supabase.from('projects').delete().eq('id', proj.id);
+  };
 
   const counts = projects.reduce((a, p) => ((a[p.status] = (a[p.status] || 0) + 1), a), {});
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading projects…</div>;
 
   return (
     <>
       <div className="ig-kpis">
-        <Stat label="Active projects"  value={projects.length}                                     sub="across all workstreams" tone="neutral" delay={0}   />
-        <Stat label="On track"         value={counts['On track'] || 0}                             sub="meeting milestones"     tone="pos"     delay={60}  />
-        <Stat label="At risk / behind" value={(counts['At risk']||0)+(counts['Behind']||0)}        sub="need attention"         tone="neg"     delay={120} />
-        <Stat label="Completed"        value={counts['Completed'] || 0}                            sub="delivered"              tone="brand"   delay={180} />
+        <Stat label="Active projects"  value={projects.length}                              sub="across all workstreams" tone="neutral" delay={0}   />
+        <Stat label="On track"         value={counts['On track'] || 0}                      sub="meeting milestones"     tone="pos"     delay={60}  />
+        <Stat label="At risk / behind" value={(counts['At risk']||0)+(counts['Behind']||0)} sub="need attention"         tone="neg"     delay={120} />
+        <Stat label="Completed"        value={counts['Completed'] || 0}                     sub="delivered"              tone="brand"   delay={180} />
       </div>
 
-      {isManager && <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, marginBottom: adding ? 0 : 4 }}>
-        <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
-          <Plus size={14} /> Add goal
-        </button>
-      </div>}
+      {isManager && (
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16, marginBottom: adding ? 0 : 4 }}>
+          <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+            <Plus size={14} /> Add project
+          </button>
+        </div>
+      )}
 
       {isManager && adding && (
         <div className="ig-card" style={{ padding:20, marginTop:12, marginBottom:4 }}>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
-            <input  className="ig-finput" placeholder="Project name *"       value={form.name}   onChange={set('name')}   style={{ flex:'1 1 200px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addGoal()} />
-            <input  className="ig-finput" placeholder="Goal description"     value={form.goal}   onChange={set('goal')}   style={{ flex:'1 1 260px' }} />
-            <input  className="ig-finput" placeholder="Lead / Owner"         value={form.owner}  onChange={set('owner')}  style={{ width:140 }} />
-            <input  className="ig-finput" placeholder="Target (number)"      value={form.target} onChange={set('target')} style={{ width:130 }} type="number" min="0" />
-            <input  className="ig-finput" placeholder="Unit (e.g. clients)"  value={form.unit}   onChange={set('unit')}   style={{ width:150 }} />
-            <input  className="ig-finput" placeholder="Due (e.g. Dec 2026)"  value={form.due}    onChange={set('due')}    style={{ width:150 }} />
-            <select className="ig-fselect" value={form.status} onChange={set('status')}>
-              {['On track','At risk','Behind','Completed'].map((s) => <option key={s}>{s}</option>)}
-            </select>
-            <button className="ig-fadd"    onClick={addGoal}>Add goal</button>
-            <button className="ig-fcancel" onClick={() => setAdding(false)}>Cancel</button>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <input className="ig-finput" placeholder="Project name *" value={form.name} onChange={set('name')}
+              style={{ gridColumn:'1/-1', background: C.inputBg, color: C.ink, borderColor: C.line }} autoFocus />
+            <textarea className="ig-finput" placeholder="Description — what is this project about?" value={form.description} onChange={set('description')}
+              rows={2} style={{ gridColumn:'1/-1', resize:'vertical', background: C.inputBg, color: C.ink, borderColor: C.line, lineHeight:1.5 }} />
+            <input className="ig-finput" placeholder="Goal / outcome" value={form.goal} onChange={set('goal')}
+              style={{ gridColumn:'1/-1', background: C.inputBg, color: C.ink, borderColor: C.line }} />
+            <input className="ig-finput" placeholder="Lead / Owner" value={form.owner} onChange={set('owner')}
+              style={{ background: C.inputBg, color: C.ink, borderColor: C.line }} />
+            <input className="ig-finput" placeholder="Due (e.g. Dec 2026)" value={form.due} onChange={set('due')}
+              style={{ background: C.inputBg, color: C.ink, borderColor: C.line }} />
+            <input className="ig-finput" placeholder="Target (number)" value={form.target} onChange={set('target')} type="number" min="0"
+              style={{ background: C.inputBg, color: C.ink, borderColor: C.line }} />
+            <input className="ig-finput" placeholder="Unit (e.g. clients)" value={form.unit} onChange={set('unit')}
+              style={{ background: C.inputBg, color: C.ink, borderColor: C.line }} />
+          </div>
+          <div style={{ display:'flex', gap:8, marginTop:10, alignItems:'center' }}>
+            <div style={{ position:'relative' }}>
+              <select value={form.status} onChange={set('status')}
+                style={{ appearance:'none', WebkitAppearance:'none', background: C.inputBg, color: C.ink, border:'1px solid '+C.line, borderRadius:8, padding:'8px 30px 8px 12px', fontSize:13, fontFamily:'inherit', cursor:'pointer', outline:'none', colorScheme: C.inputBg === '#FFFFFF' ? 'light' : 'dark' }}>
+                {['On track','At risk','Behind','Completed'].map(s => <option key={s}>{s}</option>)}
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.inkSoft, fontSize:11 }}>▾</span>
+            </div>
+            <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+              <button className="ig-fadd" onClick={addGoal}>Add project</button>
+              <button className="ig-fcancel" onClick={() => setAdding(false)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(330px,1fr))', gap:20, marginTop:20 }}>
+      {/* ── Compact cards grid ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16, marginTop:20 }}>
         {projects.map((p, i) => {
-          const pct  = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
-          const t    = statusTone(p.status);
-          const open = expanded === i;
-          const milestones = p.milestones || [];
-          const mDone = milestones.filter(m => m.done).length;
+          const pct = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
+          const t   = statusTone(p.status);
           return (
-            <div key={p.name+i} className="ig-card rise" style={{ padding:0, overflow:'hidden', animationDelay:i*50+'ms', cursor:'pointer' }}>
-
-              {/* — collapsed header — always visible — */}
-              <div onClick={() => setExpanded(open ? null : i)} style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:0 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                  <div style={{ minWidth:0 }}>
-                    <div className="display" style={{ fontWeight:700, fontSize:15.5, color:C.ink, lineHeight:1.2 }}>{p.name}</div>
-                    <div style={{ fontSize:12.5, color:C.inkSoft, marginTop:3, lineHeight:1.4 }}>{p.goal}</div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                    <Pill tone={t}>{p.status}</Pill>
-                    <span style={{ color:C.inkFaint, fontSize:13, transition:'transform .2s', display:'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-                  </div>
+            <div key={p.name+i} className="ig-card ig-hover rise"
+              onClick={() => setExpanded(i)}
+              style={{ padding:'18px 20px', animationDelay:i*40+'ms', cursor:'pointer' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:12 }}>
+                <div style={{ minWidth:0 }}>
+                  <div className="display" style={{ fontWeight:700, fontSize:14.5, color:C.ink, lineHeight:1.3 }}>{p.name}</div>
+                  {p.description && (
+                    <div style={{ fontSize:12, color:C.inkSoft, marginTop:3, lineHeight:1.4, display:'-webkit-box', WebkitLineClamp:1, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                      {p.description}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginTop:16 }}>
-                  <span className="mono" style={{ fontSize:20, fontWeight:600, color:C.ink }}>
-                    {(p.current||0).toLocaleString()}<span style={{ color:C.inkFaint, fontWeight:400 }}> / {p.target.toLocaleString()} {p.unit}</span>
-                  </span>
-                  <span className="mono" style={{ fontSize:13, fontWeight:600, color:toneColor[t] }}>{pct}%</span>
-                </div>
-                <div className="ig-track" style={{ marginTop:8 }}>
-                  <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginTop:12, fontSize:12, color:C.inkSoft }}>
-                  <span>Lead · {p.owner || '—'}</span>
-                  <span>Due {p.due || '—'}</span>
-                </div>
+                <Pill tone={t}>{p.status}</Pill>
               </div>
-
-              {/* — expanded detail — */}
-              {open && (
-                <div style={{ borderTop:'1px solid '+C.line, padding:'20px 22px', display:'flex', flexDirection:'column', gap:18 }}
-                  onClick={e => e.stopPropagation()}>
-
-                  {/* update progress */}
-                  {isManager && <div>
-                    <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Update progress</div>
-                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                      <input className="ig-finput mono" type="number" min="0" max={p.target}
-                        defaultValue={p.current||0}
-                        onBlur={e => updateProject(i, { current: Number(e.target.value) })}
-                        style={{ width:110 }} />
-                      <span style={{ color:C.inkSoft, fontSize:13 }}>/ {p.target.toLocaleString()} {p.unit}</span>
-                    </div>
-                  </div>}
-
-                  {/* status */}
-                  {isManager && <div>
-                    <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Status</div>
-                    <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                      {['On track','At risk','Behind','Completed'].map(s => (
-                        <button key={s} onClick={() => updateProject(i, { status:s })}
-                          style={{ padding:'5px 14px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:12.5, fontWeight:600, cursor:'pointer', transition:'all .15s',
-                            background: p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
-                            color:      p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
-                            borderColor: p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
-                          }}>
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  </div>}
-
-                  {/* milestones */}
-                  <div>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                      <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase' }}>Milestones</div>
-                      {milestones.length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{mDone}/{milestones.length} done</span>}
-                    </div>
-                    {milestones.map((m, mi) => (
-                      <div key={mi} onClick={() => isManager && toggleMilestone(i, mi)}
-                        style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
-                        <div style={{ width:16, height:16, borderRadius:4, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
-                          {m.done && <Check size={10} color="#fff" />}
-                        </div>
-                        <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
-                      </div>
-                    ))}
-                    {isManager && <MilestoneInput onAdd={text => addMilestone(i, text)} />}
-                  </div>
-
-                  {/* notes */}
-                  <div>
-                    <div style={{ fontSize:11.5, color:C.inkFaint, fontWeight:700, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Notes</div>
-                    {isManager
-                      ? <textarea className="ig-finput" rows={3}
-                          defaultValue={p.notes || ''}
-                          onBlur={e => updateProject(i, { notes: e.target.value })}
-                          placeholder="Add notes, blockers, or context…"
-                          style={{ width:'100%', resize:'vertical', minHeight:72, lineHeight:1.5, fontSize:13 }} />
-                      : <p style={{ fontSize:13, color:C.inkSoft, margin:0, lineHeight:1.6 }}>{p.notes || '—'}</p>
-                    }
-                  </div>
-
-                </div>
-              )}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+                <span className="mono" style={{ fontSize:16, fontWeight:600, color:C.ink }}>
+                  {(p.current||0).toLocaleString()}
+                  <span style={{ color:C.inkFaint, fontWeight:400, fontSize:12 }}> / {(p.target||0).toLocaleString()} {p.unit}</span>
+                </span>
+                <span className="mono" style={{ fontSize:12, fontWeight:600, color:toneColor[t] }}>{pct}%</span>
+              </div>
+              <div className="ig-track">
+                <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', marginTop:10, fontSize:11.5, color:C.inkFaint }}>
+                <span>Lead · {p.owner || '—'}</span>
+                <span>Due {p.due || '—'}</span>
+              </div>
             </div>
           );
         })}
       </div>
+
+      {/* ── Project modal ── */}
+      {expanded !== null && projects[expanded] && (() => {
+        const p   = projects[expanded];
+        const t   = statusTone(p.status);
+        const pct = p.target ? Math.min(100, Math.round((p.current / p.target) * 100)) : 0;
+        const close = () => { setExpanded(null); setEditing(false); };
+        return (
+          <div onClick={close}
+            style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: C.card === 'rgba(255,255,255,0.04)' ? '#0d1525' : '#fff', borderRadius:20, border:'1px solid '+C.line, boxShadow:'0 24px 64px rgba(0,0,0,0.35)', width:'100%', maxWidth:620, maxHeight:'90vh', overflowY:'auto', padding:'32px 36px', display:'flex', flexDirection:'column', gap:24 }}>
+
+              {/* ── Header ── */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                <div style={{ flex:1 }}>
+                  <div className="display" style={{ fontSize:20, fontWeight:800, color:C.ink, lineHeight:1.2, marginBottom:8 }}>{p.name}</div>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <Pill tone={t}>{p.status}</Pill>
+                    <span style={{ fontSize:13, color:C.inkSoft }}>Lead · <strong style={{ color:C.ink }}>{p.owner || '—'}</strong></span>
+                    <span style={{ fontSize:13, color:C.inkSoft }}>Due <strong style={{ color:C.ink }}>{p.due || '—'}</strong></span>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink:0 }}>
+                  {isManager && !editing && (
+                    <button onClick={() => setEditing(true)}
+                      style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'1px solid '+C.line, background:'transparent', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:C.ink, transition:'all .15s' }}>
+                      <Pencil size={13} /> Edit
+                    </button>
+                  )}
+                  {editing && (
+                    <>
+                      <button onClick={() => { if (window.confirm('Delete this project? This cannot be undone.')) deleteProject(expanded); }}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:10, border:'1px solid '+C.alert+'55', background:C.alert+'11', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:C.alert, transition:'all .15s' }}>
+                        <Trash2 size={13} /> Delete
+                      </button>
+                      <button onClick={() => setEditing(false)}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:10, border:'none', background:C.brand, cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:600, color:'#fff', transition:'all .15s' }}>
+                        <Check size={13} /> Done
+                      </button>
+                    </>
+                  )}
+                  <button onClick={close} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:22, lineHeight:1, padding:'2px 4px' }}>✕</button>
+                </div>
+              </div>
+
+              {/* ── Progress bar ── */}
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:8 }}>
+                  <span style={{ fontSize:13, color:C.inkSoft }}>Progress</span>
+                  <span className="mono" style={{ fontSize:14, fontWeight:700, color:toneColor[t] }}>{pct}%</span>
+                </div>
+                <div className="ig-track" style={{ height:10 }}>
+                  <div style={{ width:pct+'%', background:toneColor[t], height:'100%', borderRadius:99, transition:'width .6s' }} />
+                </div>
+                <div style={{ fontSize:12, color:C.inkFaint, marginTop:6 }}>
+                  {(p.current||0).toLocaleString()} / {(p.target||0).toLocaleString()} {p.unit}
+                </div>
+              </div>
+
+              {/* ── Description ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Description</div>
+                {editing
+                  ? <textarea className="ig-finput" rows={3} key={'desc-'+expanded} defaultValue={p.description || ''} onBlur={e => updateProject(expanded, { description: e.target.value })} placeholder="What is this project about?" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.description || '—'}</p>
+                }
+              </div>
+
+              {/* ── Goal / Outcome ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Goal / Outcome</div>
+                {editing
+                  ? <input className="ig-finput" key={'goal-'+expanded} defaultValue={p.goal || ''} onBlur={e => updateProject(expanded, { goal: e.target.value })} placeholder="What does success look like?" style={{ width:'100%', background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.goal || '—'}</p>
+                }
+              </div>
+
+              {/* ── Team roles ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:10 }}>Team roles</div>
+                {(p.memberRoles || []).length === 0 && <p style={{ fontSize:13, color:C.inkFaint, margin:'0 0 8px' }}>No roles added yet.</p>}
+                {(p.memberRoles || []).map((r, ri) => (
+                  <div key={ri} style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid '+C.line }}>
+                    <div style={{ width:32, height:32, borderRadius:'50%', background:C.brand, color:'#fff', fontSize:12, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:C.ink }}>{r.name}</div>
+                      <div style={{ fontSize:12, color:C.inkSoft }}>{r.role}</div>
+                    </div>
+                    {editing && <button onClick={() => removeMemberRole(expanded, ri)} style={{ background:'none', border:'none', cursor:'pointer', color:C.inkFaint, fontSize:16, padding:'0 4px' }}>✕</button>}
+                  </div>
+                ))}
+                {editing && <MemberRoleInput onAdd={(name, role) => addMemberRole(expanded, name, role)} />}
+              </div>
+
+              {/* ── Milestones ── */}
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Milestones</div>
+                  {(p.milestones||[]).length > 0 && <span style={{ fontSize:12, color:C.inkSoft }}>{(p.milestones||[]).filter(m=>m.done).length} / {(p.milestones||[]).length} done</span>}
+                </div>
+                {(p.milestones||[]).length === 0 && <p style={{ fontSize:13, color:C.inkFaint, margin:'0 0 8px' }}>No milestones yet.</p>}
+                {(p.milestones||[]).map((m, mi) => (
+                  <div key={mi} onClick={() => isManager && toggleMilestone(expanded, mi)}
+                    style={{ display:'flex', alignItems:'center', gap:12, padding:'8px 0', borderBottom:'1px solid '+C.line, cursor: isManager ? 'pointer' : 'default' }}>
+                    <div style={{ width:18, height:18, borderRadius:5, border:m.done?'none':'1.5px solid '+C.inkFaint, background:m.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .15s' }}>
+                      {m.done && <Check size={11} color="#fff" />}
+                    </div>
+                    <span style={{ fontSize:13, color:m.done?C.inkSoft:C.ink, textDecoration:m.done?'line-through':'none', flex:1 }}>{m.text}</span>
+                  </div>
+                ))}
+                {editing && <MilestoneInput onAdd={text => addMilestone(expanded, text)} />}
+              </div>
+
+              {/* ── Update progress + status (edit mode, managers only) ── */}
+              {editing && (
+                <div style={{ display:'flex', flexDirection:'column', gap:12, padding:'20px', borderRadius:12, background: C.card === 'rgba(255,255,255,0.04)' ? 'rgba(255,255,255,0.04)' : 'rgba(20,33,61,0.03)', border:'1px solid '+C.line }}>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Update progress</div>
+                  <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                    <input className="ig-finput mono" type="number" min="0" key={'prog-'+expanded} defaultValue={p.current||0}
+                      onBlur={e => updateProject(expanded, { current: Number(e.target.value) })}
+                      style={{ width:110, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                    <span style={{ color:C.inkSoft, fontSize:13 }}>/ {(p.target||0).toLocaleString()} {p.unit}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase' }}>Status</div>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {['On track','At risk','Behind','Completed'].map(s => (
+                      <button key={s} onClick={() => updateProject(expanded, { status:s })}
+                        style={{ padding:'6px 16px', borderRadius:20, border:'1px solid '+C.line, fontFamily:'inherit', fontSize:13, fontWeight:600, cursor:'pointer', transition:'all .15s',
+                          background:  p.status===s ? toneColor[statusTone(s)]+'22' : 'transparent',
+                          color:       p.status===s ? toneColor[statusTone(s)]      : C.inkSoft,
+                          borderColor: p.status===s ? toneColor[statusTone(s)]+'55' : C.line,
+                        }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Notes ── */}
+              <div>
+                <div style={{ fontSize:11, color:C.inkFaint, fontWeight:700, letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>Notes</div>
+                {editing
+                  ? <textarea className="ig-finput" rows={4} key={'notes-'+expanded} defaultValue={p.notes || ''} onBlur={e => updateProject(expanded, { notes: e.target.value })} placeholder="Add notes, blockers, or context…" style={{ width:'100%', resize:'vertical', lineHeight:1.5, fontSize:13, background:C.inputBg, color:C.ink, borderColor:C.line }} />
+                  : <p style={{ fontSize:14, color:C.inkSoft, margin:0, lineHeight:1.7 }}>{p.notes || '—'}</p>
+                }
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
@@ -280,16 +588,66 @@ function MilestoneInput({ onAdd }) {
   );
 }
 
-function RevenueView({ monthly: initial, isManager }) {
-  const [monthly,  setMonthly] = useState(initial);
-  const [editing,  setEditing] = useState(false);
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const setCell = (idx, key, raw) => {
-    const val = raw === '' ? null : Number(raw);
-    setMonthly((p) => p.map((m, i) => i === idx ? { ...m, [key]: isNaN(val) ? m[key] : val } : m));
+function RevenueView({ agencyUUID, isManager }) {
+  const [monthly,  setMonthly] = useState([]);
+  const [loading,  setLoading] = useState(true);
+  const [editing,  setEditing] = useState(false);
+  const supabase = createClient();
+  const curYear  = new Date().getFullYear();
+
+  const fromRow = (r) => ({ id: r.id, m: r.month_label, goal: r.goal, actual: r.actual });
+
+  useEffect(() => {
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+    supabase.from('monthly_revenue').select('*')
+      .eq('agency_id', agencyUUID).eq('year', curYear)
+      .order('month_order', { ascending: true })
+      .then(({ data }) => { setMonthly((data || []).map(fromRow)); setLoading(false); });
+
+    const channel = supabase.channel('revenue:' + agencyUUID)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_revenue', filter: `agency_id=eq.${agencyUUID}` },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            setMonthly(p => p.map(x => x.id === payload.new.id ? fromRow(payload.new) : x));
+          } else if (payload.eventType === 'INSERT') {
+            setMonthly(p => {
+              const next = p.find(x => x.id === payload.new.id) ? p : [...p, fromRow(payload.new)];
+              return next.sort((a, b) => MONTHS.indexOf(a.m) - MONTHS.indexOf(b.m));
+            });
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [agencyUUID]);
+
+  const initYear = async () => {
+    const rows = MONTHS.map((m, i) => ({
+      agency_id: agencyUUID, month_label: m, month_order: i + 1,
+      year: curYear, goal: 0, actual: null,
+    }));
+    const { data } = await supabase.from('monthly_revenue').insert(rows).select().order('month_order', { ascending: true });
+    if (data) setMonthly(data.map(fromRow));
   };
 
-  if (!monthly.length) return <Card style={{ marginTop:16, textAlign:'center', padding:'48px 24px' }}><p style={{ color:C.inkSoft }}>No revenue data available.</p></Card>;
+  const saveCell = async (idx, key, raw) => {
+    const val = raw === '' ? null : Number(raw);
+    if (isNaN(val) && val !== null) return;
+    const row = monthly[idx];
+    setMonthly(p => p.map((m, i) => i === idx ? { ...m, [key]: val } : m));
+    if (row?.id) await supabase.from('monthly_revenue').update({ [key]: val }).eq('id', row.id);
+  };
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading revenue data…</div>;
+
+  if (!monthly.length) return (
+    <Card style={{ marginTop:16, textAlign:'center', padding:'48px 24px' }}>
+      <p style={{ color:C.inkSoft, marginBottom:16 }}>No revenue data for {curYear} yet.</p>
+      {isManager && <button onClick={initYear} className="ig-fadd">Initialise {curYear}</button>}
+    </Card>
+  );
   const real     = monthly.filter((m) => m.actual != null);
   const fyGoal   = monthly.reduce((a, m) => a + m.goal, 0);
   const ytdA     = real.reduce((a, m) => a + m.actual, 0);
@@ -349,12 +707,12 @@ function RevenueView({ monthly: initial, isManager }) {
                     <td style={{ fontWeight:600, color:C.ink }}>{m.m}</td>
                     <td className="mono" style={{ textAlign:'right', color:C.inkSoft }}>
                       {isManager && editing
-                        ? <input className="ig-finput mono" type="number" defaultValue={m.goal} onBlur={(e) => setCell(idx,'goal',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
+                        ? <input className="ig-finput mono" type="number" defaultValue={m.goal} onBlur={(e) => saveCell(idx,'goal',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : kes(m.goal)}
                     </td>
                     <td className="mono" style={{ textAlign:'right', fontWeight:600, color:hasActual ? C.ink : C.inkFaint }}>
                       {isManager && editing
-                        ? <input className="ig-finput mono" type="number" defaultValue={m.actual ?? ''} placeholder="—" onBlur={(e) => setCell(idx,'actual',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
+                        ? <input className="ig-finput mono" type="number" defaultValue={m.actual ?? ''} placeholder="—" onBlur={(e) => saveCell(idx,'actual',e.target.value)} style={{ width:110, textAlign:'right', padding:'4px 8px', fontSize:12.5 }} />
                         : hasActual ? kes(m.actual) : '—'}
                     </td>
                     <td className="mono" style={{ textAlign:'right', color: diff == null ? C.inkFaint : diff >= 0 ? C.pos : C.alert }}>
@@ -390,40 +748,81 @@ function RevenueView({ monthly: initial, isManager }) {
   );
 }
 
-function LossView({ losses: initial, ytdActual, isManager }) {
-  const [losses,  setLosses] = useState(initial);
-  const [adding,  setAdding] = useState(false);
-  const [form,    setForm]   = useState({ source:'', amount:'', note:'' });
+function useSimpleTable(table, agencyUUID, orderCol = 'created_at') {
+  const [rows,    setRows]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sb]                  = useState(() => createClient());
 
-  const [editingIdx, setEditingIdx] = useState(null);
-  const [editForm,   setEditForm]   = useState({ source:'', amount:'', note:'' });
+  useEffect(() => {
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+    sb.from(table).select('*').eq('agency_id', agencyUUID).order(orderCol, { ascending: true })
+      .then(({ data }) => { setRows(data || []); setLoading(false); });
+    const ch = sb.channel(table + ':' + agencyUUID)
+      .on('postgres_changes', { event:'*', schema:'public', table, filter:`agency_id=eq.${agencyUUID}` },
+        ({ eventType: ev, new: n, old: o }) => {
+          if (ev === 'INSERT') setRows(p => p.find(x => x.id === n.id) ? p : [...p, n]);
+          else if (ev === 'UPDATE') setRows(p => p.map(x => x.id === n.id ? n : x));
+          else if (ev === 'DELETE') setRows(p => p.filter(x => x.id !== o.id));
+        }).subscribe();
+    return () => sb.removeChannel(ch);
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set     = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const setE    = (k) => (e) => setEditForm((p) => ({ ...p, [k]:e.target.value }));
+  const dbInsert = async (data) => {
+    const { data: row } = await sb.from(table).insert([{ agency_id: agencyUUID, ...data }]).select().single();
+    return row;
+  };
+  const dbUpdate = async (id, patch) => {
+    setRows(p => p.map(x => x.id === id ? { ...x, ...patch } : x));
+    await sb.from(table).update(patch).eq('id', id);
+  };
+  const dbDelete = async (id) => {
+    setRows(p => p.filter(x => x.id !== id));
+    await sb.from(table).delete().eq('id', id);
+  };
 
-  const addLoss = () => {
+  return { rows, setRows, loading, dbInsert, dbUpdate, dbDelete };
+}
+
+function LossView({ agencyUUID, isManager }) {
+  const { rows: lossRows, loading, dbInsert, dbUpdate, dbDelete } = useSimpleTable('losses', agencyUUID);
+  const losses = [...lossRows].sort((a, b) => b.amount - a.amount);
+
+  const [adding,    setAdding]    = useState(false);
+  const [form,      setForm]      = useState({ source:'', amount:'', note:'' });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm,  setEditForm]  = useState({ source:'', amount:'', note:'' });
+
+  const [ytdActual, setYtdActual] = useState(0);
+  const [sbRev]                   = useState(() => createClient());
+  useEffect(() => {
+    if (!agencyUUID) return;
+    sbRev.from('monthly_revenue').select('actual').eq('agency_id', agencyUUID)
+      .then(({ data }) => setYtdActual((data || []).reduce((a, r) => a + (r.actual || 0), 0)));
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const set  = (k) => (e) => setForm(p => ({ ...p, [k]:e.target.value }));
+  const setE = (k) => (e) => setEditForm(p => ({ ...p, [k]:e.target.value }));
+
+  const addLoss = async () => {
     if (!form.source.trim() || !form.amount) return;
-    const entry = { source: form.source, amount: Number(form.amount), note: form.note };
-    setLosses((p) => [...p, entry].sort((a, b) => b.amount - a.amount));
+    await dbInsert({ source: form.source, amount: Number(form.amount), note: form.note });
     setForm({ source:'', amount:'', note:'' });
     setAdding(false);
   };
-
-  const startEdit = (idx) => {
-    setEditForm({ source: losses[idx].source, amount: losses[idx].amount, note: losses[idx].note || '' });
-    setEditingIdx(idx);
-  };
-  const saveEdit = () => {
+  const startEdit = (l) => { setEditForm({ source:l.source, amount:l.amount, note:l.note||'' }); setEditingId(l.id); };
+  const saveEdit  = async () => {
     if (!editForm.source.trim()) return;
-    setLosses((p) => p.map((l, i) => i === editingIdx ? { source: editForm.source, amount: Number(editForm.amount) || 0, note: editForm.note } : l).sort((a, b) => b.amount - a.amount));
-    setEditingIdx(null);
+    await dbUpdate(editingId, { source:editForm.source, amount:Number(editForm.amount)||0, note:editForm.note });
+    setEditingId(null);
   };
-  const removeLoss = (idx) => setLosses((p) => p.filter((_, i) => i !== idx));
 
   const total = losses.reduce((a, l) => a + l.amount, 0);
   const top   = losses[0] || { source:'—', amount:0 };
   const share = ytdActual > 0 ? ((total / ytdActual) * 100).toFixed(1) + '%' : '—';
   const recov = losses.length >= 3 ? kesC(losses[0].amount + losses[2].amount) : losses.length >= 1 ? kesC(losses[0].amount) : '—';
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
 
   if (!losses.length) return (
     <>
@@ -507,29 +906,29 @@ function LossView({ losses: initial, ytdActual, isManager }) {
             </tr>
           </thead>
           <tbody>
-            {losses.map((l, idx) => isManager && editingIdx === idx ? (
-              <tr key={idx}>
+            {losses.map((l) => isManager && editingId === l.id ? (
+              <tr key={l.id}>
                 <td><input className="ig-finput" value={editForm.source} onChange={setE('source')} style={{ width:'100%', padding:'5px 8px', fontSize:12.5 }} autoFocus /></td>
                 <td><input className="ig-finput" value={editForm.note}   onChange={setE('note')}   style={{ width:'100%', padding:'5px 8px', fontSize:12.5 }} /></td>
                 <td><input className="ig-finput mono" type="number" value={editForm.amount} onChange={setE('amount')} style={{ width:120, textAlign:'right', padding:'5px 8px', fontSize:12.5 }} /></td>
                 <td />
                 <td>
                   <div style={{ display:'flex', gap:4, justifyContent:'flex-end' }}>
-                    <button className="ig-fadd"    onClick={saveEdit}              style={{ padding:'4px 10px', fontSize:12 }}>Save</button>
-                    <button className="ig-fcancel" onClick={() => setEditingIdx(null)} style={{ padding:'4px 8px',  fontSize:12 }}>✕</button>
+                    <button className="ig-fadd"    onClick={saveEdit}                style={{ padding:'4px 10px', fontSize:12 }}>Save</button>
+                    <button className="ig-fcancel" onClick={() => setEditingId(null)} style={{ padding:'4px 8px',  fontSize:12 }}>✕</button>
                   </div>
                 </td>
               </tr>
             ) : (
-              <tr key={idx}>
+              <tr key={l.id}>
                 <td style={{ fontWeight:600, color:C.ink }}>{l.source}</td>
                 <td style={{ color:C.inkSoft }}>{l.note}</td>
                 <td className="mono" style={{ textAlign:'right', color:C.alert, fontWeight:600 }}>{kes(l.amount)}</td>
                 <td className="mono" style={{ textAlign:'right', color:C.inkSoft }}>{Math.round((l.amount/total)*100)}%</td>
                 {isManager && <td>
                   <div className="ig-rowactions" style={{ display:'flex', gap:4, justifyContent:'flex-end', opacity:0, transition:'opacity .15s' }}>
-                    <button onClick={() => startEdit(idx)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.inkSoft }} title="Edit"><Pencil size={13} /></button>
-                    <button onClick={() => removeLoss(idx)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.alert, borderColor:'rgba(224,72,90,.25)' }} title="Delete"><Trash2 size={13} /></button>
+                    <button onClick={() => startEdit(l)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.inkSoft }} title="Edit"><Pencil size={13} /></button>
+                    <button onClick={() => dbDelete(l.id)} className="ig-kbtn" style={{ width:28, height:28, borderRadius:7, color:C.alert, borderColor:'rgba(224,72,90,.25)' }} title="Delete"><Trash2 size={13} /></button>
                   </div>
                 </td>}
               </tr>
@@ -541,55 +940,132 @@ function LossView({ losses: initial, ytdActual, isManager }) {
   );
 }
 
-function ExpenditureView({ expenses: initial, expTrend, isManager }) {
-  const [expenses, setExpenses] = useState(initial);
-  const [adding,   setAdding]   = useState(false);
-  const [form,     setForm]     = useState({ cat:'', amount:'' });
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const set    = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const addExp = () => {
+function ExpenditureView({ agencyUUID, isManager }) {
+  const { rows: expRows,   loading: loadExp,   dbInsert: insExp,   dbDelete: delExp }   = useSimpleTable('expenditures',  agencyUUID);
+  const { rows: spendRows, loading: loadSpend, dbInsert: insSpend, dbUpdate: updSpend } = useSimpleTable('monthly_spend',  agencyUUID, 'month_order');
+
+  const [adding,     setAdding]     = useState(false);
+  const [form,       setForm]       = useState({ cat:'', amount:'' });
+  const [spendEdits, setSpendEdits] = useState({});
+  const [saving,     setSaving]     = useState(false);
+
+  const expenses = [...expRows].sort((a, b) => b.amount - a.amount);
+  const expTrend = spendRows.map(r => ({ id:r.id, m:r.month_label, amount:r.amount || 0 }));
+
+  const set    = (k) => (e) => setForm(p => ({ ...p, [k]:e.target.value }));
+  const addExp = async () => {
     if (!form.cat.trim() || !form.amount) return;
-    setExpenses((p) => [...p, { cat: form.cat, amount: Number(form.amount) }].sort((a, b) => b.amount - a.amount));
+    await insExp({ category: form.cat, amount: Number(form.amount) });
     setForm({ cat:'', amount:'' });
     setAdding(false);
   };
-  const remove = (idx) => setExpenses((p) => p.filter((_, i) => i !== idx));
+
+  const initSpend = async () => {
+    const curYear = new Date().getFullYear();
+    const rows = MONTHS_SHORT.map((m, i) => ({ agency_id: agencyUUID, month_label: m, month_order: i + 1, year: curYear, amount: 0 }));
+    const { data } = await createClient().from('monthly_spend').insert(rows).select().order('month_order', { ascending: true });
+    if (data) { /* real-time will push these in */ }
+  };
+  const saveAllSpend = async () => {
+    if (!Object.keys(spendEdits).length) return;
+    setSaving(true);
+    await Promise.all(
+      Object.entries(spendEdits).map(([id, raw]) => {
+        const val = raw === '' ? 0 : Number(raw);
+        return isNaN(val) ? null : updSpend(id, { amount: val });
+      })
+    );
+    setSpendEdits({});
+    setSaving(false);
+  };
 
   const total     = expenses.reduce((a, e) => a + e.amount, 0);
-  const top       = expenses[0] || { cat:'—', amount:1 };
+  const top       = expenses[0] || { category:'—', amount:1 };
   const first     = expTrend[0]?.amount || 1;
   const last      = expTrend[expTrend.length-1]?.amount || 1;
   const burnTrend = Math.round(((last - first) / first) * 100);
   const sixTotal  = expTrend.reduce((a, e) => a + e.amount, 0);
+
+  if (loadExp || loadSpend) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
+
   return (
     <>
       <div className="ig-kpis">
-        <Stat label="Monthly operating spend" value={kesC(total)}                        sub="current month"                                                    tone="neutral" delay={0}   />
-        <Stat label="Largest category"        value={top.cat.split(' ')[0]}              sub={kesC(top.amount)+' · '+Math.round((top.amount/(total||1))*100)+'%'} tone="neutral" delay={60}  />
-        <Stat label="6-mo total spend"        value={kesC(sixTotal)}                     sub="rolling burn"                                                     tone="warn"    delay={120} />
-        <Stat label="Burn trend"              value={(burnTrend>=0?'+':'')+burnTrend+'%'} sub="6-month change"                                                   tone={burnTrend>10?'neg':'neutral'} delay={180} />
+        <Stat label="Monthly operating spend" value={kesC(total)}                               sub="current month"                                                          tone="neutral" delay={0}   />
+        <Stat label="Largest category"        value={top.category.split(' ')[0]}               sub={kesC(top.amount)+' · '+Math.round((top.amount/(total||1))*100)+'%'}       tone="neutral" delay={60}  />
+        <Stat label="6-mo total spend"        value={kesC(sixTotal)}                           sub="rolling burn"                                                            tone="warn"    delay={120} />
+        <Stat label="Burn trend"              value={(burnTrend>=0?'+':'')+burnTrend+'%'}       sub="6-month change"                                                          tone={burnTrend>10?'neg':'neutral'} delay={180} />
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1.3fr', gap:24, marginTop:20 }} className="ig-2col">
         <Card title="Spend by category">
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
-              <Pie data={expenses} dataKey="amount" nameKey="cat" innerRadius={56} outerRadius={90} paddingAngle={2} stroke="none">
+              <Pie data={expenses} dataKey="amount" nameKey="category" innerRadius={56} outerRadius={90} paddingAngle={2} stroke="none">
                 {expenses.map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}
               </Pie>
               <Tooltip {...ttStyle} formatter={(v, n) => [kes(v), n]} />
             </PieChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Monthly burn">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={expTrend} margin={{ top:8, right:8, left:-10, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-              <XAxis dataKey="m" tick={chartAxis} axisLine={false} tickLine={false} />
-              <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
-              <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Spend']} cursor={{ fill:'rgba(20,33,61,0.04)' }} />
-              <Bar dataKey="amount" fill={C.brand} radius={[5,5,0,0]} barSize={34} />
-            </BarChart>
-          </ResponsiveContainer>
+        <Card title="Monthly burn"
+          action={isManager && expTrend.length === 0 && <button onClick={initSpend} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}>Init {new Date().getFullYear()}</button>}>
+          {expTrend.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={expTrend} margin={{ top:8, right:8, left:-10, bottom:0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                  <XAxis dataKey="m" tick={chartAxis} axisLine={false} tickLine={false} />
+                  <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
+                  <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Spend']} cursor={{ fill:'rgba(20,33,61,0.04)' }} />
+                  <Bar dataKey="amount" fill={C.brand} radius={[5,5,0,0]} barSize={34} />
+                </BarChart>
+              </ResponsiveContainer>
+              {isManager && (
+                <div style={{ marginTop:14 }}>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                    {expTrend.map((row) => (
+                      <div key={row.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                        <span style={{ fontSize:10.5, color:C.inkFaint }}>{row.m}</span>
+                        <input
+                          className="ig-finput mono"
+                          value={spendEdits[row.id] !== undefined ? spendEdits[row.id] : (row.amount || '')}
+                          onChange={(e) => setSpendEdits(p => ({ ...p, [row.id]: e.target.value }))}
+                          style={{ width:74, textAlign:'right', padding:'4px 6px', fontSize:11.5, borderColor: spendEdits[row.id] !== undefined ? C.brand : undefined }}
+                          type="number" min="0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {Object.keys(spendEdits).length > 0 && (
+                    <div style={{ marginTop:12, display:'flex', gap:8, alignItems:'center' }}>
+                      <button
+                        onClick={saveAllSpend}
+                        disabled={saving}
+                        className="ig-kbtn"
+                        style={{ width:'auto', padding:'0 16px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, opacity: saving ? 0.6 : 1 }}
+                      >
+                        {saving ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button
+                        onClick={() => setSpendEdits({})}
+                        className="ig-fcancel"
+                        style={{ padding:'0 12px', fontSize:12.5 }}
+                      >
+                        Discard
+                      </button>
+                      <span style={{ fontSize:12, color:C.inkSoft }}>
+                        {Object.keys(spendEdits).length} month{Object.keys(spendEdits).length > 1 ? 's' : ''} edited
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color:C.inkFaint, fontSize:13, textAlign:'center', padding:'48px 0' }}>No monthly data — click "Init {new Date().getFullYear()}" to create rows.</div>
+          )}
         </Card>
       </div>
       <Card title="Category breakdown" style={{ marginTop:16 }}
@@ -605,46 +1081,49 @@ function ExpenditureView({ expenses: initial, expTrend, isManager }) {
           </div>
         )}
         {expenses.map((e, i) => (
-          <div key={i} className="ig-taskrow" style={{ display:'flex', alignItems:'center', gap:14, padding:'9px 0', borderBottom: i < expenses.length-1 ? '1px solid '+C.line : 'none' }}>
+          <div key={e.id} className="ig-taskrow" style={{ display:'flex', alignItems:'center', gap:14, padding:'9px 0', borderBottom: i < expenses.length-1 ? '1px solid '+C.line : 'none' }}>
             <span style={{ width:10, height:10, borderRadius:3, background:PIE[i % PIE.length], flexShrink:0 }} />
-            <span style={{ flex:1, fontWeight:500, color:C.ink, fontSize:13.5 }}>{e.cat}</span>
+            <span style={{ flex:1, fontWeight:500, color:C.ink, fontSize:13.5 }}>{e.category}</span>
             <div className="ig-track" style={{ width:160 }}>
               <div style={{ width:(e.amount/(top.amount||1))*100+'%', height:'100%', background:PIE[i % PIE.length], borderRadius:99 }} />
             </div>
             <span className="mono" style={{ width:120, textAlign:'right', fontWeight:600, color:C.ink, fontSize:13 }}>{kes(e.amount)}</span>
-            {isManager && <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>}
+            {isManager && <button className="ig-delrow" onClick={() => delExp(e.id)} title="Remove"><Trash2 size={13} /></button>}
           </div>
         ))}
+        {expenses.length === 0 && <div style={{ color:C.inkFaint, fontSize:13, textAlign:'center', padding:'24px 0' }}>No expenditure categories yet.</div>}
       </Card>
     </>
   );
 }
 
-function ModelsView({ models: initial, isManager }) {
-  const [models,  setModels] = useState(initial);
-  const [adding,  setAdding] = useState(false);
-  const [form,    setForm]   = useState({ name:'', desc:'', mtd:'', trend:'', share:'', tracked:true });
+function ModelsView({ agencyUUID, isManager }) {
+  const { rows: models, loading, dbInsert, dbDelete } = useSimpleTable('revenue_models', agencyUUID);
+  const [adding, setAdding] = useState(false);
+  const [form,   setForm]   = useState({ name:'', description:'', mtd:'', trend:'', share:'', tracked:true });
 
-  const set      = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
-  const addModel = () => {
+  const set      = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  const addModel = async () => {
     if (!form.name.trim() || !form.mtd) return;
-    setModels((p) => [...p, { name: form.name, desc: form.desc, mtd: Number(form.mtd), trend: Number(form.trend) || 0, share: Number(form.share) || 0, tracked: form.tracked }]);
-    setForm({ name:'', desc:'', mtd:'', trend:'', share:'', tracked:true });
+    await dbInsert({ name:form.name, description:form.description, mtd:Number(form.mtd), trend:Number(form.trend)||0, share:Number(form.share)||0, tracked:form.tracked });
+    setForm({ name:'', description:'', mtd:'', trend:'', share:'', tracked:true });
     setAdding(false);
   };
-  const remove = (idx) => setModels((p) => p.filter((_, i) => i !== idx));
 
   const total   = models.reduce((a, m) => a + m.mtd, 0);
-  const tracked = models.filter((m) => m.tracked).length;
+  const tracked = models.filter(m => m.tracked).length;
   const fastest = models.length ? models.reduce((a, m) => (m.trend > a.trend ? m : a)) : { name:'—', trend:0 };
   const topM    = models.length ? models.reduce((a, m) => (m.mtd > a.mtd ? m : a))    : { share:0, name:'—' };
+
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
+
   return (
     <>
       <div className="ig-kpis">
-        <Stat label="Monthly revenue"  value={kesC(total)}                      sub="all streams"                                     tone="brand"   delay={0}   />
-        <Stat label="Streams tracked"  value={tracked+' / '+models.length}      sub={(models.length-tracked)+' not yet monitored'}    tone="warn"    delay={60}  />
-        <Stat label="Fastest grower"   value={fastest.name.split(' ')[0]}       sub={'+'+fastest.trend+'% MoM'}                       tone="pos"     delay={120} />
-        <Stat label="Top stream share" value={topM.share+'%'}                   sub={topM.name}                                       tone="neutral" delay={180} />
+        <Stat label="Monthly revenue"  value={kesC(total)}                sub="all streams"                                  tone="brand"   delay={0}   />
+        <Stat label="Streams tracked"  value={tracked+' / '+models.length} sub={(models.length-tracked)+' not yet monitored'} tone="warn"    delay={60}  />
+        <Stat label="Fastest grower"   value={fastest.name.split(' ')[0]} sub={'+'+fastest.trend+'% MoM'}                    tone="pos"     delay={120} />
+        <Stat label="Top stream share" value={topM.share+'%'}             sub={topM.name}                                    tone="neutral" delay={180} />
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:24, marginTop:20 }} className="ig-2col">
         <Card title="Revenue mix">
@@ -658,16 +1137,16 @@ function ModelsView({ models: initial, isManager }) {
           </ResponsiveContainer>
         </Card>
         <Card title="Streams — tracking status"
-          action={isManager && <button onClick={() => setAdding((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+          action={isManager && <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
               <Plus size={14} /> Add model
             </button>}>
           {isManager && adding && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:14 }}>
-              <input  className="ig-finput" placeholder="Model name *"        value={form.name}  onChange={set('name')}  style={{ flex:'1 1 160px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addModel()} />
-              <input  className="ig-finput" placeholder="Description"         value={form.desc}  onChange={set('desc')}  style={{ flex:'1 1 200px' }} />
-              <input  className="ig-finput" placeholder="MTD revenue (KES) *" value={form.mtd}   onChange={set('mtd')}   style={{ width:160 }} type="number" min="0" />
-              <input  className="ig-finput" placeholder="MoM trend %"         value={form.trend} onChange={set('trend')} style={{ width:120 }} type="number" />
-              <input  className="ig-finput" placeholder="Share %"             value={form.share} onChange={set('share')} style={{ width:100 }} type="number" min="0" max="100" />
+              <input  className="ig-finput" placeholder="Model name *"        value={form.name}        onChange={set('name')}        style={{ flex:'1 1 160px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addModel()} />
+              <input  className="ig-finput" placeholder="Description"         value={form.description} onChange={set('description')} style={{ flex:'1 1 200px' }} />
+              <input  className="ig-finput" placeholder="MTD revenue (KES) *" value={form.mtd}         onChange={set('mtd')}         style={{ width:160 }} type="number" min="0" />
+              <input  className="ig-finput" placeholder="MoM trend %"         value={form.trend}       onChange={set('trend')}       style={{ width:120 }} type="number" />
+              <input  className="ig-finput" placeholder="Share %"             value={form.share}       onChange={set('share')}       style={{ width:100 }} type="number" min="0" max="100" />
               <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:C.inkSoft, cursor:'pointer' }}>
                 <input type="checkbox" checked={form.tracked} onChange={set('tracked')} style={{ width:15, height:15, accentColor:C.brand }} />
                 Tracked
@@ -678,18 +1157,19 @@ function ModelsView({ models: initial, isManager }) {
           )}
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {models.map((m, i) => (
-              <div key={i} className="ig-taskrow ig-hover" style={{ display:'flex', alignItems:'center', gap:14, padding:'10px 12px', border:'1px solid '+C.line, borderRadius:12 }}>
+              <div key={m.id} className="ig-taskrow ig-hover" style={{ display:'flex', alignItems:'center', gap:14, padding:'10px 12px', border:'1px solid '+C.line, borderRadius:12 }}>
                 <span style={{ width:9, height:9, borderRadius:99, background:PIE[i % PIE.length], flexShrink:0 }} />
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontWeight:600, color:C.ink, fontSize:13.5 }}>{m.name}</div>
-                  <div style={{ fontSize:12, color:C.inkSoft, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.desc}</div>
+                  <div style={{ fontSize:12, color:C.inkSoft, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.description}</div>
                 </div>
                 <Delta v={m.trend} />
                 <span className="mono" style={{ width:88, textAlign:'right', fontWeight:600, color:C.ink, fontSize:13 }}>{kesC(m.mtd)}</span>
                 <Pill tone={m.tracked ? 'pos' : 'neutral'}>{m.tracked ? 'Tracked' : 'Not tracked'}</Pill>
-                {isManager && <button className="ig-delrow" onClick={() => remove(i)} title="Remove"><Trash2 size={13} /></button>}
+                {isManager && <button className="ig-delrow" onClick={() => dbDelete(m.id)} title="Remove"><Trash2 size={13} /></button>}
               </div>
             ))}
+            {models.length === 0 && <div style={{ color:C.inkFaint, fontSize:13, textAlign:'center', padding:'24px 0' }}>No revenue streams added yet.</div>}
           </div>
         </Card>
       </div>
@@ -697,46 +1177,48 @@ function ModelsView({ models: initial, isManager }) {
   );
 }
 
-function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) {
-  const [rateCard,    setRateCard]    = useState(initialRC);
-  const [receivables, setReceivables] = useState(initialRec);
-  const [addingRate,  setAddingRate]  = useState(false);
-  const [addingRec,   setAddingRec]   = useState(false);
-  const [rateForm,    setRateForm]    = useState({ service:'', unit:'', rate:'' });
-  const [recForm,     setRecForm]     = useState({ client:'', service:'', amount:'', due:'', status:'Pending' });
+function RatesView({ agencyUUID, isManager }) {
+  const { rows: rateCard,    loading: loadRC,  dbInsert: insRate, dbDelete: delRate }           = useSimpleTable('rate_card',    agencyUUID);
+  const { rows: receivables, loading: loadRec, dbInsert: insRec,  dbDelete: delRec, dbUpdate: updRec } = useSimpleTable('receivables',  agencyUUID);
 
-  const setR   = (k) => (e) => setRateForm((p) => ({ ...p, [k]:e.target.value }));
-  const setRec = (k) => (e) => setRecForm((p) => ({ ...p, [k]:e.target.value }));
+  const [addingRate, setAddingRate] = useState(false);
+  const [addingRec,  setAddingRec]  = useState(false);
+  const [rateForm,   setRateForm]   = useState({ service:'', unit:'', rate:'' });
+  const [recForm,    setRecForm]    = useState({ client:'', service:'', amount:'', due:'', status:'Pending' });
 
-  const addRate = () => {
+  const setR   = (k) => (e) => setRateForm(p => ({ ...p, [k]:e.target.value }));
+  const setRec = (k) => (e) => setRecForm(p => ({ ...p, [k]:e.target.value }));
+
+  const addRate = async () => {
     if (!rateForm.service.trim() || !rateForm.rate) return;
-    setRateCard((p) => [...p, { service:rateForm.service, unit:rateForm.unit, rate:Number(rateForm.rate) }]);
+    await insRate({ service:rateForm.service, unit:rateForm.unit, rate:Number(rateForm.rate) });
     setRateForm({ service:'', unit:'', rate:'' });
     setAddingRate(false);
   };
-  const addRec = () => {
+  const addRec = async () => {
     if (!recForm.client.trim() || !recForm.amount) return;
-    setReceivables((p) => [...p, { client:recForm.client, service:recForm.service, amount:Number(recForm.amount), due:recForm.due, status:recForm.status }]);
+    await insRec({ client:recForm.client, service:recForm.service, amount:Number(recForm.amount), due:recForm.due, status:recForm.status });
     setRecForm({ client:'', service:'', amount:'', due:'', status:'Pending' });
     setAddingRec(false);
   };
-  const removeRate = (idx) => setRateCard((p) => p.filter((_, i) => i !== idx));
-  const removeRec  = (idx) => setReceivables((p) => p.filter((_, i) => i !== idx));
 
-  const owed    = receivables.filter((r) => r.status !== 'Paid').reduce((a, r) => a + r.amount, 0);
-  const overdue = receivables.filter((r) => r.status === 'Overdue').reduce((a, r) => a + r.amount, 0);
-  const paid    = receivables.filter((r) => r.status === 'Paid').reduce((a, r) => a + r.amount, 0);
+  const owed    = receivables.filter(r => r.status !== 'Paid').reduce((a, r) => a + r.amount, 0);
+  const overdue = receivables.filter(r => r.status === 'Overdue').reduce((a, r) => a + r.amount, 0);
+  const paid    = receivables.filter(r => r.status === 'Paid').reduce((a, r) => a + r.amount, 0);
+
+  if (loadRC || loadRec) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
+
   return (
     <>
       <div className="ig-kpis">
-        <Stat label="Total outstanding"    value={kesC(owed)}        sub={receivables.filter(r=>r.status!=='Paid').length+' clients'}         tone="warn"    delay={0}   />
-        <Stat label="Overdue"              value={kesC(overdue)}     sub={receivables.filter(r=>r.status==='Overdue').length+' invoice(s) past due'} tone="neg" delay={60}  />
-        <Stat label="Collected this month" value={kesC(paid)}        sub="settled"                                                             tone="pos"     delay={120} />
-        <Stat label="Services on offer"    value={rateCard.length}   sub="published rate card"                                                 tone="neutral" delay={180} />
+        <Stat label="Total outstanding"    value={kesC(owed)}       sub={receivables.filter(r=>r.status!=='Paid').length+' clients'}              tone="warn"    delay={0}   />
+        <Stat label="Overdue"              value={kesC(overdue)}    sub={receivables.filter(r=>r.status==='Overdue').length+' invoice(s) past due'} tone="neg"     delay={60}  />
+        <Stat label="Collected this month" value={kesC(paid)}       sub="settled"                                                                  tone="pos"     delay={120} />
+        <Stat label="Services on offer"    value={rateCard.length}  sub="published rate card"                                                      tone="neutral" delay={180} />
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1.5fr', gap:24, marginTop:20 }} className="ig-2col">
         <Card title="Rate card"
-          action={isManager && <button onClick={() => setAddingRate((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add service</button>}>
+          action={isManager && <button onClick={() => setAddingRate(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add service</button>}>
           {isManager && addingRate && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:12 }}>
               <input  className="ig-finput" placeholder="Service *"         value={rateForm.service} onChange={setR('service')} style={{ flex:'1 1 150px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addRate()} />
@@ -749,18 +1231,19 @@ function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) 
           <table className="ig-table">
             <thead><tr><th>Service</th><th style={{ textAlign:'right' }}>Rate</th>{isManager && <th style={{ width:32 }} />}</tr></thead>
             <tbody>
-              {rateCard.map((r, idx) => (
-                <tr key={idx}>
+              {rateCard.map((r) => (
+                <tr key={r.id}>
                   <td><div style={{ fontWeight:600, color:C.ink }}>{r.service}</div><div style={{ fontSize:11.5, color:C.inkFaint }}>{r.unit}</div></td>
                   <td className="mono" style={{ textAlign:'right', fontWeight:600, color:C.brand }}>{kes(r.rate)}</td>
-                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRate(idx)} title="Remove"><Trash2 size={13} /></button></td>}
+                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => delRate(r.id)} title="Remove"><Trash2 size={13} /></button></td>}
                 </tr>
               ))}
+              {rateCard.length === 0 && <tr><td colSpan={3} style={{ textAlign:'center', color:C.inkFaint, padding:'20px 0' }}>No services added yet.</td></tr>}
             </tbody>
           </table>
         </Card>
         <Card title="Receivables — amount owed"
-          action={isManager && <button onClick={() => setAddingRec((v) => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add receivable</button>}>
+          action={isManager && <button onClick={() => setAddingRec(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}><Plus size={14} /> Add receivable</button>}>
           {isManager && addingRec && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'4px 0 14px', borderBottom:'1px solid '+C.line, marginBottom:12 }}>
               <input  className="ig-finput" placeholder="Client *"      value={recForm.client}  onChange={setRec('client')}  style={{ flex:'1 1 130px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addRec()} />
@@ -768,7 +1251,7 @@ function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) 
               <input  className="ig-finput" placeholder="Amount (KES)*" value={recForm.amount}  onChange={setRec('amount')}  style={{ width:140 }} type="number" min="0" />
               <input  className="ig-finput" placeholder="Due date"      value={recForm.due}     onChange={setRec('due')}     style={{ width:110 }} />
               <select className="ig-fselect" value={recForm.status} onChange={setRec('status')}>
-                {['Pending','Paid','Overdue','Partial'].map((s) => <option key={s}>{s}</option>)}
+                {['Pending','Paid','Overdue','Partial'].map(s => <option key={s}>{s}</option>)}
               </select>
               <button className="ig-fadd"    onClick={addRec}>Add</button>
               <button className="ig-fcancel" onClick={() => setAddingRec(false)}>Cancel</button>
@@ -777,16 +1260,25 @@ function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) 
           <table className="ig-table">
             <thead><tr><th>Client</th><th>Service</th><th>Due</th><th style={{ textAlign:'right' }}>Owed</th><th style={{ textAlign:'right' }}>Status</th>{isManager && <th style={{ width:32 }} />}</tr></thead>
             <tbody>
-              {receivables.map((r, idx) => (
-                <tr key={idx} style={r.status === 'Overdue' ? { background: C.alert+'0D' } : undefined}>
+              {receivables.map((r) => (
+                <tr key={r.id} style={r.status === 'Overdue' ? { background: C.alert+'0D' } : undefined}>
                   <td style={{ fontWeight:600, color:C.ink }}>{r.client}</td>
                   <td style={{ color:C.inkSoft }}>{r.service}</td>
                   <td className="mono" style={{ color:C.inkSoft, fontSize:12 }}>{r.due}</td>
                   <td className="mono" style={{ textAlign:'right', fontWeight:600, color:C.ink }}>{kes(r.amount)}</td>
-                  <td style={{ textAlign:'right' }}><Pill tone={statusTone(r.status)}>{r.status}</Pill></td>
-                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => removeRec(idx)} title="Remove"><Trash2 size={13} /></button></td>}
+                  <td style={{ textAlign:'right' }}>
+                    {isManager ? (
+                      <select className="ig-fselect" value={r.status} onChange={(e) => updRec(r.id, { status:e.target.value })} style={{ fontSize:11.5, padding:'3px 6px', height:26 }}>
+                        {['Pending','Paid','Overdue','Partial'].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <Pill tone={statusTone(r.status)}>{r.status}</Pill>
+                    )}
+                  </td>
+                  {isManager && <td style={{ textAlign:'right' }}><button className="ig-delrow" onClick={() => delRec(r.id)} title="Remove"><Trash2 size={13} /></button></td>}
                 </tr>
               ))}
+              {receivables.length === 0 && <tr><td colSpan={6} style={{ textAlign:'center', color:C.inkFaint, padding:'20px 0' }}>No receivables recorded.</td></tr>}
             </tbody>
           </table>
         </Card>
@@ -795,100 +1287,66 @@ function RatesView({ rateCard: initialRC, receivables: initialRec, isManager }) 
   );
 }
 
-const DEFAULT_QUARTERLY_DATA = [
-  { q:'Q1 2025', actual:2800000, target:3500000, clients:8  },
-  { q:'Q2 2025', actual:3400000, target:4000000, clients:10 },
-  { q:'Q3 2025', actual:3900000, target:4500000, clients:11 },
-  { q:'Q4 2025', actual:4200000, target:5000000, clients:12 },
-];
-const DEFAULT_REVENUE_SPLIT = [
-  { id:'r1', name:'Client A',         value:1400000 },
-  { id:'r2', name:'Client B',         value:1100000 },
-  { id:'r3', name:'Client C',         value:900000  },
-  { id:'r4', name:'Retainer — D',     value:500000  },
-  { id:'r5', name:'Retainer — E',     value:300000  },
-];
-const DEFAULT_PIPELINE = [
-  { id:'p1', client:'Prospect A', value:1500000, stage:'Proposal',    owner:'', probability:60  },
-  { id:'p2', client:'Prospect B', value:800000,  stage:'Negotiation', owner:'', probability:80  },
-  { id:'p3', client:'Prospect C', value:2000000, stage:'Prospect',    owner:'', probability:20  },
-  { id:'p4', client:'Prospect D', value:650000,  stage:'Won',         owner:'', probability:100 },
-];
-const DEFAULT_GROWTH_LEVERS = [
-  { k:'Avg Deal Size',    v:'KES 850K', note:'Target: KES 1M'          },
-  { k:'Conversion Rate',  v:'34%',      note:'Proposal to close'        },
-  { k:'Client Retention', v:'87%',      note:'Month-on-month retention' },
-  { k:'Team Utilisation', v:'78%',      note:'Billable hours ratio'     },
-];
 const PIPELINE_STAGES = ['Prospect','Proposal','Negotiation','Won','Lost'];
 const STAGE_TONE = { Prospect:'neutral', Proposal:'brand', Negotiation:'warn', Won:'pos', Lost:'neg' };
 
-function GrowthView({ agencyId, isManager }) {
-  const STORAGE_KEY = `ig_growth_${agencyId}`;
+function GrowthView({ agencyUUID, isManager }) {
+  const { rows: quarterly,    loading: loadQ,  dbInsert: insQ,      dbDelete: delQ }      = useSimpleTable('growth_quarterly', agencyUUID);
+  const { rows: revenueSplit, loading: loadRS, dbInsert: insClient, dbDelete: delClient } = useSimpleTable('growth_clients',   agencyUUID);
+  const { rows: pipeline,     loading: loadP,  dbInsert: insDeal,   dbDelete: delDeal, dbUpdate: updDeal } = useSimpleTable('growth_pipeline', agencyUUID);
+  const { rows: leversRaw,    loading: loadL,  dbInsert: insLever,  dbDelete: delLever, dbUpdate: updLever } = useSimpleTable('growth_levers', agencyUUID);
 
-  const [quarterly,    setQuarterly]    = useState(DEFAULT_QUARTERLY_DATA);
-  const [revenueSplit, setRevenueSplit] = useState(DEFAULT_REVENUE_SPLIT);
-  const [pipeline,     setPipeline]     = useState(DEFAULT_PIPELINE);
-  const [levers,       setLevers]       = useState(DEFAULT_GROWTH_LEVERS);
-  const [editingLever, setEditingLever] = useState(null);
-  const [leverForm,    setLeverForm]    = useState({ k:'', v:'', note:'' });
-  const [addingQ,      setAddingQ]      = useState(false);
-  const [qForm,        setQForm]        = useState({ q:'', actual:'', target:'', clients:'' });
-  const [addingDeal,   setAddingDeal]   = useState(false);
-  const [dealForm,     setDealForm]     = useState({ client:'', value:'', stage:'Prospect', owner:'', probability:'' });
-  const [addingClient, setAddingClient] = useState(false);
-  const [clientForm,   setClientForm]   = useState({ name:'', value:'' });
+  const levers = leversRaw.map(r => ({ id:r.id, k:r.key_name, v:r.value, note:r.note }));
 
-  // Load saved data for this agency on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const d = JSON.parse(saved);
-        if (d.quarterly)    setQuarterly(d.quarterly);
-        if (d.revenueSplit) setRevenueSplit(d.revenueSplit);
-        if (d.pipeline)     setPipeline(d.pipeline);
-        if (d.levers)       setLevers(d.levers);
-      }
-    } catch {}
-  }, [STORAGE_KEY]);
+  const [editingLeverId, setEditingLeverId] = useState(null);
+  const [leverForm,      setLeverForm]      = useState({ k:'', v:'', note:'' });
+  const [addingLever,    setAddingLever]    = useState(false);
+  const [addingQ,        setAddingQ]        = useState(false);
+  const [qForm,          setQForm]          = useState({ period:'', actual:'', target:'', clients:'' });
+  const [addingDeal,     setAddingDeal]     = useState(false);
+  const [dealForm,       setDealForm]       = useState({ client:'', value:'', stage:'Prospect', owner:'', probability:'' });
+  const [addingClient,   setAddingClient]   = useState(false);
+  const [clientForm,     setClientForm]     = useState({ name:'', value:'' });
 
-  // Persist whenever data changes
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ quarterly, revenueSplit, pipeline, levers })); } catch {}
-  }, [quarterly, revenueSplit, pipeline, levers, STORAGE_KEY]);
+  const setLF = (k) => (e) => setLeverForm(p => ({ ...p, [k]:e.target.value }));
+  const setQF = (k) => (e) => setQForm(p    => ({ ...p, [k]:e.target.value }));
+  const setDF = (k) => (e) => setDealForm(p => ({ ...p, [k]:e.target.value }));
+  const setCF = (k) => (e) => setClientForm(p => ({ ...p, [k]:e.target.value }));
 
-  const setLF = (k) => (e) => setLeverForm((p) => ({ ...p, [k]:e.target.value }));
-  const setQF = (k) => (e) => setQForm((p)     => ({ ...p, [k]:e.target.value }));
-  const setDF = (k) => (e) => setDealForm((p)  => ({ ...p, [k]:e.target.value }));
-  const setCF = (k) => (e) => setClientForm((p) => ({ ...p, [k]:e.target.value }));
+  const startEditLever = (l) => { setLeverForm({ k:l.k, v:l.v, note:l.note }); setEditingLeverId(l.id); };
+  const saveLever = async () => {
+    await updLever(editingLeverId, { key_name:leverForm.k, value:leverForm.v, note:leverForm.note });
+    setEditingLeverId(null);
+  };
 
-  const startEditLever = (i) => { setLeverForm({ ...levers[i] }); setEditingLever(i); };
-  const saveLever      = ()  => { setLevers((p) => p.map((l, i) => i === editingLever ? { ...leverForm } : l)); setEditingLever(null); };
-
-  const addQuarter = () => {
-    if (!qForm.q.trim()) return;
-    setQuarterly((p) => [...p, { q:qForm.q, actual:Number(qForm.actual)||0, target:Number(qForm.target)||0, clients:Number(qForm.clients)||0 }]);
-    setQForm({ q:'', actual:'', target:'', clients:'' });
+  const addQuarter = async () => {
+    if (!qForm.period.trim()) return;
+    await insQ({ period:qForm.period, actual:Number(qForm.actual)||0, target:Number(qForm.target)||0, clients:Number(qForm.clients)||0 });
+    setQForm({ period:'', actual:'', target:'', clients:'' });
     setAddingQ(false);
   };
 
-  const addDeal = () => {
+  const addDeal = async () => {
     if (!dealForm.client.trim()) return;
-    setPipeline((p) => [{ ...dealForm, id:'p'+Date.now(), value:Number(dealForm.value)||0, probability:Number(dealForm.probability)||0 }, ...p]);
+    await insDeal({ client:dealForm.client, value:Number(dealForm.value)||0, stage:dealForm.stage, owner:dealForm.owner, probability:Number(dealForm.probability)||0 });
     setDealForm({ client:'', value:'', stage:'Prospect', owner:'', probability:'' });
     setAddingDeal(false);
   };
-  const moveDeal   = (id, stage) => setPipeline((p) => p.map((d) => d.id === id ? { ...d, stage } : d));
-  const removeDeal = (id)        => setPipeline((p) => p.filter((d) => d.id !== id));
+  const moveDeal = async (id, stage) => updDeal(id, { stage });
 
-  const addClient = () => {
+  const addClient = async () => {
     if (!clientForm.name.trim()) return;
-    setRevenueSplit((p) => [...p, { id:'r'+Date.now(), name:clientForm.name, value:Number(clientForm.value)||0 }]);
+    await insClient({ name:clientForm.name, value:Number(clientForm.value)||0 });
     setClientForm({ name:'', value:'' });
     setAddingClient(false);
   };
-  const removeClient = (id) => setRevenueSplit((p) => p.filter(r => r.id !== id));
+
+  const addLeverRow = async () => {
+    if (!leverForm.k.trim()) return;
+    await insLever({ key_name:leverForm.k, value:leverForm.v, note:leverForm.note });
+    setLeverForm({ k:'', v:'', note:'' });
+    setAddingLever(false);
+  };
 
   const latestQ          = quarterly[quarterly.length - 1] || {};
   const latestActual     = latestQ.actual || 0;
@@ -902,6 +1360,8 @@ function GrowthView({ agencyId, isManager }) {
   const totalRevenue     = revenueSplit.reduce((s, a) => s + a.value, 0);
   const maxClient        = Math.max(...revenueSplit.map(a => a.value), 1);
 
+  if (loadQ || loadRS || loadP || loadL) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
+
   return (
     <>
       {/* KPI row */}
@@ -911,7 +1371,7 @@ function GrowthView({ agencyId, isManager }) {
         <Stat label="Weighted Forecast"        value={kesC(weightedForecast)}  sub="probability-adjusted"                    tone="brand"   delay={120} />
         <Stat label="Deals Won"                value={wonDeals}                sub="closed contracts"                        tone="pos"     delay={180} />
         <Stat label="Active Client Contracts"  value={activeClients}           sub="current quarter"                         tone="neutral" delay={240} />
-        <Stat label="Combined Agency Revenue"  value={kesC(totalRevenue)}      sub="all agencies this quarter"               tone="brand"   delay={300} />
+        <Stat label="Combined Agency Revenue"  value={kesC(totalRevenue)}      sub="all clients this period"                 tone="brand"   delay={300} />
       </div>
 
       {/* Charts row */}
@@ -920,7 +1380,7 @@ function GrowthView({ agencyId, isManager }) {
           action={isManager && <button onClick={() => setAddingQ(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add quarter</button>}>
           {isManager && addingQ && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, paddingBottom:14, borderBottom:'1px solid '+C.line, marginBottom:16 }}>
-              <input className="ig-finput" placeholder="Period (e.g. Q1 2026) *" value={qForm.q}       onChange={setQF('q')}       style={{ flex:'1 1 130px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addQuarter()} />
+              <input className="ig-finput" placeholder="Period (e.g. Q1 2026) *" value={qForm.period}  onChange={setQF('period')}  style={{ flex:'1 1 130px' }} autoFocus onKeyDown={(e) => e.key==='Enter' && addQuarter()} />
               <input className="ig-finput" placeholder="Actual (KES)"            value={qForm.actual}  onChange={setQF('actual')}  style={{ width:120 }} type="number" />
               <input className="ig-finput" placeholder="Target (KES)"            value={qForm.target}  onChange={setQF('target')}  style={{ width:120 }} type="number" />
               <input className="ig-finput" placeholder="Clients"                 value={qForm.clients} onChange={setQF('clients')} style={{ width:80  }} type="number" />
@@ -928,41 +1388,53 @@ function GrowthView({ agencyId, isManager }) {
               <button className="ig-fcancel" onClick={() => setAddingQ(false)}>Cancel</button>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={250}>
-            <ComposedChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-              <XAxis dataKey="q" tick={chartAxis} axisLine={false} tickLine={false} />
-              <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
-              <Tooltip {...ttStyle} formatter={(v, n) => [kesC(v), n==='actual'?'Actual':'Target']} />
-              <Bar  dataKey="actual" fill={C.brand}    radius={[6,6,0,0]} maxBarSize={40} />
-              <Line dataKey="target" stroke={C.signal} strokeWidth={2.5} dot={{ r:3, fill:C.signal }} type="monotone" />
-            </ComposedChart>
-          </ResponsiveContainer>
-          <div style={{ display:'flex', gap:20, marginTop:10, fontSize:12, color:C.inkSoft }}>
-            <span style={{ display:'flex', alignItems:'center', gap:6 }}><span style={{ width:12, height:12, borderRadius:2, background:C.brand, display:'inline-block' }}/>Actual</span>
-            <span style={{ display:'flex', alignItems:'center', gap:6 }}><span style={{ width:14, height:2, background:C.signal, display:'inline-block' }}/>Target</span>
-          </div>
+          {quarterly.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <ComposedChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                  <XAxis dataKey="period" tick={chartAxis} axisLine={false} tickLine={false} />
+                  <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
+                  <Tooltip {...ttStyle} formatter={(v, n) => [kesC(v), n==='actual'?'Actual':'Target']} />
+                  <Bar  dataKey="actual" fill={C.brand}    radius={[6,6,0,0]} maxBarSize={40} />
+                  <Line dataKey="target" stroke={C.signal} strokeWidth={2.5} dot={{ r:3, fill:C.signal }} type="monotone" />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div style={{ display:'flex', gap:20, marginTop:10, fontSize:12, color:C.inkSoft }}>
+                <span style={{ display:'flex', alignItems:'center', gap:6 }}><span style={{ width:12, height:12, borderRadius:2, background:C.brand, display:'inline-block' }}/>Actual</span>
+                <span style={{ display:'flex', alignItems:'center', gap:6 }}><span style={{ width:14, height:2, background:C.signal, display:'inline-block' }}/>Target</span>
+              </div>
+            </>
+          ) : (
+            <div style={{ color:C.inkFaint, fontSize:13, textAlign:'center', padding:'48px 0' }}>No quarterly data yet — click "Add quarter" to begin.</div>
+          )}
         </Card>
 
         <Card title="Client Growth Over Time">
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
-              <defs>
-                <linearGradient id="clGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.pos} stopOpacity={0.35} />
-                  <stop offset="95%" stopColor={C.pos} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
-              <XAxis dataKey="q" tick={chartAxis} axisLine={false} tickLine={false} />
-              <YAxis tick={chartAxis} axisLine={false} tickLine={false} />
-              <Tooltip {...ttStyle} formatter={(v) => [v, 'Clients']} />
-              <Area type="monotone" dataKey="clients" stroke={C.pos} strokeWidth={2.5} fill="url(#clGrad)" dot={{ r:4, fill:C.pos, stroke:'none' }} />
-            </AreaChart>
-          </ResponsiveContainer>
-          <div style={{ marginTop:10, fontSize:12, color:C.inkSoft, display:'flex', gap:6, alignItems:'center' }}>
-            <span style={{ width:14, height:2, background:C.pos, display:'inline-block' }}/>Active clients per quarter
-          </div>
+          {quarterly.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
+                  <defs>
+                    <linearGradient id="clGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={C.pos} stopOpacity={0.35} />
+                      <stop offset="95%" stopColor={C.pos} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                  <XAxis dataKey="period" tick={chartAxis} axisLine={false} tickLine={false} />
+                  <YAxis tick={chartAxis} axisLine={false} tickLine={false} />
+                  <Tooltip {...ttStyle} formatter={(v) => [v, 'Clients']} />
+                  <Area type="monotone" dataKey="clients" stroke={C.pos} strokeWidth={2.5} fill="url(#clGrad)" dot={{ r:4, fill:C.pos, stroke:'none' }} />
+                </AreaChart>
+              </ResponsiveContainer>
+              <div style={{ marginTop:10, fontSize:12, color:C.inkSoft, display:'flex', gap:6, alignItems:'center' }}>
+                <span style={{ width:14, height:2, background:C.pos, display:'inline-block' }}/>Active clients per quarter
+              </div>
+            </>
+          ) : (
+            <div style={{ color:C.inkFaint, fontSize:13, textAlign:'center', padding:'48px 0' }}>Add quarters to see client growth trend.</div>
+          )}
         </Card>
       </div>
 
@@ -1018,7 +1490,7 @@ function GrowthView({ agencyId, isManager }) {
                 <select value={deal.stage} onChange={(e) => moveDeal(deal.id, e.target.value)} className="ig-fselect" style={{ fontSize:11.5, padding:'4px 8px', height:28, width:120 }}>
                   {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
                 </select>
-                <button className="ig-delrow" onClick={() => removeDeal(deal.id)} title="Remove">✕</button>
+                <button className="ig-delrow" onClick={() => delDeal(deal.id)} title="Remove">✕</button>
               </>}
             </div>
           ))}
@@ -1051,7 +1523,7 @@ function GrowthView({ agencyId, isManager }) {
                 </div>
                 <div className="mono" style={{ width:80, textAlign:'right', fontSize:12.5, color:C.brand, fontWeight:600, flexShrink:0 }}>{kesC(cl.value)}</div>
                 <div style={{ width:34, textAlign:'right', fontSize:12, color:C.inkFaint, flexShrink:0 }}>{pct}%</div>
-                {isManager && <button className="ig-delrow" onClick={() => removeClient(cl.id)} title="Remove" style={{ flexShrink:0 }}>✕</button>}
+                {isManager && <button className="ig-delrow" onClick={() => delClient(cl.id)} title="Remove" style={{ flexShrink:0 }}>✕</button>}
               </div>
             );
           })}
@@ -1063,26 +1535,48 @@ function GrowthView({ agencyId, isManager }) {
 
       {/* Growth Levers */}
       <div style={{ marginTop:20 }}>
-        <h3 className="display" style={{ fontSize:13, fontWeight:700, color:C.inkSoft, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:14 }}>Growth Levers</h3>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <h3 className="display" style={{ fontSize:13, fontWeight:700, color:C.inkSoft, letterSpacing:'.06em', textTransform:'uppercase' }}>Growth Levers</h3>
+          {isManager && <button onClick={() => { setLeverForm({ k:'', v:'', note:'' }); setAddingLever(v => !v); }} className="ig-kbtn" style={{ width:'auto', padding:'0 12px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12, fontWeight:600 }}><Plus size={13}/> Add lever</button>}
+        </div>
+        {isManager && addingLever && (
+          <div className="ig-card" style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            <input className="ig-finput" placeholder="Label *" value={leverForm.k}    onChange={setLF('k')}    style={{ fontSize:12.5 }} autoFocus />
+            <input className="ig-finput" placeholder="Value"   value={leverForm.v}    onChange={setLF('v')}    style={{ fontSize:12.5 }} onKeyDown={(e) => e.key==='Enter' && addLeverRow()} />
+            <input className="ig-finput" placeholder="Note"    value={leverForm.note} onChange={setLF('note')} style={{ fontSize:12.5 }} />
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="ig-fadd"    onClick={addLeverRow}               style={{ padding:'5px 14px', fontSize:12 }}>Add</button>
+              <button className="ig-fcancel" onClick={() => setAddingLever(false)} style={{ padding:'5px 10px', fontSize:12 }}>Cancel</button>
+            </div>
+          </div>
+        )}
         <div className="ig-kpis">
-          {levers.map((l, i) => isManager && editingLever === i ? (
-            <div key={i} className="ig-card" style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:8 }}>
+          {levers.map((l, i) => isManager && editingLeverId === l.id ? (
+            <div key={l.id} className="ig-card" style={{ padding:'16px 18px', display:'flex', flexDirection:'column', gap:8 }}>
               <input className="ig-finput" placeholder="Label" value={leverForm.k}    onChange={setLF('k')}    style={{ fontSize:12.5 }} autoFocus />
               <input className="ig-finput" placeholder="Value" value={leverForm.v}    onChange={setLF('v')}    style={{ fontSize:12.5 }} onKeyDown={(e) => e.key==='Enter' && saveLever()} />
               <input className="ig-finput" placeholder="Note"  value={leverForm.note} onChange={setLF('note')} style={{ fontSize:12.5 }} />
               <div style={{ display:'flex', gap:6 }}>
-                <button className="ig-fadd"    onClick={saveLever}                   style={{ padding:'5px 14px', fontSize:12 }}>Save</button>
-                <button className="ig-fcancel" onClick={() => setEditingLever(null)} style={{ padding:'5px 10px', fontSize:12 }}>Cancel</button>
+                <button className="ig-fadd"    onClick={saveLever}                      style={{ padding:'5px 14px', fontSize:12 }}>Save</button>
+                <button className="ig-fcancel" onClick={() => setEditingLeverId(null)}  style={{ padding:'5px 10px', fontSize:12 }}>Cancel</button>
               </div>
             </div>
           ) : (
-            <div key={i} className="ig-card ig-taskrow rise" style={{ padding:'16px 18px', animationDelay:i*60+'ms', position:'relative' }}>
+            <div key={l.id} className="ig-card ig-taskrow rise" style={{ padding:'16px 18px', animationDelay:i*60+'ms', position:'relative' }}>
               <div style={{ fontSize:12.5, color:C.inkSoft, fontWeight:500 }}>{l.k}</div>
               <div className="mono display" style={{ fontSize:22, fontWeight:600, color:C.brand, marginTop:6 }}>{l.v}</div>
               <div style={{ fontSize:11.5, color:C.inkFaint, marginTop:4 }}>{l.note}</div>
-              {isManager && <button className="ig-delrow" onClick={() => startEditLever(i)} title="Edit" style={{ position:'absolute', top:12, right:12 }}><Pencil size={13}/></button>}
+              {isManager && (
+                <div style={{ position:'absolute', top:10, right:10, display:'flex', gap:4 }}>
+                  <button className="ig-delrow" onClick={() => startEditLever(l)} title="Edit"><Pencil size={13}/></button>
+                  <button className="ig-delrow" onClick={() => delLever(l.id)} title="Delete" style={{ color:C.alert }}><Trash2 size={13}/></button>
+                </div>
+              )}
             </div>
           ))}
+          {levers.length === 0 && !addingLever && (
+            <div style={{ color:C.inkFaint, fontSize:13, padding:'24px 0' }}>No growth levers tracked yet.</div>
+          )}
         </div>
       </div>
     </>
@@ -1090,115 +1584,219 @@ function GrowthView({ agencyId, isManager }) {
 }
 
 const EMPTY_IDEA = { t:'', problem:'', hypothesis:'', metric:'', next_step:'', owner:'', impact:'Medium' };
+const INNOVATION_STAGES = ['Idea','Exploring','Piloting','Scaling','Parked'];
 
-function InnovationView({ innovationBoard: initial }) {
-  const [board,       setBoard]       = useState(initial);
+function InnovationView({ agencyUUID, isManager }) {
+  const { rows: ideas, loading, dbInsert, dbDelete, dbUpdate } = useSimpleTable('innovation_ideas', agencyUUID);
   const [addingStage, setAddingStage] = useState(null);
-  const [expanded,    setExpanded]    = useState(null); // "stage-idx"
+  const [selId,       setSelId]       = useState(null);
+  const [editing,     setEditing]     = useState(false);
+  const [editForm,    setEditForm]    = useState({});
   const [ideaForm,    setIdeaForm]    = useState(EMPTY_IDEA);
 
-  const setF = (k) => (e) => setIdeaForm((p) => ({ ...p, [k]:e.target.value }));
+  const selIdea = ideas.find(i => i.id === selId) || null;
 
-  const toggleAdd = (stage) => {
-    setIdeaForm(EMPTY_IDEA);
-    setAddingStage((v) => v === stage ? null : stage);
+  const setF  = (k) => (e) => setIdeaForm(p => ({ ...p, [k]:e.target.value }));
+  const setEF = (k) => (e) => setEditForm(p => ({ ...p, [k]:e.target.value }));
+
+  const openIdea  = (idea) => { setSelId(idea.id); setEditing(false); };
+  const closeIdea = () => { setSelId(null); setEditing(false); };
+  const startEdit = () => {
+    setEditForm({ title:selIdea.title, problem:selIdea.problem || '', hypothesis:selIdea.hypothesis || '', metric:selIdea.metric || '', next_step:selIdea.next_step || '', owner:selIdea.owner || '', impact:selIdea.impact, stage:selIdea.stage });
+    setEditing(true);
   };
-  const addIdea = (stage) => {
+  const saveEdit = async () => {
+    if (!editForm.title?.trim()) return;
+    await dbUpdate(selId, { title:editForm.title, problem:editForm.problem, hypothesis:editForm.hypothesis, metric:editForm.metric, next_step:editForm.next_step, owner:editForm.owner, impact:editForm.impact, stage:editForm.stage });
+    setEditing(false);
+  };
+  const deleteIdea = async () => {
+    if (!window.confirm('Delete this idea? This cannot be undone.')) return;
+    await dbDelete(selId);
+    closeIdea();
+  };
+
+  const toggleAdd = (stage) => { setIdeaForm(EMPTY_IDEA); setAddingStage(v => v === stage ? null : stage); };
+  const addIdea   = async (stage) => {
     if (!ideaForm.t.trim() || !ideaForm.problem.trim()) return;
-    setBoard((p) => ({ ...p, [stage]: [...p[stage], { ...ideaForm }] }));
+    await dbInsert({ stage, title:ideaForm.t, problem:ideaForm.problem, hypothesis:ideaForm.hypothesis, metric:ideaForm.metric, next_step:ideaForm.next_step, owner:ideaForm.owner, impact:ideaForm.impact });
     setIdeaForm(EMPTY_IDEA);
     setAddingStage(null);
   };
-  const removeIdea = (stage, idx) => setBoard((p) => ({ ...p, [stage]: p[stage].filter((_, i) => i !== idx) }));
-  const toggleExpand = (key) => setExpanded(v => v === key ? null : key);
 
-  const stages    = Object.keys(board);
-  const stageTone = { Idea:C.inkFaint, Exploring:C.signal, Piloting:C.pos, Scaling:C.brand, Parked:C.inkSoft };
+  const stageTone  = { Idea:C.inkFaint, Exploring:C.signal, Piloting:C.pos, Scaling:C.brand, Parked:C.inkSoft };
+  const stageColor = (s) => stageTone[s] || C.inkSoft;
 
-  const Field = ({ label, value }) => value ? (
-    <div style={{ marginTop:10 }}>
-      <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, marginBottom:3 }}>{label}</div>
-      <div style={{ fontSize:12.5, color:C.inkSoft, lineHeight:1.5 }}>{value}</div>
+  if (loading) return <div style={{ color:C.inkSoft, fontSize:14, padding:'40px 0' }}>Loading…</div>;
+
+  const ReadField = ({ label, value }) => !value ? null : (
+    <div style={{ marginBottom:18 }}>
+      <div style={{ fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, marginBottom:5 }}>{label}</div>
+      <div style={{ fontSize:13.5, color:C.ink, lineHeight:1.65 }}>{value}</div>
     </div>
-  ) : null;
+  );
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(200px,1fr))', gap:14, overflowX:'auto', paddingBottom:4 }}>
-      {stages.map((s, si) => (
-        <div key={s} className="rise" style={{ animationDelay:si*60+'ms' }}>
-          {/* column header */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-            <span style={{ width:8, height:8, borderRadius:99, background:stageTone[s] || C.inkSoft, flexShrink:0 }} />
-            <span className="display" style={{ fontWeight:700, fontSize:13.5, color:C.ink }}>{s}</span>
-            <span className="mono" style={{ fontSize:11, color:C.inkFaint, marginLeft:'auto' }}>{board[s].length}</span>
-          </div>
-
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {board[s].map((idea, idx) => {
-              const key  = s+'-'+idx;
-              const open = expanded === key;
-              const tone = stageTone[s] || C.inkSoft;
-              return (
-                <div key={idx} className="ig-card ig-taskrow" style={{ padding:0, borderTop:'3px solid '+tone, overflow:'hidden' }}>
-                  {/* title row — always visible */}
-                  <div
-                    onClick={() => toggleExpand(key)}
-                    style={{ padding:'12px 14px', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}
-                  >
-                    <div style={{ fontWeight:600, color:C.ink, fontSize:13, lineHeight:1.35, flex:1 }}>{idea.t}</div>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                      <Pill tone={idea.impact==='High'?'pos':idea.impact==='Medium'?'warn':'neutral'}>{idea.impact}</Pill>
-                      <span style={{ fontSize:13, color:C.inkFaint, lineHeight:1 }}>{open ? '▲' : '▼'}</span>
-                    </div>
-                  </div>
-
-                  {/* expanded detail */}
-                  {open && (
-                    <div style={{ padding:'0 14px 14px', borderTop:'1px solid '+C.line }}>
-                      <Field label="Problem being solved" value={idea.problem} />
-                      <Field label="Hypothesis"           value={idea.hypothesis} />
-                      <Field label="Success metric"       value={idea.metric} />
-                      <Field label="Next step"            value={idea.next_step} />
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
-                        <span style={{ fontSize:12, color:C.inkFaint, fontWeight:600 }}>{idea.owner || '—'}</span>
-                        <button className="ig-delrow" onClick={() => removeIdea(s, idx)} title="Remove" style={{ fontSize:11, opacity:1, color:C.alert }}>✕ Remove</button>
-                      </div>
-                    </div>
+    <>
+      {/* ── Detail / Edit modal ── */}
+      {selId && selIdea && (
+        <div
+          onClick={closeIdea}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(4px)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background:C.paper, borderRadius:20, padding:'28px 32px', width:'100%', maxWidth:560, maxHeight:'88vh', overflowY:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.50)', border:'1px solid '+C.line }}
+          >
+            {/* Header */}
+            <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:22 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                {editing ? (
+                  <input
+                    className="ig-finput"
+                    value={editForm.title}
+                    onChange={setEF('title')}
+                    style={{ fontSize:17, fontWeight:700, width:'100%', padding:'6px 10px' }}
+                    autoFocus
+                  />
+                ) : (
+                  <div style={{ fontSize:17, fontWeight:700, color:C.ink, lineHeight:1.3 }}>{selIdea.title}</div>
+                )}
+                <div style={{ display:'flex', gap:8, marginTop:9, flexWrap:'wrap', alignItems:'center' }}>
+                  {editing ? (
+                    <>
+                      <select className="ig-fselect" value={editForm.stage}  onChange={setEF('stage')}  style={{ fontSize:12 }}>
+                        {INNOVATION_STAGES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                      <select className="ig-fselect" value={editForm.impact} onChange={setEF('impact')} style={{ fontSize:12 }}>
+                        {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize:12, fontWeight:700, color:stageColor(selIdea.stage), padding:'2px 10px', borderRadius:99, border:'1.5px solid '+stageColor(selIdea.stage) }}>{selIdea.stage}</span>
+                      <Pill tone={selIdea.impact==='High'?'pos':selIdea.impact==='Medium'?'warn':'neutral'}>{selIdea.impact} impact</Pill>
+                      {selIdea.owner && <span style={{ fontSize:12, color:C.inkSoft }}>Owner: <strong style={{ color:C.ink }}>{selIdea.owner}</strong></span>}
+                    </>
                   )}
                 </div>
-              );
-            })}
-
-            {/* add form */}
-            {addingStage === s ? (
-              <div style={{ display:'flex', flexDirection:'column', gap:8, padding:12, background:C.paper, borderRadius:11, border:'1px dashed '+C.line }}>
-                <div style={{ fontSize:11, fontWeight:700, color:C.inkFaint, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>New idea</div>
-                <input className="ig-finput" placeholder="Title *" value={ideaForm.t} onChange={setF('t')} style={{ fontSize:12.5 }} autoFocus />
-                <textarea className="ig-finput" placeholder="What problem does this solve? *" value={ideaForm.problem} onChange={setF('problem')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
-                <textarea className="ig-finput" placeholder="Hypothesis — We believe that…" value={ideaForm.hypothesis} onChange={setF('hypothesis')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
-                <input className="ig-finput" placeholder="Success metric — How will we know it worked?" value={ideaForm.metric} onChange={setF('metric')} style={{ fontSize:12.5 }} />
-                <input className="ig-finput" placeholder="Immediate next step" value={ideaForm.next_step} onChange={setF('next_step')} style={{ fontSize:12.5 }} />
-                <div style={{ display:'flex', gap:8 }}>
-                  <input className="ig-finput" placeholder="Owner" value={ideaForm.owner} onChange={setF('owner')} style={{ fontSize:12.5, flex:1 }} />
-                  <select className="ig-fselect" value={ideaForm.impact} onChange={setF('impact')} style={{ fontSize:12.5 }}>
-                    {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
-                  </select>
-                </div>
-                {(!ideaForm.t.trim() || !ideaForm.problem.trim()) && (
-                  <div style={{ fontSize:11.5, color:C.signal }}>Title and problem statement are required.</div>
-                )}
-                <div style={{ display:'flex', gap:6 }}>
-                  <button className="ig-fadd" onClick={() => addIdea(s)} style={{ flex:1, padding:'6px 0', fontSize:12 }}>Add idea</button>
-                  <button className="ig-fcancel" onClick={() => setAddingStage(null)} style={{ padding:'6px 10px', fontSize:12 }}>✕</button>
-                </div>
               </div>
-            ) : (
-              <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
-            )}
+              <div style={{ display:'flex', gap:6, flexShrink:0, marginTop:2 }}>
+                {!editing && (
+                  <button onClick={startEdit} className="ig-kbtn" style={{ width:34, height:34, borderRadius:9, color:C.inkSoft }} title="Edit"><Pencil size={15} /></button>
+                )}
+                {editing && (
+                  <button onClick={saveEdit} className="ig-kbtn" style={{ width:'auto', padding:'0 16px', height:34, borderRadius:9, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>Save</button>
+                )}
+                <button onClick={closeIdea} style={{ width:34, height:34, borderRadius:9, background:'none', border:'1px solid '+C.line, cursor:'pointer', color:C.inkSoft, fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ borderTop:'1px solid '+C.line, paddingTop:20 }}>
+              {editing ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                  {[
+                    { key:'problem',    label:'Problem being solved *', multi:true },
+                    { key:'hypothesis', label:'Hypothesis',             multi:true },
+                    { key:'metric',     label:'Success metric',         multi:false },
+                    { key:'next_step',  label:'Next step',              multi:false },
+                    { key:'owner',      label:'Owner',                  multi:false },
+                  ].map(({ key, label, multi }) => (
+                    <div key={key}>
+                      <label style={{ fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:C.inkFaint, display:'block', marginBottom:5 }}>{label}</label>
+                      {multi ? (
+                        <textarea className="ig-finput" value={editForm[key] || ''} onChange={setEF(key)} rows={3} style={{ width:'100%', resize:'vertical', fontFamily:'inherit', fontSize:13 }} />
+                      ) : (
+                        <input className="ig-finput" value={editForm[key] || ''} onChange={setEF(key)} style={{ width:'100%', fontSize:13 }} />
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:6, paddingTop:14, borderTop:'1px solid '+C.line }}>
+                    <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+                      <Trash2 size={14} /> Delete
+                    </button>
+                    <button onClick={() => setEditing(false)} className="ig-fcancel" style={{ padding:'0 14px', fontSize:12.5 }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <ReadField label="Problem being solved" value={selIdea.problem} />
+                  <ReadField label="Hypothesis"           value={selIdea.hypothesis} />
+                  <ReadField label="Success metric"       value={selIdea.metric} />
+                  <ReadField label="Next step"            value={selIdea.next_step} />
+                  <div style={{ marginTop:20, paddingTop:16, borderTop:'1px solid '+C.line }}>
+                    <button onClick={deleteIdea} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, color:C.alert, borderColor:'rgba(224,72,90,.3)', fontFamily:'inherit', fontSize:12.5, fontWeight:600 }}>
+                      <Trash2 size={14} /> Delete idea
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      ))}
-    </div>
+      )}
+
+      {/* ── Kanban board ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,minmax(200px,1fr))', gap:14, overflowX:'auto', paddingBottom:4 }}>
+        {INNOVATION_STAGES.map((s, si) => {
+          const stageIdeas = ideas.filter(idea => idea.stage === s);
+          const tone = stageColor(s);
+          return (
+            <div key={s} className="rise" style={{ animationDelay:si*60+'ms' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+                <span style={{ width:8, height:8, borderRadius:99, background:tone, flexShrink:0 }} />
+                <span className="display" style={{ fontWeight:700, fontSize:13.5, color:C.ink }}>{s}</span>
+                <span className="mono" style={{ fontSize:11, color:C.inkFaint, marginLeft:'auto' }}>{stageIdeas.length}</span>
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {stageIdeas.map((idea) => (
+                  <div
+                    key={idea.id}
+                    onClick={() => openIdea(idea)}
+                    className="ig-card ig-taskrow"
+                    style={{ padding:'12px 14px', cursor:'pointer', borderTop:'3px solid '+tone, transition:'box-shadow .15s' }}
+                  >
+                    <div style={{ fontWeight:600, color:C.ink, fontSize:13, lineHeight:1.35 }}>{idea.title}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:7, flexWrap:'wrap' }}>
+                      <Pill tone={idea.impact==='High'?'pos':idea.impact==='Medium'?'warn':'neutral'}>{idea.impact}</Pill>
+                      {idea.owner && <span style={{ fontSize:11.5, color:C.inkFaint }}>{idea.owner}</span>}
+                    </div>
+                  </div>
+                ))}
+
+                {addingStage === s ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, padding:12, background:C.paper, borderRadius:11, border:'1px dashed '+C.line }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.inkFaint, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>New idea</div>
+                    <input className="ig-finput" placeholder="Title *" value={ideaForm.t} onChange={setF('t')} style={{ fontSize:12.5 }} autoFocus />
+                    <textarea className="ig-finput" placeholder="What problem does this solve? *" value={ideaForm.problem} onChange={setF('problem')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
+                    <textarea className="ig-finput" placeholder="Hypothesis — We believe that…" value={ideaForm.hypothesis} onChange={setF('hypothesis')} rows={2} style={{ fontSize:12.5, resize:'vertical', fontFamily:'inherit' }} />
+                    <input className="ig-finput" placeholder="Success metric" value={ideaForm.metric} onChange={setF('metric')} style={{ fontSize:12.5 }} />
+                    <input className="ig-finput" placeholder="Immediate next step" value={ideaForm.next_step} onChange={setF('next_step')} style={{ fontSize:12.5 }} />
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input className="ig-finput" placeholder="Owner" value={ideaForm.owner} onChange={setF('owner')} style={{ fontSize:12.5, flex:1 }} />
+                      <select className="ig-fselect" value={ideaForm.impact} onChange={setF('impact')} style={{ fontSize:12.5 }}>
+                        {['High','Medium','Low'].map(v => <option key={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    {(!ideaForm.t.trim() || !ideaForm.problem.trim()) && (
+                      <div style={{ fontSize:11.5, color:C.signal }}>Title and problem statement are required.</div>
+                    )}
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button className="ig-fadd" onClick={() => addIdea(s)} style={{ flex:1, padding:'6px 0', fontSize:12 }}>Add idea</button>
+                      <button className="ig-fcancel" onClick={() => setAddingStage(null)} style={{ padding:'6px 10px', fontSize:12 }}>✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="ig-addidea" onClick={() => toggleAdd(s)}><Plus size={14} /> New idea</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -1226,46 +1824,76 @@ const DEFAULT_DAILY_TASKS = [
   { id:'d8', task:'EOD status report',               outcome:'',                                       time:'17:00', priority:'High',   done:false },
 ];
 
-function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isManager }) {
-  const [tasks,   setTasks]  = useState(() => initial.map((t) => ({ ...t, done: t.status === 'Done' })));
-  const [adding,  setAdding] = useState(false);
-  const [form,    setForm]   = useState({ task:'', assignee:'', priority:'Medium' });
-  const [members, setMembers] = useState([]);
+function WeeklyTasksView({ agencyUUID, members = [], isManager }) {
+  const [tasks,   setTasks]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding,  setAdding]  = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [form,    setForm]    = useState({ task:'', assignee:'', priority:'Medium' });
+
+  const supabase = createClient();
 
   useEffect(() => {
-    if (!agencyId) return;
-    const supabase = createClient();
-    supabase.from('profiles').select('id, full_name')
-      .eq('agency_id', agencyId).eq('approved', true)
-      .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyId]); // agencyId here is the UUID passed from TasksView
+    if (!agencyUUID) { setLoading(false); return; }
+    setLoading(true);
+    supabase.from('weekly_tasks')
+      .select('*')
+      .eq('agency_id', agencyUUID)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error('weekly_tasks fetch:', error);
+        setTasks(data || []);
+        setLoading(false);
+      });
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set    = (k) => (e) => setForm((p) => ({ ...p, [k]:e.target.value }));
-  const toggle = (id) => setTasks((p) => p.map((t) => t.id === id ? { ...t, done:!t.done } : t));
-  const remove = (id) => setTasks((p) => p.filter((t) => t.id !== id));
-  const addTask = () => {
-    if (!form.task.trim()) return;
-    setTasks((p) => [{ ...form, id:'w'+Date.now(), done:false }, ...p]);
-    setForm({ task:'', assignee:'', priority:'Medium' });
-    setAdding(false);
+  const toggle = async (id, current) => {
+    setTasks(p => p.map(t => t.id === id ? { ...t, done: !current } : t));
+    await supabase.from('weekly_tasks').update({ done: !current }).eq('id', id);
   };
 
-  const done      = tasks.filter((t) => t.done).length;
-  const pct       = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
-  const pending   = tasks.filter((t) => !t.done);
-  const completed = tasks.filter((t) =>  t.done);
+  const remove = async (id) => {
+    setTasks(p => p.filter(t => t.id !== id));
+    await supabase.from('weekly_tasks').delete().eq('id', id);
+  };
+
+  const addTask = async () => {
+    if (!form.task.trim() || !agencyUUID) return;
+    setSaving(true);
+    const { data, error } = await supabase.from('weekly_tasks')
+      .insert({ agency_id: agencyUUID, task: form.task.trim(), assignee: form.assignee, priority: form.priority, done: false })
+      .select().single();
+    if (!error && data) setTasks(p => [...p, data]);
+    setForm({ task:'', assignee:'', priority:'Medium' });
+    setAdding(false);
+    setSaving(false);
+  };
+
+  const doneCount = tasks.filter(t => t.done).length;
+  const pct       = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
+  const pending   = tasks.filter(t => !t.done);
+  const completed = tasks.filter(t =>  t.done);
 
   const WeeklyRow = ({ t }) => (
-    <div className="ig-taskrow" style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 10px', borderBottom:'1px solid '+C.line, transition:'opacity .2s', opacity: t.done ? 0.50 : 1 }}>
-      <button onClick={() => toggle(t.id)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, marginTop:2, transition:'all .15s' }}>
-        {t.done && <Check size={13} color="#fff" />}
-      </button>
+    <div className="ig-taskrow" style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 10px', borderBottom:'1px solid '+C.line, opacity: t.done ? 0.5 : 1, transition:'opacity .2s' }}>
+      {isManager && (
+        <button onClick={() => toggle(t.id, t.done)} style={{ width:22, height:22, borderRadius:6, border:t.done?'none':'2px solid '+C.inkFaint, background:t.done?C.pos:'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0, marginTop:2, transition:'all .15s' }}>
+          {t.done && <Check size={13} color="#fff" />}
+        </button>
+      )}
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:13.5, fontWeight:500, color:t.done?C.inkFaint:C.ink, textDecoration:t.done?'line-through':'none', lineHeight:1.4 }}>{t.task}</div>
         {t.assignee && <div style={{ fontSize:12, color:C.inkSoft, marginTop:3 }}>{t.assignee}</div>}
       </div>
       <Pill tone={PRIO_TONE[t.priority]||'neutral'}>{t.priority}</Pill>
       {isManager && <button className="ig-delrow" onClick={() => remove(t.id)} title="Remove">✕</button>}
+    </div>
+  );
+
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'60px 0', color:C.inkFaint, fontSize:13, gap:10 }}>
+      <span style={{ width:16, height:16, borderRadius:'50%', border:'2px solid '+C.inkFaint, borderTopColor:C.brand, animation:'ig-spin .7s linear infinite', display:'inline-block' }} />
+      Loading…
     </div>
   );
 
@@ -1278,23 +1906,65 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
           <div style={{ width:pct+'%', height:'100%', background:C.pos, borderRadius:99, transition:'width .4s' }} />
         </div>
         <span className="mono" style={{ fontSize:12, color:C.inkSoft, flexShrink:0, minWidth:32, textAlign:'right' }}>{pct}%</span>
-        {isManager && <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
-          <Plus size={14} /> Add task
-        </button>}
+        {isManager && (
+          <button onClick={() => setAdding(v => !v)} className="ig-kbtn" style={{ width:'auto', padding:'0 14px', gap:6, background:C.brand, color:'#fff', border:'none', fontFamily:'inherit', fontSize:12.5, fontWeight:600, flexShrink:0 }}>
+            <Plus size={14} /> Add task
+          </button>
+        )}
       </div>
 
       {isManager && adding && (
-        <div className="ig-card" style={{ padding:16, marginBottom:18, display:'flex', flexWrap:'wrap', gap:8 }}>
-          <input className="ig-finput" placeholder="Task description…" value={form.task} onChange={set('task')} style={{ flex:'1 1 220px', minWidth:0 }} onKeyDown={(e) => e.key==='Enter' && addTask()} autoFocus />
-          <select className="ig-fselect" value={form.assignee} onChange={set('assignee')} style={{ width:180 }}>
-            <option value="">Assign to…</option>
-            {members.map(m => <option key={m.id} value={m.full_name}>{m.full_name}</option>)}
-          </select>
-          <select className="ig-fselect" value={form.priority} onChange={set('priority')}>
-            {['High','Medium','Low'].map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <button className="ig-fadd"    onClick={addTask}>Add</button>
-          <button className="ig-fcancel" onClick={() => setAdding(false)}>Cancel</button>
+        <div className="ig-card" style={{ padding:'16px 20px', marginBottom:18, display:'flex', flexDirection:'column', gap:12 }}>
+          {/* Row 1: task description */}
+          <input className="ig-finput" placeholder="Task description…" value={form.task}
+            onChange={e => setForm(p => ({ ...p, task: e.target.value }))}
+            style={{ width:'100%', background: C.inputBg, color: C.ink, borderColor: C.line, fontSize:13.5, padding:'10px 14px' }}
+            onKeyDown={e => e.key === 'Enter' && addTask()} autoFocus />
+
+          {/* Row 2: assignee + priority + actions */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+            {/* Assignee select */}
+            <div style={{ position:'relative', flex:'1 1 180px', minWidth:160 }}>
+              <select
+                value={form.assignee}
+                onChange={e => setForm(p => ({ ...p, assignee: e.target.value }))}
+                style={{
+                  width:'100%', appearance:'none', WebkitAppearance:'none',
+                  background: C.inputBg, color: C.ink,
+                  border:'1px solid '+C.line, borderRadius:8,
+                  padding:'9px 34px 9px 12px', fontSize:13, fontFamily:'inherit',
+                  cursor:'pointer', outline:'none', colorScheme: C.inputBg === '#FFFFFF' ? 'light' : 'dark',
+                  transition:'border-color .15s',
+                }}>
+                <option value="">Assign to…</option>
+                {members.map(m => <option key={m.id} value={m.full_name}>{m.full_name}</option>)}
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.inkSoft, fontSize:11 }}>▾</span>
+            </div>
+
+            {/* Priority select */}
+            <div style={{ position:'relative', flex:'0 0 130px' }}>
+              <select
+                value={form.priority}
+                onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                style={{
+                  width:'100%', appearance:'none', WebkitAppearance:'none',
+                  background: C.inputBg, color: C.ink,
+                  border:'1px solid '+C.line, borderRadius:8,
+                  padding:'9px 34px 9px 12px', fontSize:13, fontFamily:'inherit',
+                  cursor:'pointer', outline:'none', colorScheme: C.inputBg === '#FFFFFF' ? 'light' : 'dark',
+                  transition:'border-color .15s',
+                }}>
+                {['High','Medium','Low'].map(p => <option key={p}>{p}</option>)}
+              </select>
+              <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:C.inkSoft, fontSize:11 }}>▾</span>
+            </div>
+
+            <div style={{ display:'flex', gap:8, marginLeft:'auto' }}>
+              <button className="ig-fadd" onClick={addTask} disabled={saving} style={{ padding:'9px 20px' }}>{saving ? 'Saving…' : 'Add task'}</button>
+              <button className="ig-fcancel" onClick={() => setAdding(false)} style={{ padding:'9px 14px' }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1313,7 +1983,7 @@ function WeeklyTasksView({ tasks: initial = DEFAULT_WEEKLY_TASKS, agencyId, isMa
         <div className="ig-card rise" style={{ padding:0, overflow:'hidden' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px', borderBottom:'1px solid '+C.line }}>
             <h3 className="display" style={{ fontSize:14, fontWeight:700, color:C.ink, margin:0 }}>Completed</h3>
-            <span style={{ fontSize:12, color:C.pos, fontWeight:600 }}>{done} done</span>
+            <span style={{ fontSize:12, color:C.pos, fontWeight:600 }}>{doneCount} done</span>
           </div>
           {completed.length === 0
             ? <p style={{ color:C.inkSoft, fontSize:13, textAlign:'center', padding:'32px 20px' }}>Nothing completed yet.</p>
@@ -1644,8 +2314,8 @@ const ALL_AGENCIES = [
   { slug:'itek',      name:'iTek',                 logo:'/ITEK.png',               logoScale:1.8 },
   { slug:'i3x',       name:'i3x Africa',            logo:'/I3xAfrica.png'           },
   { slug:'i3studios', name:'i3 Studios',             logo:'/I3Studios.png',          logoScale:1.8 },
-  { slug:'assets',    name:'Productions & Assets',  logo:'/logo3.png'               },
-  { slug:'i3kingdom', name:'i3 Kingdom Hub',        logo:'/i3KingdomHubTeam.png'    },
+  { slug:'assets',    name:'Assets',                 logo:'/logo3.png'               },
+  { slug:'i3kingdom', name:'i3 Launchpad',           logo:'/I3LAUNCHPAD LOGO.png'    },
   { slug:'i3plus',    name:'i3+',                   logo:'/5 (2).png',              logoScale:1.8 },
 ];
 
@@ -1727,16 +2397,18 @@ function TasksView({ weeklyTasks, userName, agencyId, agencyUUID, isManager, use
     }
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load agency members list for head/admin member picker
+  // Load agency members list
   useEffect(() => {
-    if (!isManager || !agencyUUID) return;
+    if (!agencyUUID) return;
     supabase
       .from('profiles')
       .select('id, full_name')
       .eq('agency_id', agencyUUID)
-      .eq('approved', true)
-      .then(({ data }) => { if (data) setMembers(data); });
-  }, [agencyUUID, isManager]); // eslint-disable-line react-hooks/exhaustive-deps
+      .then(({ data, error }) => {
+        if (error) { console.error('TasksView members fetch error:', error); return; }
+        if (data) setMembers(data);
+      });
+  }, [agencyUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load tasks whenever the viewed user changes
   useEffect(() => {
@@ -1868,7 +2540,7 @@ function TasksView({ weeklyTasks, userName, agencyId, agencyUUID, isManager, use
       {/* Content */}
       {tab === 'daily'
         ? <DailyTasksView tasks={tasks} loading={loading} onAdd={onAdd} onToggle={onToggle} onRemove={onRemove} />
-        : <WeeklyTasksView tasks={weeklyTasks} agencyId={agencyUUID} isManager={isManager} />
+        : <WeeklyTasksView agencyUUID={agencyUUID} members={members} isManager={isManager} />
       }
     </div>
   );
@@ -1897,7 +2569,7 @@ const AGENCY_LOGOS = {
   i3x:        '/I3xAfrica.png',
   i3studios:  '/I3Studios.png',
   assets:     '/logo3.png',
-  i3kingdom:  '/i3KingdomHubTeam.png',
+  i3kingdom:  '/I3LAUNCHPAD LOGO.png',
   i3plus:     '/5 (2).png',
 };
 
@@ -2058,9 +2730,9 @@ const DARK_CSS = `
   .ig-dark .ig-table th{color:#3D5A8A !important;border-color:rgba(48,108,236,0.15) !important;}
   .ig-dark .ig-table td{border-color:rgba(48,108,236,0.12) !important;color:#B8D4FF !important;}
   .ig-dark .ig-table tbody tr:hover{background:rgba(48,108,236,0.08) !important;}
-  .ig-dark .ig-finput{background:rgba(48,108,236,0.10) !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;}
+  .ig-dark .ig-finput{background:#0d1b38 !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;color-scheme:dark;}
   .ig-dark .ig-finput:focus{border-color:#5B9BFF !important;box-shadow:0 0 0 3px rgba(48,108,236,0.20) !important;}
-  .ig-dark .ig-fselect{background:rgba(48,108,236,0.10) !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;}
+  .ig-dark .ig-fselect{background:#0d1b38 !important;border-color:rgba(48,108,236,0.35) !important;color:#E2EEFF !important;color-scheme:dark;}
   .ig-dark .ig-fcancel{color:#7EB3FF !important;border-color:rgba(48,108,236,0.25) !important;}
   .ig-dark .ig-addidea{border-color:rgba(48,108,236,0.25) !important;color:#3D5A8A !important;}
   .ig-dark .ig-addidea:hover{color:#5B9BFF !important;border-color:rgba(48,108,236,0.60) !important;background:rgba(48,108,236,0.08) !important;}
@@ -2113,7 +2785,7 @@ const CSS = `
   .ig-addtask:hover{color:#306CEC;border-color:#306CEC66;background:#306CEC0A;}
   .ig-finput{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 11px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;transition:border-color .15s;}
   .ig-finput:focus{border-color:#306CEC;box-shadow:0 0 0 3px rgba(48,108,236,.12);}
-  .ig-fselect{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;cursor:pointer;transition:border-color .15s;}
+  .ig-fselect{border:1px solid rgba(20,33,61,0.12);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;color:#14213D;outline:none;background:#fff;cursor:pointer;transition:border-color .15s;appearance:none;-webkit-appearance:none;}
   .ig-fselect:focus{border-color:#306CEC;}
   .ig-fadd{padding:8px 18px;background:#306CEC;color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap;}
   .ig-fadd:hover{background:#1E4FB8;}
@@ -2169,14 +2841,14 @@ export default function AgencyDashboardPage({ agencyId, agencyData, userProfile 
   function renderView() {
     switch (active) {
       case 'tasks': return <TasksView weeklyTasks={d.weeklyTasks} userName={userProfile?.full_name} agencyId={agencyId} agencyUUID={userProfile?.agency_id} isManager={isManager} userId={userProfile?.id} />;
-      case 'goals':      return <GoalsView      projects={d.projects || []} isManager={isManager} />;
-      case 'fin-revenue': return <RevenueView monthly={d.monthly || []} isManager={isManager} />;
-      case 'fin-loss':   return <LossView       losses={d.losses || []} ytdActual={ytdActual} isManager={isManager} />;
-      case 'fin-exp':    return <ExpenditureView expenses={d.expenses || []} expTrend={d.expTrend || []} isManager={isManager} />;
-      case 'fin-models': return <ModelsView     models={d.models || []} isManager={isManager} />;
-      case 'fin-rates':  return <RatesView      rateCard={d.rateCard || []} receivables={d.receivables || []} isManager={isManager} />;
-      case 'growth':     return <GrowthView agencyId={agencyId} isManager={isManager} />;
-      case 'innovation': return <InnovationView innovationBoard={d.innovationBoard || { Idea:[], Exploring:[], Piloting:[], Scaling:[], Parked:[] }} />;
+      case 'goals':      return <GoalsView      agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'fin-revenue': return <RevenueView agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'fin-loss':   return <LossView        agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'fin-exp':    return <ExpenditureView  agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'fin-models': return <ModelsView       agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'fin-rates':  return <RatesView        agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'growth':     return <GrowthView       agencyUUID={userProfile?.agency_id} isManager={isManager} />;
+      case 'innovation': return <InnovationView   agencyUUID={userProfile?.agency_id} isManager={isManager} />;
       case 'members':       return <MembersView agencyId={agencyId} isAdmin={isAdmin} />;
       case 'all-agencies':  return <AllAgenciesView currentAgencyId={agencyId} onSwitch={(slug) => router.push(`/demo/agencies/${slug}`)} />;
       default: {

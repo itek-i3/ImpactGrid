@@ -43,8 +43,8 @@ INSERT INTO agencies (slug, name, logo_url) VALUES
   ('itek',      'iTek',                  '/ITEK.png'),
   ('i3x',       'i3x Africa',            '/I3xAfrica.png'),
   ('i3studios',  'i3 Studios',            '/I3Studios.png'),
-  ('assets',    'Productions & Assets',  '/PRODUCTIONSASSESTS.png'),
-  ('i3kingdom', 'i3 Kingdom Hub',        '/i3KingdomHubTeam.png'),
+  ('assets',    'Assets',                '/PRODUCTIONSASSESTS.png'),
+  ('i3kingdom', 'i3 Launchpad',          '/I3LAUNCHPAD LOGO.png'),
   ('i3plus',    'i3+',                   '/i3plus.png')
 ON CONFLICT (slug) DO NOTHING;
 
