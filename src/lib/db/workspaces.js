@@ -61,7 +61,6 @@ export async function createWorkspace({ name, icon = '🚀' }) {
     .insert({
       name,
       icon,
-      owner_id: user.id,
       agency_id: profile.agency_id
     })
     .select()
