@@ -64,16 +64,17 @@ export async function updateSession(request) {
         { status: 401 }
       );
     }
-    const origin = new URL(request.url).origin;
-    const url = new URL('/os/login', origin);
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
     url.searchParams.set('redirect', pathname);
     return NextResponse.redirect(url);
   }
 
   // Redirect to home if authenticated and trying to access auth pages
   if (user && (pathname === '/login' || pathname === '/signup')) {
-    const origin = new URL(request.url).origin;
-    return NextResponse.redirect(new URL('/os/', origin));
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;
