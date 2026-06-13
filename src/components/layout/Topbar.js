@@ -3,329 +3,216 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Star,
-  MoreHorizontal,
-  Share2,
-  MessageSquare,
-  Clock,
-  Menu,
-  Trash2,
-  Copy,
+  Search, Bell, Plus, PanelLeft, Star, Share2, MoreHorizontal, Trash2, Copy,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import { useToast } from '@/components/ui/Toast';
 import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
-import styles from '@/styles/layout.module.css';
 
-/**
- * Topbar — displays breadcrumb, save status, and page actions.
- */
 export default function Topbar() {
   const router = useRouter();
   const {
-    currentPage,
-    sidebarOpen,
-    toggleSidebar,
-    updatePage,
-    toggleFavoritePage,
-    duplicatePage,
-    deletePage,
-    toggleSearch,
-    workspace,
+    currentPage, sidebarOpen, toggleSidebar,
+    updatePage, toggleFavoritePage, duplicatePage, deletePage,
+    toggleSearch, workspace,
   } = useWorkspaceStore();
   const { isSaving, lastSaved } = useEditorStore();
   const toast = useToast();
 
   const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [origin, setOrigin] = useState('');
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
+  useEffect(() => { setOrigin(window.location.origin); }, []);
   useEffect(() => {
     if (!showPublishMenu) return;
-    function handleClick() {
-      setShowPublishMenu(false);
-    }
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+    const h = () => setShowPublishMenu(false);
+    document.addEventListener('click', h);
+    return () => document.removeEventListener('click', h);
   }, [showPublishMenu]);
 
-  const formatSaveTime = (time) => {
-    if (!time) return '';
-    const date = new Date(time);
-    const now = new Date();
-    const diff = Math.floor((now - date) / 1000);
+  const saveLabel = (() => {
+    if (isSaving) return 'Saving…';
+    if (!lastSaved) return '';
+    const diff = Math.floor((Date.now() - new Date(lastSaved)) / 1000);
     if (diff < 5) return 'Saved';
     if (diff < 60) return `Saved ${diff}s ago`;
-    if (diff < 3600) return `Saved ${Math.floor(diff / 60)}m ago`;
-    return `Saved at ${date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`;
+    return `Saved ${Math.floor(diff / 60)}m ago`;
+  })();
+
+  const btnStyle = {
+    width: 38, height: 38, borderRadius: 11,
+    border: '1px solid rgba(48,108,236,0.25)',
+    background: 'rgba(255,255,255,0.05)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#7EB3FF', cursor: 'pointer', transition: 'all .15s',
+    flexShrink: 0,
   };
 
   return (
-    <header className={styles.topbar}>
-      <div className={styles.topbarLeft}>
-        {!sidebarOpen && (
-          <button className={styles.topbarBtn} onClick={toggleSidebar}>
-            <Menu size={18} />
-          </button>
-        )}
+    <header style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      padding: '20px 48px',
+      borderBottom: '1px solid rgba(48,108,236,0.18)',
+      background: 'rgba(2,4,10,0.80)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      flexShrink: 0, position: 'sticky', top: 0, zIndex: 200,
+    }}>
+      {/* Sidebar toggle — always visible, matching agency dashboard */}
+      <button className="ig-kbtn" onClick={toggleSidebar} title="Toggle sidebar">
+        <PanelLeft size={17} />
+      </button>
 
-        {/* Breadcrumb */}
-        <nav className={styles.topbarBreadcrumb}>
-          {currentPage ? (
-            <>
-              <span className={styles.topbarBreadcrumbItem}>
-                <span>{currentPage.icon || '📄'}</span>
-                <span>{currentPage.title || 'Untitled'}</span>
-              </span>
-            </>
-          ) : (
-            <span className={styles.topbarBreadcrumbItem}>
-              Select a page
-            </span>
-          )}
-        </nav>
-
-        {/* Save Status */}
-        {isSaving && (
-          <span
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-              marginLeft: 'var(--space-2)',
-            }}
-          >
-            Saving...
-          </span>
-        )}
-        {!isSaving && lastSaved && (
-          <span
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-              marginLeft: 'var(--space-2)',
-            }}
-          >
-            {formatSaveTime(lastSaved)}
-          </span>
-        )}
-      </div>
-
-      <div className={styles.topbarRight} style={{ position: 'relative' }}>
-        <button
-          className={`${styles.topbarBtn} ${currentPage?.isPublished ? styles.topbarBtnActive : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowPublishMenu(!showPublishMenu);
-          }}
-          title="Share to Web"
-          style={{ position: 'relative' }}
-        >
-          <Share2 size={16} />
-          {currentPage?.isPublished && (
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#10b981',
-                position: 'absolute',
-                top: '4px',
-                right: '4px',
-              }}
-            />
-          )}
-        </button>
-
-        {showPublishMenu && currentPage && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: '8px',
-              background: 'var(--color-bg-elevated)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              padding: 'var(--space-4)',
-              boxShadow: 'var(--shadow-xl)',
-              zIndex: 'var(--z-popover)',
-              width: '320px',
-              animation: 'fadeInDown 0.15s ease forwards',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-3)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'bold', color: 'var(--color-text-primary)' }}>
-                Publish to Web
-              </span>
-              <span
-                style={{
-                  fontSize: '10px',
-                  padding: '2px 8px',
-                  borderRadius: 'var(--radius-full)',
-                  background: currentPage.isPublished ? 'rgba(16, 185, 129, 0.15)' : 'var(--color-bg-active)',
-                  color: currentPage.isPublished ? '#10b981' : 'var(--color-text-muted)',
-                  fontWeight: 'bold',
-                }}
-              >
-                {currentPage.isPublished ? 'Live' : 'Private'}
-              </span>
-            </div>
-
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', margin: 0, lineHeight: 1.4 }}>
-              {currentPage.isPublished
-                ? 'Anyone with the link can view this page. Edits will sync instantly.'
-                : 'Publish this page to share it with members, volunteers, or partners.'}
-            </p>
-
-            {currentPage.isPublished && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                <input
-                  type="text"
-                  readOnly
-                  value={`${origin}/public/${currentPage.id}`}
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-2)',
-                    background: 'var(--color-bg-secondary)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-text-secondary)',
-                    fontSize: 'var(--text-xs)',
-                    outline: 'none',
-                  }}
-                  onClick={(e) => e.target.select()}
-                />
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <button
-                    style={{
-                      flex: 1,
-                      padding: 'var(--space-2)',
-                      background: 'var(--color-accent-primary)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${origin}/public/${currentPage.id}`);
-                      toast.success('Link Copied', 'Public link copied to clipboard!');
-                    }}
-                  >
-                    Copy Link
-                  </button>
-                  <a
-                    href={`/public/${currentPage.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      flex: 1,
-                      padding: 'var(--space-2)',
-                      background: 'var(--color-bg-active)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 'bold',
-                      textAlign: 'center',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    Open Site
-                  </a>
-                </div>
-              </div>
-            )}
-
-            <button
-              style={{
-                width: '100%',
-                padding: 'var(--space-2)',
-                background: currentPage.isPublished ? '#ef4444' : 'var(--color-accent-primary)',
-                color: 'white',
-                border: 'none',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                marginTop: 'var(--space-1)',
-              }}
-              onClick={() => {
-                const nextState = !currentPage.isPublished;
-                updatePage(currentPage.id, { isPublished: nextState });
-                if (nextState) {
-                  toast.success('Page Published', 'Anyone with the link can now view this page.');
-                } else {
-                  toast.info('Page Unpublished', 'This page is now private.');
-                }
-              }}
-            >
-              {currentPage.isPublished ? 'Unpublish Site' : 'Publish to Web'}
-            </button>
+      {/* Page title */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {saveLabel && (
+          <div style={{ fontSize: 11, color: '#3D5A8A', fontWeight: 600, letterSpacing: '.03em', marginBottom: 1 }}>
+            {saveLabel}
           </div>
         )}
-
-        <button className={styles.topbarBtn} title="Comments">
-          <MessageSquare size={16} />
-        </button>
-        <button className={styles.topbarBtn} title="History / Search" onClick={toggleSearch}>
-          <Clock size={16} />
-        </button>
-        <button
-          className={`${styles.topbarBtn} ${currentPage?.isFavorite ? styles.topbarBtnActive || '' : ''}`}
-          title={currentPage?.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-          onClick={() => currentPage && toggleFavoritePage(currentPage.id)}
-        >
-          <Star size={16} style={{ fill: currentPage?.isFavorite ? 'var(--color-accent-primary)' : 'none', color: currentPage?.isFavorite ? 'var(--color-accent-primary)' : 'inherit' }} />
-        </button>
-        {currentPage && (
-          <Dropdown
-            trigger={
-              <button className={styles.topbarBtn} title="More actions">
-                <MoreHorizontal size={16} />
-              </button>
-            }
-            align="right"
-          >
-            <DropdownItem
-              icon={<Copy size={14} />}
-              onClick={async () => {
-                const dupId = await duplicatePage(currentPage.id);
-                if (dupId && workspace) {
-                  router.push(`/${workspace.id}/${dupId}`);
-                }
-              }}
-            >
-              Duplicate Page
-            </DropdownItem>
-            <DropdownDivider />
-            <DropdownItem
-              icon={<Trash2 size={14} />}
-              danger
-              onClick={async () => {
-                await deletePage(currentPage.id);
-                if (workspace) {
-                  router.push(`/${workspace.id}`);
-                }
-              }}
-            >
-              Move to Trash
-            </DropdownItem>
-          </Dropdown>
-        )}
+        <h1 className="display" style={{
+          fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.01em',
+          background: 'linear-gradient(135deg,#FFFFFF,#7EB3FF)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {currentPage ? (currentPage.icon ? `${currentPage.icon} ` : '') + (currentPage.title || 'Untitled') : workspace?.name || 'Workspace'}
+        </h1>
       </div>
+
+      {/* Search bar */}
+      <div className="ig-search" onClick={toggleSearch} style={{ cursor: 'pointer', minWidth: 230 }}>
+        <Search size={15} />
+        <input
+          readOnly
+          placeholder="Search pages…"
+          onClick={toggleSearch}
+          style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: '#E2EEFF', width: '100%', cursor: 'pointer' }}
+        />
+        <span style={{ fontSize: 11, color: '#3D5A8A', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
+      </div>
+
+      {/* Favorite */}
+      {currentPage && (
+        <button
+          className="ig-kbtn"
+          title={currentPage.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+          onClick={() => toggleFavoritePage(currentPage.id)}
+          style={{ ...btnStyle, color: currentPage.isFavorite ? '#F5A623' : '#7EB3FF' }}
+        >
+          <Star size={16} fill={currentPage.isFavorite ? '#F5A623' : 'none'} />
+        </button>
+      )}
+
+      {/* Share / Publish */}
+      {currentPage && (
+        <div style={{ position: 'relative' }}>
+          <button
+            className="ig-kbtn"
+            title="Publish to Web"
+            onClick={(e) => { e.stopPropagation(); setShowPublishMenu(!showPublishMenu); }}
+            style={{ ...btnStyle, position: 'relative' }}
+          >
+            <Share2 size={16} />
+            {currentPage.isPublished && (
+              <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 99, background: '#16A36B', border: '2px solid #02040A' }} />
+            )}
+          </button>
+
+          {showPublishMenu && (
+            <div onClick={(e) => e.stopPropagation()} style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: 8,
+              background: 'rgba(13,27,56,0.96)', backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(48,108,236,0.30)', borderRadius: 14,
+              padding: 20, boxShadow: '0 16px 48px rgba(0,0,0,.60)',
+              zIndex: 500, width: 300, display: 'flex', flexDirection: 'column', gap: 12,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#E2EEFF', fontFamily: 'var(--font-display)' }}>Publish to Web</span>
+                <span style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 99, fontWeight: 700,
+                  background: currentPage.isPublished ? 'rgba(22,163,107,0.18)' : 'rgba(255,255,255,0.06)',
+                  color: currentPage.isPublished ? '#16A36B' : '#3D5A8A',
+                }}>
+                  {currentPage.isPublished ? 'Live' : 'Private'}
+                </span>
+              </div>
+              <p style={{ fontSize: 12, color: '#3D5A8A', margin: 0, lineHeight: 1.5 }}>
+                {currentPage.isPublished
+                  ? 'Anyone with the link can view this page.'
+                  : 'Publish to share with members, volunteers, or partners.'}
+              </p>
+              {currentPage.isPublished && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input readOnly value={`${origin}/public/${currentPage.id}`}
+                    style={{ width: '100%', padding: '7px 10px', background: '#0d1b38', border: '1px solid rgba(48,108,236,0.30)', borderRadius: 8, color: '#7EB3FF', fontSize: 11, outline: 'none' }}
+                    onClick={(e) => e.target.select()} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { navigator.clipboard.writeText(`${origin}/public/${currentPage.id}`); toast.success('Link Copied', 'Public link copied!'); }}
+                      style={{ flex: 1, padding: '7px', background: '#306CEC', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Copy Link
+                    </button>
+                    <a href={`/public/${currentPage.id}`} target="_blank" rel="noopener noreferrer"
+                      style={{ flex: 1, padding: '7px', background: 'rgba(255,255,255,0.06)', color: '#E2EEFF', border: '1px solid rgba(48,108,236,0.25)', borderRadius: 8, fontSize: 12, fontWeight: 600, textAlign: 'center', textDecoration: 'none' }}>
+                      Open
+                    </a>
+                  </div>
+                </div>
+              )}
+              <button onClick={() => {
+                const next = !currentPage.isPublished;
+                updatePage(currentPage.id, { isPublished: next });
+                next ? toast.success('Published', 'Page is now live.') : toast.info('Unpublished', 'Page is now private.');
+              }} style={{
+                width: '100%', padding: '9px',
+                background: currentPage.isPublished ? 'rgba(224,72,90,0.15)' : 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                color: currentPage.isPublished ? '#E0485A' : '#fff',
+                border: currentPage.isPublished ? '1px solid rgba(224,72,90,0.35)' : 'none',
+                borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}>
+                {currentPage.isPublished ? 'Unpublish' : 'Publish to Web'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* More actions */}
+      {currentPage && (
+        <Dropdown trigger={<button className="ig-kbtn" title="More actions" style={btnStyle}><MoreHorizontal size={16} /></button>} align="right">
+          <DropdownItem icon={<Copy size={14} />} onClick={async () => {
+            const dupId = await duplicatePage(currentPage.id);
+            if (dupId && workspace) router.push(`/${workspace.id}/${dupId}`);
+          }}>Duplicate Page</DropdownItem>
+          <DropdownDivider />
+          <DropdownItem icon={<Trash2 size={14} />} danger onClick={async () => {
+            await deletePage(currentPage.id);
+            if (workspace) router.push(`/${workspace.id}`);
+          }}>Move to Trash</DropdownItem>
+        </Dropdown>
+      )}
+
+      {/* Bell */}
+      <button className="ig-kbtn" style={{ ...btnStyle, position: 'relative' }}>
+        <Bell size={17} />
+        <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 99, background: '#E0485A', border: '2px solid #02040A' }} />
+      </button>
+
+      {/* New page */}
+      <button
+        onClick={() => toggleSearch()}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '0 16px', height: 38, borderRadius: 11,
+          background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+          color: '#fff', border: 'none', fontFamily: 'inherit',
+          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          boxShadow: '0 4px 14px rgba(48,108,236,0.40)',
+          flexShrink: 0,
+        }}
+      >
+        <Plus size={16} /> New
+      </button>
     </header>
   );
 }

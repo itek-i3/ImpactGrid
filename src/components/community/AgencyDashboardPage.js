@@ -34,7 +34,7 @@ const DARK_C = {
   inputBg: '#0d1b38',
 };
 let C = { ...LIGHT_C };
-const PIE = ['#306CEC','#F5A623','#16A36B','#7E6CF0','#19C4D9','#E0485A','#5B9BFF'];
+const PIE = ['#4F8EF7','#F5A623','#22D3A0','#A78BFA','#22D3EE','#FB7185','#FCD34D'];
 
 const kes  = (n) => 'KES ' + Math.round(n).toLocaleString('en-KE');
 const kesC = (n) => {
@@ -45,14 +45,66 @@ const kesC = (n) => {
 };
 const fmtY = (v) => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? Math.round(v/1e3)+'K' : v;
 
-const chartAxis   = { fontSize:11.5, fill:C.inkSoft, fontFamily:"'JetBrains Mono',monospace" };
+const chartAxis   = { fontSize:11, fill:'#3D5A8A', fontFamily:"'JetBrains Mono',monospace" };
 const ttStyle     = {
-  contentStyle: { background:C.ink, border:'none', borderRadius:10, fontSize:12, fontFamily:"'JetBrains Mono',monospace", boxShadow:'0 8px 24px rgba(0,0,0,.18)' },
-  labelStyle:   { color:'#fff', fontWeight:600, marginBottom:2 },
+  contentStyle: { background:'#0a1628', border:'1px solid rgba(48,108,236,0.35)', borderRadius:12, fontSize:12, fontFamily:"'JetBrains Mono',monospace", boxShadow:'0 16px 48px rgba(0,0,0,.70), inset 0 1px 0 rgba(91,155,255,0.15)', backdropFilter:'blur(16px)', padding:'10px 14px' },
+  labelStyle:   { color:'#E2EEFF', fontWeight:700, marginBottom:4, fontSize:12 },
   itemStyle:    { color:'#fff' },
 };
 const toneColor   = { pos:C.pos, neg:C.alert, warn:C.signal, neutral:C.inkSoft, brand:C.brand };
 const statusTone  = (s) => ({ 'On track':'pos','At risk':'warn','Behind':'neg','Completed':'brand','Paid':'pos','Pending':'warn','Overdue':'neg' }[s] || 'neutral');
+
+/* ── 3D Chart helpers ── */
+function Bar3D({ x, y, width, height, value, gradId = 'bar3DBlue' }) {
+  if (!height || height <= 0 || !value) return null;
+  const depth = Math.min(width * 0.65, 22);
+  const rise  = depth * 0.52; // foreshortened Y so top face doesn't look too steep
+  // face coordinate strings
+  const top  = `${x},${y} ${x+depth},${y-rise} ${x+width+depth},${y-rise} ${x+width},${y}`;
+  const side = `${x+width},${y} ${x+width+depth},${y-rise} ${x+width+depth},${y+height-rise} ${x+width},${y+height}`;
+  return (
+    <g>
+      {/* Floor glow */}
+      <ellipse cx={x+width/2+depth/2} cy={y+height+4} rx={width*0.55} ry={4} fill="rgba(48,108,236,0.22)" />
+      {/* Front face */}
+      <rect x={x} y={y} width={width} height={height} fill={`url(#${gradId})`} rx={2} />
+      {/* Top face — bright lit */}
+      <polygon points={top} fill="rgba(160,210,255,0.62)" />
+      {/* Right side face — deep shadow */}
+      <polygon points={side} fill="rgba(4,12,40,0.82)" />
+      {/* Top edge highlight */}
+      <line x1={x} y1={y} x2={x+width} y2={y} stroke="rgba(255,255,255,0.40)" strokeWidth={1.2} />
+      {/* Front-face top sheen */}
+      <rect x={x+2} y={y+2} width={width-4} height={Math.min(height*0.18, 9)} fill="rgba(255,255,255,0.16)" rx={1.5} />
+    </g>
+  );
+}
+
+function Bar3DRed({ x, y, width, height, value }) {
+  return <Bar3D x={x} y={y} width={width} height={height} value={value} gradId="bar3DRed" />;
+}
+
+function HBar3D({ x, y, width, height, value }) {
+  if (!width || width <= 0 || !value) return null;
+  const depth = Math.min(height * 0.75, 14);
+  const rise  = depth * 0.55;
+  const top   = `${x},${y} ${x},${y-rise} ${x+width},${y-rise} ${x+width},${y}`;
+  const end   = `${x+width},${y} ${x+width},${y-rise} ${x+width+depth*0.6},${y-rise+depth*0.3} ${x+width+depth*0.6},${y+height+depth*0.3}`;
+  return (
+    <g>
+      {/* Front face */}
+      <rect x={x} y={y} width={width} height={height} fill="url(#hbar3DRed)" rx={2} />
+      {/* Top face */}
+      <polygon points={top} fill="rgba(255,140,160,0.55)" />
+      {/* Right end face */}
+      <polygon points={end} fill="rgba(30,0,10,0.75)" />
+      {/* Left shine */}
+      <rect x={x} y={y+1} width={Math.min(width*0.22, 18)} height={height-2} fill="rgba(255,255,255,0.12)" rx={1.5} />
+      {/* Top edge */}
+      <line x1={x} y1={y} x2={x+width} y2={y} stroke="rgba(255,200,210,0.45)" strokeWidth={1} />
+    </g>
+  );
+}
 
 /* ── Primitives ── */
 const TONE_GRAD = { brand:'linear-gradient(135deg,#1E4FB8,#306CEC)', pos:'linear-gradient(135deg,#0D8A58,#16A36B)', signal:'linear-gradient(135deg,#C4820A,#F5A623)', alert:'linear-gradient(135deg,#B83040,#E0485A)' };
@@ -668,13 +720,20 @@ function RevenueView({ agencyUUID, isManager }) {
           <span style={{ display:'flex', alignItems:'center', gap:6 }}><i style={{ width:14, height:2, background:C.signal, display:'inline-block' }} />Goal</span>
         </div>}>
         <ResponsiveContainer width="100%" height={340}>
-          <ComposedChart data={monthly} margin={{ top:8, right:8, left:-10, bottom:0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+          <ComposedChart data={monthly} margin={{ top:16, right:24, left:-10, bottom:0 }}>
+            <defs>
+              <linearGradient id="bar3DBlue" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="#7EC4FF" stopOpacity={1} />
+                <stop offset="50%"  stopColor="#306CEC" stopOpacity={1} />
+                <stop offset="100%" stopColor="#1A3A88" stopOpacity={1} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
             <XAxis dataKey="m" tick={chartAxis} axisLine={false} tickLine={false} />
             <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
-            <Tooltip {...ttStyle} formatter={(v, n) => [v == null ? '—' : kes(v), n==='actual' ? 'Actual' : 'Goal']} />
-            <Bar dataKey="actual" fill={C.brand} radius={[5,5,0,0]} barSize={26} />
-            <Line type="monotone" dataKey="goal" stroke={C.signal} strokeWidth={2.5} dot={false} strokeDasharray="5 4" />
+            <Tooltip {...ttStyle} formatter={(v, n) => [v == null ? '—' : kes(v), n==='actual' ? 'Actual' : 'Goal']} cursor={{ fill: 'transparent' }} />
+            <Bar dataKey="actual" barSize={34} shape={<Bar3D gradId="bar3DBlue" />} activeBar={false} />
+            <Line type="monotone" dataKey="goal" stroke="#F5A623" strokeWidth={2.5} dot={false} strokeDasharray="5 4" />
           </ComposedChart>
         </ResponsiveContainer>
 
@@ -861,14 +920,19 @@ function LossView({ agencyUUID, isManager }) {
       <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:24, marginTop:20 }} className="ig-2col">
         <Card title="Loss by source">
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={losses} layout="vertical" margin={{ top:0, right:16, left:8, bottom:0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} horizontal={false} />
+            <BarChart data={losses} layout="vertical" margin={{ top:0, right:24, left:8, bottom:0 }}>
+              <defs>
+                <linearGradient id="hbar3DRed" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor="#FF8CA0" stopOpacity={1} />
+                  <stop offset="50%"  stopColor="#E0485A" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#7A1828" stopOpacity={1} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" horizontal={false} />
               <XAxis type="number" tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1e3 ? Math.round(v/1e3)+'K' : v} />
               <YAxis type="category" dataKey="source" tick={{ ...chartAxis, fontSize:11 }} width={130} axisLine={false} tickLine={false} />
-              <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Loss']} cursor={{ fill:'rgba(224,72,90,0.06)' }} />
-              <Bar dataKey="amount" radius={[0,5,5,0]} barSize={18}>
-                {losses.map((_, i) => <Cell key={i} fill={i === 0 ? C.alert : C.alert+(i < 3 ? 'CC' : '88')} />)}
-              </Bar>
+              <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Loss']} cursor={{ fill: 'transparent' }} />
+              <Bar dataKey="amount" barSize={20} shape={<HBar3D />} activeBar={false} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -1014,12 +1078,19 @@ function ExpenditureView({ agencyUUID, isManager }) {
           {expTrend.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={expTrend} margin={{ top:8, right:8, left:-10, bottom:0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                <BarChart data={expTrend} margin={{ top:16, right:16, left:-10, bottom:0 }}>
+                  <defs>
+                    <linearGradient id="bar3DBlueExp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#7EC4FF" stopOpacity={1} />
+                      <stop offset="50%"  stopColor="#306CEC" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#1A3A88" stopOpacity={1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
                   <XAxis dataKey="m" tick={chartAxis} axisLine={false} tickLine={false} />
                   <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
-                  <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Spend']} cursor={{ fill:'rgba(20,33,61,0.04)' }} />
-                  <Bar dataKey="amount" fill={C.brand} radius={[5,5,0,0]} barSize={34} />
+                  <Tooltip {...ttStyle} formatter={(v) => [kes(v), 'Spend']} cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="amount" barSize={36} shape={<Bar3D gradId="bar3DBlueExp" />} activeBar={false} />
                 </BarChart>
               </ResponsiveContainer>
               {isManager && (
@@ -1391,13 +1462,20 @@ function GrowthView({ agencyUUID, isManager }) {
           {quarterly.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                <ComposedChart data={quarterly} margin={{ top:16, right:24, left:-8, bottom:0 }}>
+                  <defs>
+                    <linearGradient id="bar3DBlueQ" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#7EC4FF" stopOpacity={1} />
+                      <stop offset="50%"  stopColor="#306CEC" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#1A3A88" stopOpacity={1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
                   <XAxis dataKey="period" tick={chartAxis} axisLine={false} tickLine={false} />
                   <YAxis tick={chartAxis} axisLine={false} tickLine={false} tickFormatter={fmtY} />
-                  <Tooltip {...ttStyle} formatter={(v, n) => [kesC(v), n==='actual'?'Actual':'Target']} />
-                  <Bar  dataKey="actual" fill={C.brand}    radius={[6,6,0,0]} maxBarSize={40} />
-                  <Line dataKey="target" stroke={C.signal} strokeWidth={2.5} dot={{ r:3, fill:C.signal }} type="monotone" />
+                  <Tooltip {...ttStyle} formatter={(v, n) => [kesC(v), n==='actual'?'Actual':'Target']} cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="actual" maxBarSize={52} shape={<Bar3D gradId="bar3DBlueQ" />} activeBar={false} />
+                  <Line dataKey="target" stroke="#F5A623" strokeWidth={2.5} dot={{ r:3, fill:'#F5A623', strokeWidth:0 }} type="monotone" />
                 </ComposedChart>
               </ResponsiveContainer>
               <div style={{ display:'flex', gap:20, marginTop:10, fontSize:12, color:C.inkSoft }}>
@@ -1417,15 +1495,20 @@ function GrowthView({ agencyUUID, isManager }) {
                 <AreaChart data={quarterly} margin={{ top:4, right:8, left:-8, bottom:0 }}>
                   <defs>
                     <linearGradient id="clGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={C.pos} stopOpacity={0.35} />
-                      <stop offset="95%" stopColor={C.pos} stopOpacity={0.02} />
+                      <stop offset="0%"  stopColor="#22D3A0" stopOpacity={0.85} />
+                      <stop offset="40%" stopColor="#16A36B" stopOpacity={0.40} />
+                      <stop offset="100%" stopColor="#060E22" stopOpacity={0.05} />
                     </linearGradient>
+                    <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feGaussianBlur stdDeviation="4" result="blur" />
+                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
                   <XAxis dataKey="period" tick={chartAxis} axisLine={false} tickLine={false} />
                   <YAxis tick={chartAxis} axisLine={false} tickLine={false} />
                   <Tooltip {...ttStyle} formatter={(v) => [v, 'Clients']} />
-                  <Area type="monotone" dataKey="clients" stroke={C.pos} strokeWidth={2.5} fill="url(#clGrad)" dot={{ r:4, fill:C.pos, stroke:'none' }} />
+                  <Area type="monotone" dataKey="clients" stroke="#22D3A0" strokeWidth={3} fill="url(#clGrad)" dot={{ r:6, fill:'#22D3A0', stroke:'#060E22', strokeWidth:2 }} />
                 </AreaChart>
               </ResponsiveContainer>
               <div style={{ marginTop:10, fontSize:12, color:C.inkSoft, display:'flex', gap:6, alignItems:'center' }}>

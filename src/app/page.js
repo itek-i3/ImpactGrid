@@ -13,6 +13,5 @@ export default async function Home() {
     redirect(BASE + '/login');
   }
 
-  const agency = user.user_metadata?.agency;
-  redirect(agency ? `${BASE}/demo/agencies/${agency}` : `${BASE}/demo/agencies/itek`);
+  redirect(`${BASE}/demo`);
 }

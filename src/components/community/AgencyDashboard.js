@@ -24,16 +24,41 @@ import {
   Bar,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 import styles from '@/styles/community.module.css';
 
-const PIE_COLORS = ['#fbbf24', '#34d399', '#ef4444']; // Onboarding, Active, Inactive
+const PIE_COLORS = ['#F5A623', '#22D3A0', '#E0485A'];
+
+const chartAxis = { fontSize: 11, fill: '#3D5A8A', fontFamily: "'JetBrains Mono',monospace" };
+const ttStyle = {
+  contentStyle: { background: '#0a1628', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 12, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", boxShadow: '0 16px 48px rgba(0,0,0,.70)', padding: '10px 14px' },
+  labelStyle:  { color: '#E2EEFF', fontWeight: 700, marginBottom: 4 },
+  itemStyle:   { color: '#fff' },
+};
+
+function Bar3D({ x, y, width, height, value }) {
+  if (!height || height <= 0 || !value) return null;
+  const depth = Math.min(width * 0.65, 22);
+  const rise  = depth * 0.52;
+  const top  = `${x},${y} ${x+depth},${y-rise} ${x+width+depth},${y-rise} ${x+width},${y}`;
+  const side = `${x+width},${y} ${x+width+depth},${y-rise} ${x+width+depth},${y+height-rise} ${x+width},${y+height}`;
+  return (
+    <g>
+      <ellipse cx={x+width/2+depth/2} cy={y+height+4} rx={width*0.55} ry={4} fill="rgba(48,108,236,0.22)" />
+      <rect x={x} y={y} width={width} height={height} fill="url(#toigBar3D)" rx={2} />
+      <polygon points={top} fill="rgba(160,210,255,0.62)" />
+      <polygon points={side} fill="rgba(4,12,40,0.82)" />
+      <line x1={x} y1={y} x2={x+width} y2={y} stroke="rgba(255,255,255,0.40)" strokeWidth={1.2} />
+      <rect x={x+2} y={y+2} width={width-4} height={Math.min(height*0.18, 9)} fill="rgba(255,255,255,0.16)" rx={1.5} />
+    </g>
+  );
+}
 
 export default function AgencyDashboard() {
   const { rows, properties, updateCell } = useDatabaseStore();
@@ -252,34 +277,19 @@ export default function AgencyDashboard() {
               <div className={styles.chartContainer}>
                 {mounted && revenueChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={revenueChartData}
-                      margin={{ left: -10, right: 10, bottom: 5, top: 10 }}
-                    >
-                      <XAxis
-                        dataKey="name"
-                        stroke="var(--color-text-muted)"
-                        fontSize={11}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        stroke="var(--color-text-muted)"
-                        fontSize={11}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: 'var(--color-bg-elevated)',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-md)',
-                          color: 'var(--color-text-primary)',
-                        }}
-                      />
-                      <Bar
-                        dataKey="revenue"
-                        fill="var(--color-accent-primary)"
-                        radius={[4, 4, 0, 0]}
-                      />
+                    <BarChart data={revenueChartData} margin={{ left: -10, right: 28, bottom: 5, top: 18 }}>
+                      <defs>
+                        <linearGradient id="toigBar3D" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%"   stopColor="#7EC4FF" stopOpacity={1} />
+                          <stop offset="50%"  stopColor="#306CEC" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#1A3A88" stopOpacity={1} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
+                      <XAxis dataKey="name" tick={chartAxis} axisLine={false} tickLine={false} />
+                      <YAxis tick={chartAxis} axisLine={false} tickLine={false} />
+                      <Tooltip {...ttStyle} cursor={{ fill: 'transparent' }} />
+                      <Bar dataKey="revenue" maxBarSize={48} shape={<Bar3D />} activeBar={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -309,38 +319,21 @@ export default function AgencyDashboard() {
                         data={statusChartData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
+                        innerRadius={55}
+                        outerRadius={90}
+                        paddingAngle={4}
                         dataKey="value"
+                        stroke="rgba(0,0,0,0.40)"
+                        strokeWidth={1.5}
+                        label={({ name, percent }) => percent > 0.04 ? `${(percent*100).toFixed(0)}%` : ''}
+                        labelLine={false}
                       >
                         {statusChartData.map((entry, index) => {
-                          const colorIndex = ['Onboarding', 'Active', 'Inactive'].indexOf(
-                            entry.name
-                          );
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={PIE_COLORS[colorIndex >= 0 ? colorIndex : 0]}
-                            />
-                          );
+                          const colorIndex = ['Onboarding', 'Active', 'Inactive'].indexOf(entry.name);
+                          return <Cell key={`cell-${index}`} fill={PIE_COLORS[colorIndex >= 0 ? colorIndex : index % PIE_COLORS.length]} />;
                         })}
                       </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          background: 'var(--color-bg-elevated)',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-md)',
-                          color: 'var(--color-text-primary)',
-                        }}
-                      />
-                      <Legend
-                        formatter={(value) => (
-                          <span style={{ color: 'var(--color-text-secondary)', fontSize: '12px' }}>
-                            {value}
-                          </span>
-                        )}
-                      />
+                      <Tooltip {...ttStyle} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (

@@ -3,7 +3,7 @@ import { useWorkspaceStore } from './useWorkspaceStore';
 
 const isDemoMode = () => {
   if (typeof window !== 'undefined') {
-    return window.location.pathname.startsWith('/demo');
+    return window.location.pathname.includes('/demo');
   }
   return false;
 };

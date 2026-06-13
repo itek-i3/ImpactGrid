@@ -95,7 +95,7 @@ export default function DatabaseContainer({ pageId, readOnly = false }) {
 
   // Authorization Check:
   // In demo mode (path starts with /demo) or if roles are undefined, the user defaults to owner (admin)
-  const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/demo');
+  const isDemo = typeof window !== 'undefined' && window.location.pathname.includes('/demo');
   const userRole = workspace?.workspace_members?.[0]?.role;
   const isAuthorized = isDemo || !database || database.type !== 'agencies' || userRole === 'owner';
 

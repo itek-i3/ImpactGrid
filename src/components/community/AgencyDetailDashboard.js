@@ -187,7 +187,7 @@ export default function AgencyDetailDashboard({ pageId }) {
   };
 
   // Authorization Check
-  const isDemo = typeof window !== 'undefined' && window.location.pathname.startsWith('/demo');
+  const isDemo = typeof window !== 'undefined' && window.location.pathname.includes('/demo');
   const userRole = workspace?.workspace_members?.[0]?.role;
   const isAuthorized = isDemo || userRole === 'owner';
 

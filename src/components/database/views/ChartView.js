@@ -1,179 +1,145 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
+} from 'recharts';
 import { useDatabaseStore } from '@/lib/store/useDatabaseStore';
-import styles from '@/styles/database.module.css';
 
-const CHART_COLORS = [
-  '#60a5fa', '#a78bfa', '#34d399', '#fbbf24',
-  '#f87171', '#f472b6', '#818cf8', '#22d3ee',
-  '#fb923c', '#8b8fa3',
+const PIE_COLORS = [
+  '#4F8EF7','#F5A623','#22D3A0','#A78BFA','#22D3EE','#FB7185','#FCD34D',
+  '#60a5fa','#34d399','#fb923c',
 ];
 
-/**
- * ChartView — visual chart rendering for database data.
- * Supports bar and pie charts using pure CSS (no Recharts dependency required).
- * Falls back gracefully when Recharts isn't available.
- */
+const chartAxis = {
+  fontSize: 11,
+  fill: '#3D5A8A',
+  fontFamily: "'JetBrains Mono', monospace",
+};
+
+const ttStyle = {
+  contentStyle: {
+    background: '#0a1628',
+    border: '1px solid rgba(48,108,236,0.35)',
+    borderRadius: 12,
+    fontSize: 12,
+    fontFamily: "'JetBrains Mono', monospace",
+    boxShadow: '0 16px 48px rgba(0,0,0,.70)',
+    padding: '10px 14px',
+  },
+  labelStyle:  { color: '#E2EEFF', fontWeight: 700, marginBottom: 4 },
+  itemStyle:   { color: '#fff' },
+};
+
+/* ── 3D bar shape ── */
+function Bar3D({ x, y, width, height, value, fill }) {
+  if (!height || height <= 0 || !value) return null;
+  const depth = Math.min(width * 0.65, 22);
+  const rise  = depth * 0.52;
+  const top  = `${x},${y} ${x+depth},${y-rise} ${x+width+depth},${y-rise} ${x+width},${y}`;
+  const side = `${x+width},${y} ${x+width+depth},${y-rise} ${x+width+depth},${y+height-rise} ${x+width},${y+height}`;
+  return (
+    <g>
+      <ellipse cx={x+width/2+depth/2} cy={y+height+4} rx={width*0.55} ry={4} fill="rgba(48,108,236,0.22)" />
+      <rect x={x} y={y} width={width} height={height} fill="url(#cvBar3D)" rx={2} />
+      <polygon points={top} fill="rgba(160,210,255,0.62)" />
+      <polygon points={side} fill="rgba(4,12,40,0.82)" />
+      <line x1={x} y1={y} x2={x+width} y2={y} stroke="rgba(255,255,255,0.40)" strokeWidth={1.2} />
+      <rect x={x+2} y={y+2} width={width-4} height={Math.min(height*0.18, 9)} fill="rgba(255,255,255,0.16)" rx={1.5} />
+    </g>
+  );
+}
+
 export default function ChartView() {
   const { properties, getFilteredRows } = useDatabaseStore();
   const filteredRows = getFilteredRows();
 
-  const selectProps = properties.filter(
-    (p) => p.type === 'select' || p.type === 'multi_select'
-  );
+  const selectProps = properties.filter((p) => p.type === 'select' || p.type === 'multi_select');
   const numberProps = properties.filter((p) => p.type === 'number');
 
-  const [groupByProp, setGroupByProp] = useState(
-    selectProps[0]?.id || ''
-  );
-  const [valueProp, setValueProp] = useState(
-    numberProps[0]?.id || ''
-  );
-  const [chartType, setChartType] = useState('bar');
+  const [groupByProp, setGroupByProp] = useState(selectProps[0]?.id || '');
+  const [valueProp, setValueProp]     = useState(numberProps[0]?.id || '');
+  const [chartType, setChartType]     = useState('bar');
 
-  // Compute chart data
   const chartData = useMemo(() => {
     if (!groupByProp) return [];
-
     const groups = {};
     filteredRows.forEach((row) => {
       const group = String(row.cells?.[groupByProp] || 'Other');
-      if (!groups[group]) {
-        groups[group] = { label: group, count: 0, sum: 0 };
-      }
+      if (!groups[group]) groups[group] = { label: group, count: 0, sum: 0 };
       groups[group].count++;
-      if (valueProp) {
-        groups[group].sum += Number(row.cells?.[valueProp] || 0);
-      }
+      if (valueProp) groups[group].sum += Number(row.cells?.[valueProp] || 0);
     });
-
     return Object.values(groups).sort((a, b) => b.count - a.count);
   }, [filteredRows, groupByProp, valueProp]);
 
-  const maxValue = useMemo(() => {
-    const vals = chartData.map((d) => (valueProp ? d.sum : d.count));
-    return Math.max(...vals, 1);
-  }, [chartData, valueProp]);
-
-  const totalValue = useMemo(
-    () => chartData.reduce((acc, d) => acc + (valueProp ? d.sum : d.count), 0),
-    [chartData, valueProp]
-  );
-
   const groupProp = properties.find((p) => p.id === groupByProp);
-
-  const getColor = (label, idx) => {
+  const getColor  = (label, idx) => {
     const opt = groupProp?.config?.options?.find((o) => o.value === label);
-    return opt?.color || CHART_COLORS[idx % CHART_COLORS.length];
+    return opt?.color || PIE_COLORS[idx % PIE_COLORS.length];
   };
+
+  const rechartsData = chartData.map((d) => ({
+    name:  d.label,
+    value: valueProp ? d.sum : d.count,
+  }));
 
   if (selectProps.length === 0) {
     return (
-      <div style={{
-        padding: 'var(--space-8)',
-        textAlign: 'center',
-        color: 'var(--color-text-muted)',
-      }}>
-        <p>Chart view requires at least one <strong>Select</strong> or <strong>Multi-Select</strong> property to group data.</p>
+      <div style={{ padding: 40, textAlign: 'center', color: '#3D5A8A', fontSize: 13 }}>
+        Chart view requires at least one <strong style={{ color: '#7EB3FF' }}>Select</strong> or <strong style={{ color: '#7EB3FF' }}>Multi-Select</strong> property to group data.
       </div>
     );
   }
 
+  const selBtn = (active) => ({
+    padding: '4px 14px',
+    fontSize: 11,
+    fontWeight: active ? 700 : 500,
+    background: active ? 'rgba(48,108,236,0.18)' : 'transparent',
+    color: active ? '#7EB3FF' : '#3D5A8A',
+    border: active ? '1px solid rgba(48,108,236,0.40)' : '1px solid rgba(48,108,236,0.12)',
+    borderRadius: 8,
+    cursor: 'pointer',
+    textTransform: 'capitalize',
+    transition: '.15s',
+  });
+
+  const selStyle = {
+    padding: '4px 10px',
+    fontSize: 11,
+    border: '1px solid rgba(48,108,236,0.20)',
+    borderRadius: 7,
+    background: '#0d1b38',
+    color: '#7EB3FF',
+    outline: 'none',
+    cursor: 'pointer',
+  };
+
   return (
     <div>
       {/* Controls */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-3)',
-        marginBottom: 'var(--space-6)',
-        flexWrap: 'wrap',
-      }}>
-        {/* Chart Type */}
-        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           {['bar', 'pie'].map((t) => (
-            <button
-              key={t}
-              onClick={() => setChartType(t)}
-              style={{
-                padding: 'var(--space-1) var(--space-3)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: chartType === t ? 'var(--font-semibold)' : 'var(--font-normal)',
-                background: chartType === t ? 'var(--color-accent-primary-subtle)' : 'var(--color-bg-tertiary)',
-                color: chartType === t ? 'var(--color-accent-primary)' : 'var(--color-text-tertiary)',
-                border: chartType === t
-                  ? '1px solid var(--color-accent-primary)'
-                  : '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                cursor: 'pointer',
-                textTransform: 'capitalize',
-              }}
-            >
-              {t}
-            </button>
+            <button key={t} onClick={() => setChartType(t)} style={selBtn(chartType === t)}>{t}</button>
           ))}
         </div>
 
-        {/* Group By */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-1)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-muted)',
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#3D5A8A' }}>
           Group by
-          <select
-            value={groupByProp}
-            onChange={(e) => setGroupByProp(e.target.value)}
-            style={{
-              padding: '2px var(--space-2)',
-              fontSize: 'var(--text-xs)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-bg-primary)',
-              color: 'var(--color-text-primary)',
-              outline: 'none',
-            }}
-          >
-            {selectProps.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+          <select value={groupByProp} onChange={(e) => setGroupByProp(e.target.value)} style={selStyle}>
+            {selectProps.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
 
-        {/* Value By */}
         {numberProps.length > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-1)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-muted)',
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#3D5A8A' }}>
             Value
-            <select
-              value={valueProp}
-              onChange={(e) => setValueProp(e.target.value)}
-              style={{
-                padding: '2px var(--space-2)',
-                fontSize: 'var(--text-xs)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--color-bg-primary)',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-              }}
-            >
+            <select value={valueProp} onChange={(e) => setValueProp(e.target.value)} style={selStyle}>
               <option value="">Count</option>
-              {numberProps.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
+              {numberProps.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         )}
@@ -181,196 +147,80 @@ export default function ChartView() {
 
       {/* Chart */}
       {chartType === 'bar' ? (
-        <BarChart data={chartData} maxValue={maxValue} valueProp={valueProp} getColor={getColor} />
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={rechartsData} margin={{ top: 18, right: 32, left: -10, bottom: 0 }}>
+            <defs>
+              <linearGradient id="cvBar3D" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor="#7EC4FF" stopOpacity={1} />
+                <stop offset="50%"  stopColor="#306CEC" stopOpacity={1} />
+                <stop offset="100%" stopColor="#1A3A88" stopOpacity={1} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(48,108,236,0.10)" vertical={false} />
+            <XAxis dataKey="name" tick={chartAxis} axisLine={false} tickLine={false} />
+            <YAxis tick={chartAxis} axisLine={false} tickLine={false} />
+            <Tooltip {...ttStyle} cursor={{ fill: 'transparent' }} />
+            <Bar dataKey="value" maxBarSize={52} shape={<Bar3D />} activeBar={false} />
+          </BarChart>
+        </ResponsiveContainer>
       ) : (
-        <PieChart data={chartData} totalValue={totalValue} valueProp={valueProp} getColor={getColor} />
+        <Chart3DPie data={chartData} valueProp={valueProp} getColor={getColor} />
       )}
     </div>
   );
 }
 
-/** Pure-CSS Bar Chart */
-function BarChart({ data, maxValue, valueProp, getColor }) {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 'var(--space-2)',
-    }}>
-      {data.map((item, idx) => {
-        const value = valueProp ? item.sum : item.count;
-        const pct = (value / maxValue) * 100;
-        const color = getColor(item.label, idx);
+function Chart3DPie({ data, valueProp, getColor }) {
+  const total = data.reduce((s, d) => s + (valueProp ? d.sum : d.count), 0);
+  const pieData = data.map((d, i) => ({
+    name:  d.label,
+    value: valueProp ? d.sum : d.count,
+    color: getColor(d.label, i),
+  }));
 
-        return (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            {/* Label */}
-            <span style={{
-              minWidth: '120px',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-medium)',
-              color: 'var(--color-text-secondary)',
-              textAlign: 'right',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {item.label}
-            </span>
-
-            {/* Bar */}
-            <div style={{
-              flex: 1,
-              height: '28px',
-              background: 'var(--color-bg-tertiary)',
-              borderRadius: 'var(--radius-md)',
-              overflow: 'hidden',
-              position: 'relative',
-            }}>
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: '100%',
-                  background: color,
-                  borderRadius: 'var(--radius-md)',
-                  transition: 'width 0.5s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 'var(--space-2)',
-                  minWidth: value > 0 ? '40px' : 0,
-                }}
-              >
-                <span style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--font-semibold)',
-                  color: 'white',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {valueProp ? value.toLocaleString() : `${value} item${value !== 1 ? 's' : ''}`}
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Pure-CSS Pie/Donut Chart */
-function PieChart({ data, totalValue, valueProp, getColor }) {
-  let cumAngle = 0;
-
-  const segments = data.map((item, idx) => {
-    const value = valueProp ? item.sum : item.count;
-    const pct = totalValue > 0 ? (value / totalValue) * 100 : 0;
-    const angle = (pct / 100) * 360;
-    const start = cumAngle;
-    cumAngle += angle;
-
-    return {
-      ...item,
-      value,
-      pct,
-      angle,
-      start,
-      color: getColor(item.label, idx),
-    };
-  });
-
-  // Build conic gradient
-  const gradientStops = segments
-    .map((s) => `${s.color} ${s.start}deg ${s.start + s.angle}deg`)
-    .join(', ');
+  const customLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    if (percent < 0.04) return null;
+    const r   = innerRadius + (outerRadius - innerRadius) * 0.55;
+    const rad = (midAngle * Math.PI) / 180;
+    return (
+      <text
+        x={cx - r * Math.cos(rad)}
+        y={cy - r * Math.sin(rad)}
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fontSize: 11, fill: '#fff', fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}
+      >
+        {(percent * 100).toFixed(0)}%
+      </text>
+    );
+  };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 'var(--space-8)',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-    }}>
-      {/* Donut */}
-      <div style={{
-        width: '220px',
-        height: '220px',
-        borderRadius: '50%',
-        background: totalValue > 0
-          ? `conic-gradient(${gradientStops})`
-          : 'var(--color-bg-tertiary)',
-        position: 'relative',
-        boxShadow: 'var(--shadow-md)',
-      }}>
-        {/* Inner hole for donut */}
-        <div style={{
-          position: 'absolute',
-          top: '25%',
-          left: '25%',
-          width: '50%',
-          height: '50%',
-          borderRadius: '50%',
-          background: 'var(--color-bg-primary)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <span style={{
-            fontSize: 'var(--text-2xl)',
-            fontWeight: 'var(--font-bold)',
-            color: 'var(--color-text-primary)',
-          }}>
-            {totalValue.toLocaleString()}
-          </span>
-          <span style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-muted)',
-          }}>
-            {valueProp ? 'total' : 'items'}
-          </span>
-        </div>
-      </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 40, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <ResponsiveContainer width={240} height={240}>
+        <PieChart>
+          <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={110}
+            dataKey="value" labelLine={false} label={customLabel}
+            stroke="rgba(0,0,0,0.40)" strokeWidth={1.5}>
+            {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+          </Pie>
+          <Tooltip {...ttStyle} />
+        </PieChart>
+      </ResponsiveContainer>
 
-      {/* Legend */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-2)',
-      }}>
-        {segments.map((s) => (
-          <div
-            key={s.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-            }}
-          >
-            <span
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: 'var(--radius-full)',
-                background: s.color,
-                flexShrink: 0,
-              }}
-            />
-            <span style={{
-              fontSize: 'var(--text-sm)',
-              color: 'var(--color-text-secondary)',
-            }}>
-              {s.label}
-            </span>
-            <span style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-              marginLeft: 'auto',
-            }}>
-              {s.value.toLocaleString()} ({s.pct.toFixed(1)}%)
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {pieData.map((s) => (
+          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: '#7EB3FF' }}>{s.name}</span>
+            <span style={{ fontSize: 11, color: '#3D5A8A', marginLeft: 'auto', paddingLeft: 16, fontFamily: "'JetBrains Mono',monospace" }}>
+              {s.value.toLocaleString()} ({total > 0 ? ((s.value/total)*100).toFixed(1) : 0}%)
             </span>
           </div>
         ))}
+        <div style={{ fontSize: 11, color: '#3D5A8A', marginTop: 4, paddingTop: 8, borderTop: '1px solid rgba(48,108,236,0.15)', fontFamily: "'JetBrains Mono',monospace" }}>
+          Total: <strong style={{ color: '#7EB3FF' }}>{total.toLocaleString()}</strong>
+        </div>
       </div>
     </div>
   );

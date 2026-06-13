@@ -87,13 +87,33 @@ function DemoWorkspaceContent() {
   ];
 
   return (
-    <div className={styles.workspaceShell}>
+    <div className={styles.workspaceShell} style={{ background: 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
       <Sidebar />
 
-      <div className={styles.mainContent}>
+      <div className={styles.mainContent} style={{ position: 'relative', background: '#000' }}>
+        {/* Blue ambient glow — top right */}
+        <div style={{
+          position: 'absolute', width: 700, height: 700, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(48,108,236,0.18) 0%, transparent 60%)',
+          top: -250, right: -150, pointerEvents: 'none', zIndex: 0,
+        }} />
+        {/* Blue ambient glow — bottom left */}
+        <div style={{
+          position: 'absolute', width: 500, height: 500, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(30,79,184,0.12) 0%, transparent 65%)',
+          bottom: -100, left: -100, pointerEvents: 'none', zIndex: 0,
+        }} />
+
         <Topbar />
 
-        <div className={styles.pageContent}>
+        <div className={styles.pageContent} style={{
+          position: 'relative', zIndex: 1,
+          backgroundImage: `
+            linear-gradient(rgba(48,108,236,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(48,108,236,0.06) 1px, transparent 1px)
+          `,
+          backgroundSize: '40px 40px',
+        }}>
           {currentPage ? (
             <div className={styles.pageContainer}>
               <div className={styles.pageHeader}>
