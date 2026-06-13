@@ -64,17 +64,22 @@ export async function updateSession(request) {
         { status: 401 }
       );
     }
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(url);
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const scheme = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : proto;
+    const origin = `${scheme}://${host}`;
+    const redirectUrl = new URL('/os/login', origin);
+    redirectUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
   // Redirect to home if authenticated and trying to access auth pages
   if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const scheme = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : proto;
+    const origin = `${scheme}://${host}`;
+    return NextResponse.redirect(new URL('/os/', origin));
   }
 
   return supabaseResponse;
