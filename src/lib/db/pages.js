@@ -72,7 +72,7 @@ export async function archivePage(id) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('pages')
-    .update({ is_archived: true, archived_at: new Date().toISOString() })
+    .update({ is_archived: true })
     .eq('id', id)
     .select()
     .single();
@@ -84,7 +84,7 @@ export async function restorePage(id) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('pages')
-    .update({ is_archived: false, archived_at: null })
+    .update({ is_archived: false })
     .eq('id', id)
     .select()
     .single();
