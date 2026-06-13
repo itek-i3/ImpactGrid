@@ -68,11 +68,8 @@ export default function SearchModal() {
     (page) => {
       setCurrentPage(page);
       setSearchOpen(false);
-      if (pathname && !pathname.startsWith('/demo') && workspace) {
-        router.push(`/${workspace.id}/${page.id}`);
-      }
     },
-    [setCurrentPage, setSearchOpen, pathname, workspace, router]
+    [setCurrentPage, setSearchOpen]
   );
 
   if (!searchOpen) return null;

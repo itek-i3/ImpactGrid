@@ -68,10 +68,13 @@ export async function deleteBlock(id) {
 // Batch-reorder blocks within a page
 export async function reorderBlocks(pageId, orderedIds) {
   const supabase = await createClient();
-  const updates = orderedIds.map((id, index) => ({ id, page_id: pageId, sort_order: index }));
-  const { error } = await supabase
-    .from('blocks')
-    .upsert(updates, { onConflict: 'id' });
-
+  const promises = orderedIds.map((id, index) =>
+    supabase
+      .from('blocks')
+      .update({ sort_order: index })
+      .eq('id', id)
+  );
+  const results = await Promise.all(promises);
+  const error = results.find((r) => r.error)?.error || null;
   return { error };
 }

@@ -1,0 +1,9 @@
+'use client';
+
+import dynamic from 'next/dynamic';
+
+const WorkspaceClient = dynamic(() => import('./WorkspaceClient'), { ssr: false });
+
+export default function WorkspaceWrapper() {
+  return <WorkspaceClient />;
+}

@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 
 const isDemoMode = () => {
+  try {
+    const isDemo = useWorkspaceStore.getState().isDemo;
+    if (isDemo !== undefined) return isDemo;
+  } catch {}
   if (typeof window !== 'undefined') {
     return window.location.pathname.includes('/demo');
   }
@@ -16,6 +20,8 @@ export const useWorkspaceStore = create((set, get) => ({
   // Current workspace
   workspace: null,
   workspaces: [],
+  isDemo: true,
+  userProfile: null,
 
   // Page tree
   pages: [],
@@ -30,6 +36,23 @@ export const useWorkspaceStore = create((set, get) => ({
   theme: 'dark',
 
   // ── Actions ──────────────────────────────────
+
+  fetchUserProfile: async () => {
+    try {
+      const res = await fetch('/os/api/profile');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          set({ userProfile: json.data, isDemo: false });
+          return json.data;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch user profile, staying in demo mode:', err);
+    }
+    set({ isDemo: true });
+    return null;
+  },
 
   setWorkspace: (workspace) => set({ workspace }),
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -87,13 +110,13 @@ export const useWorkspaceStore = create((set, get) => ({
 
     set({ isLoading: true });
     try {
-      const wsRes = await fetch('/api/workspaces');
+      const wsRes = await fetch('/os/api/workspaces');
       if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
       const wsJson = await wsRes.json();
       let workspaces = wsJson.data || [];
 
       if (workspaces.length === 0) {
-        const createRes = await fetch('/api/workspaces', {
+        const createRes = await fetch('/os/api/workspaces', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'Personal Workspace', icon: '🚀' }),
@@ -113,8 +136,8 @@ export const useWorkspaceStore = create((set, get) => ({
       set({ workspace: activeWs });
 
       const [activePagesRes, archivedPagesRes] = await Promise.all([
-        fetch(`/api/pages?workspaceId=${activeWs.id}&archived=false`),
-        fetch(`/api/pages?workspaceId=${activeWs.id}&archived=true`),
+        fetch(`/os/api/pages?workspaceId=${activeWs.id}&archived=false`),
+        fetch(`/os/api/pages?workspaceId=${activeWs.id}&archived=true`),
       ]);
 
       let activePages = [];
@@ -147,6 +170,10 @@ export const useWorkspaceStore = create((set, get) => ({
 
       const pages = [...activePages, ...archivedPages].map(mapPageFromDb);
       set({ pages });
+      if (pages.length > 0 && !get().currentPage) {
+        const rootPages = pages.filter((p) => !p.parentId && !p.isArchived).sort((a, b) => a.sortOrder - b.sortOrder);
+        set({ currentPage: rootPages[0] || pages[0] });
+      }
     } catch (e) {
       console.error('Failed to load workspace:', e);
     } finally {
@@ -200,7 +227,7 @@ export const useWorkspaceStore = create((set, get) => ({
     }));
 
     try {
-      const res = await fetch('/api/pages', {
+      const res = await fetch('/os/api/pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -274,7 +301,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (updates.isFavorite !== undefined) dbUpdates.is_favorite = updates.isFavorite;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbUpdates),
@@ -296,7 +323,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'archive' }),
@@ -317,7 +344,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore' }),
@@ -337,7 +364,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete page');
@@ -356,7 +383,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sort_order: newSortOrder }),
@@ -386,7 +413,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_favorite: nextFavorite }),
@@ -452,7 +479,7 @@ export const useWorkspaceStore = create((set, get) => ({
     const duplicatedTitle = page.title ? `${page.title} (Copy)` : 'Untitled Copy';
 
     try {
-      const res = await fetch('/api/pages', {
+      const res = await fetch('/os/api/pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -494,7 +521,7 @@ export const useWorkspaceStore = create((set, get) => ({
       }));
 
       try {
-        const blocksRes = await fetch(`/api/pages/${pageId}/blocks`);
+        const blocksRes = await fetch(`/os/api/pages/${pageId}/blocks`);
         if (blocksRes.ok) {
           const oldBlocks = await blocksRes.json();
           const idMap = {};
@@ -513,7 +540,7 @@ export const useWorkspaceStore = create((set, get) => ({
           }));
 
           for (const b of duplicatedBlocks) {
-            await fetch(`/api/pages/${newPage.id}/blocks`, {
+            await fetch(`/os/api/pages/${newPage.id}/blocks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -586,158 +613,12 @@ export const useWorkspaceStore = create((set, get) => ({
     const demoPages = [
       {
         id: crypto.randomUUID(),
-        title: 'Getting Started',
+        title: 'Welcome',
         icon: '👋',
         parentId: null,
         isDatabase: false,
         isArchived: false,
         sortOrder: 0,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'Meeting Notes',
-        icon: '📝',
-        parentId: null,
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 1,
-        workspaceId,
-      },
-      {
-        id: 'toig-hq-database-page-id', // Use a fixed string ID so we can easily reference it in page checks
-        title: 'The TOIG HQ',
-        icon: '🏢',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'agencies',
-        isArchived: false,
-        sortOrder: 2,
-        workspaceId,
-      },
-      {
-        id: 'itek-page-id',
-        title: 'Itek',
-        icon: '💻',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 0,
-        workspaceId,
-      },
-      {
-        id: 'i360-page-id',
-        title: 'I360',
-        icon: '🚀',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 1,
-        workspaceId,
-      },
-      {
-        id: 'i3x-africa-page-id',
-        title: 'I3x Africa',
-        icon: '🌍',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 2,
-        workspaceId,
-      },
-      {
-        id: 'i3-studio-page-id',
-        title: 'I3 studio',
-        icon: '🎨',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 3,
-        workspaceId,
-      },
-      {
-        id: 'i3-plus-page-id',
-        title: 'i3+',
-        icon: '✨',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 4,
-        workspaceId,
-      },
-      {
-        id: 'i3-launchpad-page-id',
-        title: 'I3 launchpad',
-        icon: '🔥',
-        parentId: 'toig-hq-database-page-id',
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 5,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'Asset Tracker',
-        icon: '💰',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'assets',
-        isArchived: false,
-        sortOrder: 3,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'Event Manager',
-        icon: '📅',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'events',
-        isArchived: false,
-        sortOrder: 4,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'Member Directory',
-        icon: '👥',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'members',
-        isArchived: false,
-        sortOrder: 5,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'WhatsApp Groups',
-        icon: '💬',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'whatsapp',
-        isArchived: false,
-        sortOrder: 6,
-        workspaceId,
-      },
-      {
-        id: 'project-tracker-database-page-id',
-        title: 'Project Tracker',
-        icon: '📊',
-        parentId: null,
-        isDatabase: true,
-        databaseType: 'tasks',
-        isArchived: false,
-        sortOrder: 7,
-        workspaceId,
-      },
-      {
-        id: crypto.randomUUID(),
-        title: 'Resources',
-        icon: '📚',
-        parentId: null,
-        isDatabase: false,
-        isArchived: false,
-        sortOrder: 8,
         workspaceId,
       },
     ];

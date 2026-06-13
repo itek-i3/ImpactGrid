@@ -52,11 +52,18 @@ export async function updateSession(request) {
     pathname.startsWith('/demo') ||
     pathname.startsWith('/public') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/agencies') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon');
 
   // Redirect to login if not authenticated and trying to access protected route
   if (!user && !isPublicRoute) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      );
+    }
     const origin = new URL(request.url).origin;
     const url = new URL('/os/login', origin);
     url.searchParams.set('redirect', pathname);

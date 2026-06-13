@@ -1,49 +1,52 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Eye, EyeOff, User, Mail, Lock, ChevronDown, AlertCircle, Building2 } from 'lucide-react';
-
-const AGENCIES = [
-  { id: 'itek',      label: 'iTek' },
-  { id: 'i3x',       label: 'i3x Africa' },
-  { id: 'i3studios', label: 'i3 Studios' },
-  { id: 'assets',    label: 'Assets' },
-  { id: 'i3kingdom', label: 'i3 Launchpad' },
-  { id: 'i3plus',    label: 'i3+' },
-];
+import { Eye, EyeOff, User, Mail, Lock, AlertCircle, Building } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
   const [name,         setName]         = useState('');
   const [email,        setEmail]        = useState('');
-  const [agency,       setAgency]       = useState('');
   const [password,     setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [agencyOpen,   setAgencyOpen]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState('');
-  const agencyRef = useRef(null);
+  const [agencies,     setAgencies]     = useState([]);
+  const [selectedAgency, setSelectedAgency] = useState('');
 
   useEffect(() => {
-    const handler = (e) => { if (agencyRef.current && !agencyRef.current.contains(e.target)) setAgencyOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    async function loadAgencies() {
+      try {
+        const res = await fetch('/os/api/agencies');
+        if (res.ok) {
+          const json = await res.json();
+          const list = json.data || [];
+          setAgencies(list);
+        }
+      } catch (err) {
+        console.error('Failed to load agencies:', err);
+      }
+    }
+    loadAgencies();
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!agency) { setError('Please select your agency.'); return; }
+    if (!selectedAgency) {
+      setError('Please select an agency.');
+      return;
+    }
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
     setLoading(true);
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signUp({
         email, password,
-        options: { data: { full_name: name, agency, role: 'member' } },
+        options: { data: { full_name: name, agency: selectedAgency, role: 'member' } },
       });
       if (error) setError(error.message);
       else { router.push('/'); router.refresh(); }
@@ -74,7 +77,7 @@ export default function SignupPage() {
           background-color: transparent !important;
           transition: background-color 9999s ease, color 9999s ease;
         }
-.ig-field-wrap:focus-within { border-color:rgba(91,155,255,0.90) !important; box-shadow:0 0 0 3px rgba(48,108,236,0.25); }
+        .ig-field-wrap:focus-within { border-color:rgba(91,155,255,0.90) !important; box-shadow:0 0 0 3px rgba(48,108,236,0.25); }
         .ig-btn-signup:hover:not(:disabled) { background:#1E4FB8 !important; transform:translateY(-1px); box-shadow:0 8px 32px rgba(48,108,236,0.50) !important; }
         .ig-btn-signup:active:not(:disabled) { transform:translateY(0); }
         .ig-lnk:hover { color:#5B9BFF !important; }
@@ -150,49 +153,6 @@ export default function SignupPage() {
                 style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 8px 0 0' }} />
             </div>
 
-            {/* agency custom dropdown */}
-            <div ref={agencyRef} style={{ position:'relative' }}>
-              <div
-                onClick={() => setAgencyOpen(o => !o)}
-                style={{ display:'flex', alignItems:'center', background: agencyOpen ? 'rgba(48,108,236,0.24)' : 'rgba(48,108,236,0.14)', borderRadius:50, border:`1.5px solid ${agencyOpen ? 'rgba(91,155,255,0.90)' : 'rgba(48,108,236,0.50)'}`, boxShadow: agencyOpen ? '0 0 0 3px rgba(48,108,236,0.20)' : 'none', padding:'0 6px', height:58, gap:8, cursor:'pointer', transition:'border-color .15s, box-shadow .15s, background .15s' }}>
-                <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <Building2 size={18} color="rgba(255,255,255,0.85)" />
-                </div>
-                <span style={{ flex:1, fontSize:14.5, color: agency ? '#B8D4FF' : 'rgba(148,180,255,0.40)', padding:'0 8px 0 0', userSelect:'none' }}>
-                  {agency ? AGENCIES.find(a => a.id === agency)?.label : 'Select agency'}
-                </span>
-                <ChevronDown size={16} color="rgba(148,180,255,0.60)" style={{ flexShrink:0, marginRight:8, transition:'transform .2s', transform: agencyOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-              </div>
-
-              {agencyOpen && (
-                <div style={{
-                  position:'absolute', top:'calc(100% + 8px)', left:0, right:0, zIndex:50,
-                  background:'rgba(5,12,24,0.97)',
-                  backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)',
-                  border:'1.5px solid rgba(48,108,236,0.50)',
-                  borderRadius:20, overflow:'hidden',
-                  boxShadow:'0 12px 48px rgba(0,0,0,0.70), 0 0 0 1px rgba(48,108,236,0.15)',
-                }}>
-                  {AGENCIES.map((a, i) => (
-                    <div key={a.id}
-                      onClick={() => { setAgency(a.id); setAgencyOpen(false); }}
-                      style={{
-                        padding:'13px 20px', fontSize:14, color: agency === a.id ? '#7EB3FF' : '#B8D4FF',
-                        fontWeight: agency === a.id ? 700 : 400,
-                        background: agency === a.id ? 'rgba(48,108,236,0.15)' : 'transparent',
-                        borderBottom: i < AGENCIES.length - 1 ? '1px solid rgba(48,108,236,0.12)' : 'none',
-                        cursor:'pointer', transition:'background .12s, color .12s',
-                      }}
-                      onMouseEnter={e => { if (agency !== a.id) e.currentTarget.style.background = 'rgba(48,108,236,0.08)'; }}
-                      onMouseLeave={e => { if (agency !== a.id) e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      {a.label}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* password */}
             <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
               <input className="ig-input" type={showPassword ? 'text' : 'password'} placeholder="Password (min. 6 characters)" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete="new-password"
@@ -201,6 +161,39 @@ export default function SignupPage() {
                 style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'none', cursor:'pointer' }}>
                 {showPassword ? <EyeOff size={17} color="rgba(255,255,255,0.85)" /> : <Lock size={17} color="rgba(255,255,255,0.85)" />}
               </button>
+            </div>
+
+            {/* agency dropdown */}
+            <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
+              <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <Building size={17} color="rgba(255,255,255,0.85)" />
+              </div>
+              <select
+                value={selectedAgency}
+                onChange={e => setSelectedAgency(e.target.value)}
+                className="ig-input"
+                required
+                style={{
+                  flex:1,
+                  background:'transparent',
+                  border:'none',
+                  outline:'none',
+                  fontSize:14.5,
+                  fontFamily:'inherit',
+                  padding:'0 18px',
+                  color:'#B8D4FF',
+                  cursor:'pointer',
+                  appearance:'none',
+                  colorScheme:'dark',
+                }}
+              >
+                <option value="" style={{ background: '#070f1e', color: '#B8D4FF' }}>Choose your agency...</option>
+                {agencies.map((agency) => (
+                  <option key={agency.id} value={agency.slug} style={{ background: '#070f1e', color: '#B8D4FF' }}>
+                    {agency.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* submit */}

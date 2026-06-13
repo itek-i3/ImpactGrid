@@ -944,3 +944,76 @@
     display: none !important;
   }
 }
+
+/* ── Table Block Charting ── */
+.chartSection {
+  margin-top: var(--space-4);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(48, 108, 236, 0.25);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fadeInDown 0.2s ease forwards;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: var(--space-2);
+}
+
+.chartSelect {
+  font-size: var(--text-xs);
+  color: #7EB3FF;
+  background: rgba(5, 12, 24, 0.85);
+  border: 1px solid rgba(48, 108, 236, 0.35);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  outline: none;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.chartSelect:focus {
+  border-color: rgba(91, 155, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(48, 108, 236, 0.2);
+}
+
+.chartCheckboxGroup {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chartCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chartCheckboxLabel input {
+  cursor: pointer;
+}
+
+.chartCheckboxLabel:hover {
+  color: var(--color-text-primary);
+}
+
+.chartContainer {
+  width: 100%;
+  padding-top: var(--space-2);
+  display: flex;
+  justify-content: center;
+}

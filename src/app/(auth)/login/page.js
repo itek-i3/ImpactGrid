@@ -24,8 +24,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message);
       } else {
-        const agency = data.user?.user_metadata?.agency;
-        router.push(agency ? `/demo/agencies/${agency}` : '/');
+        router.push('/');
         router.refresh();
       }
     } catch { setError('Invalid email or password. Please try again.'); }

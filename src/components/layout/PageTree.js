@@ -25,13 +25,11 @@ export default function PageTree({ parentId = null, depth = 0 }) {
     duplicatePage,
     toggleFavoritePage,
     workspace,
+    userProfile,
   } = useWorkspaceStore();
 
   const handleSelect = (page) => {
     setCurrentPage(page);
-    if (pathname && !pathname.startsWith('/demo') && workspace) {
-      router.push(`/${workspace.id}/${page.id}`);
-    }
   };
 
   const handleAddChild = async (parentId) => {
@@ -41,8 +39,9 @@ export default function PageTree({ parentId = null, depth = 0 }) {
       parentId,
       isDatabase: false,
     });
-    if (newId && pathname && !pathname.startsWith('/demo') && workspace) {
-      router.push(`/${workspace.id}/${newId}`);
+    if (newId) {
+      const page = pages.find((p) => p.id === newId);
+      if (page) setCurrentPage(page);
     }
   };
 
@@ -53,7 +52,7 @@ export default function PageTree({ parentId = null, depth = 0 }) {
   if (children.length === 0 && depth === 0) {
     return (
       <div className={styles.pageTreeEmpty}>
-        No pages yet. Click + to create one.
+        {userProfile?.role === 'member' ? 'No pages available' : 'No pages yet. Click + to create one.'}
       </div>
     );
   }
@@ -73,14 +72,16 @@ export default function PageTree({ parentId = null, depth = 0 }) {
           onDelete={() => deletePage(page.id)}
           onDuplicate={async () => {
             const dupId = await duplicatePage(page.id);
-            if (dupId && pathname && !pathname.startsWith('/demo') && workspace) {
-              router.push(`/${workspace.id}/${dupId}`);
+            if (dupId) {
+              const page = pages.find((p) => p.id === dupId);
+              if (page) setCurrentPage(page);
             }
           }}
           onToggleFavorite={() => toggleFavoritePage(page.id)}
           hasChildren={pages.some(
             (p) => p.parentId === page.id && !p.isArchived
           )}
+          isReadOnly={userProfile?.role === 'member'}
         />
       ))}
     </div>
@@ -99,6 +100,7 @@ function PageTreeItem({
   onDuplicate,
   onToggleFavorite,
   hasChildren,
+  isReadOnly,
 }) {
   const handleClick = useCallback(
     (e) => {
@@ -157,15 +159,17 @@ function PageTreeItem({
             }
             align="right"
           >
-            <DropdownItem
-              icon={<Plus size={14} />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddChild();
-              }}
-            >
-              Add sub-page
-            </DropdownItem>
+            {!isReadOnly && (
+              <DropdownItem
+                icon={<Plus size={14} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddChild();
+                }}
+              >
+                Add sub-page
+              </DropdownItem>
+            )}
             <DropdownItem
               icon={<Star size={14} style={{ fill: page.isFavorite ? 'var(--color-accent-primary)' : 'none', color: page.isFavorite ? 'var(--color-accent-primary)' : 'inherit' }} />}
               onClick={(e) => {
@@ -175,37 +179,43 @@ function PageTreeItem({
             >
               {page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
             </DropdownItem>
-            <DropdownItem
-              icon={<Copy size={14} />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDuplicate();
-              }}
-            >
-              Duplicate
-            </DropdownItem>
-            <DropdownDivider />
-            <DropdownItem
-              icon={<Trash2 size={14} />}
-              danger
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              Move to trash
-            </DropdownItem>
+            {!isReadOnly && (
+              <DropdownItem
+                icon={<Copy size={14} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate();
+                }}
+              >
+                Duplicate
+              </DropdownItem>
+            )}
+            {!isReadOnly && <DropdownDivider />}
+            {!isReadOnly && (
+              <DropdownItem
+                icon={<Trash2 size={14} />}
+                danger
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                Move to trash
+              </DropdownItem>
+            )}
           </Dropdown>
 
-          <button
-            className={styles.pageTreeActionBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddChild();
-            }}
-          >
-            <Plus size={14} />
-          </button>
+          {!isReadOnly && (
+            <button
+              className={styles.pageTreeActionBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddChild();
+              }}
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
       </div>
 

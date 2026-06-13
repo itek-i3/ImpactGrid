@@ -7,11 +7,10 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import SearchModal from '@/components/layout/SearchModal';
 import BlockEditor from '@/components/editor/BlockEditor';
-import DatabaseContainer from '@/components/database/DatabaseContainer';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
-function DemoWorkspaceContent() {
+function WorkspaceContent() {
   const {
     workspace,
     currentPage,
@@ -20,6 +19,9 @@ function DemoWorkspaceContent() {
     initDemoWorkspace,
     theme,
     setTheme,
+    fetchUserProfile,
+    loadWorkspace,
+    userProfile,
   } = useWorkspaceStore();
 
   const { initBlocks, addBlock, blocks } = useEditorStore();
@@ -28,12 +30,18 @@ function DemoWorkspaceContent() {
   const [showIconPicker, setShowIconPicker] = useState(false);
 
   useEffect(() => {
-    if (!workspace) {
-      const { pages } = initDemoWorkspace();
-      if (pages.length > 0) {
-        setCurrentPage(pages[0]);
+    async function init() {
+      const profile = await fetchUserProfile();
+      if (profile) {
+        await loadWorkspace();
+      } else {
+        const { pages } = initDemoWorkspace();
+        if (pages.length > 0) {
+          setCurrentPage(pages[0]);
+        }
       }
     }
+    init();
 
     const savedTheme = localStorage.getItem('impactnotion-theme');
     if (savedTheme) {
@@ -86,6 +94,8 @@ function DemoWorkspaceContent() {
     '🎓', '🏆', '❤️', '🔧', '📦', '🎤', '🎵', '📸',
   ];
 
+  const isReadOnly = userProfile?.role === 'member';
+
   return (
     <div className={styles.workspaceShell} style={{ background: 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
       <Sidebar />
@@ -122,11 +132,13 @@ function DemoWorkspaceContent() {
                     <span
                       className={styles.pageIcon}
                       onClick={(e) => {
+                        if (isReadOnly) return;
                         e.stopPropagation();
                         setShowIconPicker(!showIconPicker);
                       }}
                       role="button"
                       tabIndex={0}
+                      style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
                     >
                       {currentPage.icon || '📄'}
                     </span>
@@ -194,14 +206,11 @@ function DemoWorkspaceContent() {
                   onChange={handleTitleChange}
                   onKeyDown={handleTitleKeyDown}
                   placeholder="Untitled"
+                  readOnly={isReadOnly}
                 />
               </div>
 
-              {currentPage.isDatabase ? (
-                <DatabaseContainer pageId={currentPage.id} />
-              ) : (
-                <BlockEditor pageId={currentPage.id} />
-              )}
+              <BlockEditor pageId={currentPage.id} readOnly={isReadOnly} />
             </div>
           ) : (
             <div
@@ -261,10 +270,10 @@ function DemoWorkspaceContent() {
   );
 }
 
-export default function DemoWorkspaceClient() {
+export default function WorkspaceClient() {
   return (
     <ToastProvider>
-      <DemoWorkspaceContent />
+      <WorkspaceContent />
     </ToastProvider>
   );
 }

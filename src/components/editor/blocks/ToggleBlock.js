@@ -11,7 +11,6 @@ export default function ToggleBlock({ block, onUpdate, onKeyDown, onInput, autoF
   const [isOpen, setIsOpen] = useState(block.properties?.isOpen ?? true);
   const titleRef = useRef(null);
   const contentRef = useRef(null);
-  const blockIdRef = useRef(block.id);
 
   useEffect(() => {
     if (titleRef.current && titleRef.current.innerText !== (block.content?.text || '')) {

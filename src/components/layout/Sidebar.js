@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image';
+import logoImg from '../../../public/logo3.png';
 import {
   Search,
   Settings,
@@ -15,6 +17,7 @@ import {
   SquarePen,
   MoreHorizontal,
   NotepadText,
+  ShieldCheck,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -58,6 +61,7 @@ export default function Sidebar() {
     addPage,
     restorePage,
     permanentlyDeletePage,
+    userProfile,
   } = useWorkspaceStore();
 
   const [trashOpen, setTrashOpen] = useState(false);
@@ -71,17 +75,15 @@ export default function Sidebar() {
 
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);
-    if (pathname && !pathname.startsWith('/demo') && workspace) {
-      router.push(`/${workspace.id}/${page.id}`);
-    }
-  }, [workspace, pathname, router, setCurrentPage]);
+  }, [setCurrentPage]);
 
   const handleNewPage = useCallback(async () => {
     const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
-    if (newId && pathname && !pathname.startsWith('/demo') && workspace) {
-      router.push(`/${workspace.id}/${newId}`);
+    if (newId) {
+      const page = pages.find((p) => p.id === newId);
+      if (page) setCurrentPage(page);
     }
-  }, [addPage, workspace, router, pathname]);
+  }, [addPage, pages, setCurrentPage]);
 
   const handleSettingsClick = () => {
     if (workspace) router.push(`/${workspace.id}/settings`);
@@ -119,11 +121,10 @@ export default function Sidebar() {
             <>
               <div style={{
                 width: 32, height: 32, borderRadius: 8,
-                background: 'linear-gradient(135deg, #0d1b38, #1E4FB8)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, boxShadow: '0 3px 10px rgba(48,108,236,0.40)',
+                flexShrink: 0, overflow: 'hidden',
               }}>
-                <ImpactLogo size={22} />
+                <Image src={logoImg} width={32} height={32} alt="Logo" style={{ objectFit: 'contain' }} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="display" style={{
@@ -145,6 +146,13 @@ export default function Sidebar() {
           <>
             {/* ── Quick Actions ── */}
             <nav style={{ padding: '8px 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {userProfile?.role === 'superadmin' && (
+                <button className="ig-nav" onClick={() => router.push('/admin')} style={{ color: '#5B9BFF', fontWeight: 600 }}>
+                  <ShieldCheck size={15} />
+                  <span>Admin Panel</span>
+                </button>
+              )}
+
               <button className="ig-nav" onClick={toggleSearch}>
                 <Search size={15} />
                 <span>Search</span>
@@ -243,9 +251,11 @@ export default function Sidebar() {
                 <NotepadText size={10} />
                 Pages
               </span>
-              <button className={styles.sidebarSectionAction} onClick={handleNewPage} aria-label="New page">
-                <Plus size={14} />
-              </button>
+              {userProfile?.role !== 'member' && (
+                <button className={styles.sidebarSectionAction} onClick={handleNewPage} aria-label="New page">
+                  <Plus size={14} />
+                </button>
+              )}
             </div>
 
             <div className={styles.pageTree}>
@@ -261,10 +271,12 @@ export default function Sidebar() {
               flexDirection: 'column',
               gap: 1,
             }}>
-              <button className="ig-nav" onClick={handleNewPage}>
-                <SquarePen size={15} />
-                <span>New page</span>
-              </button>
+              {userProfile?.role !== 'member' && (
+                <button className="ig-nav" onClick={handleNewPage}>
+                  <SquarePen size={15} />
+                  <span>New page</span>
+                </button>
+              )}
 
               {/* Dark mode toggle */}
               <div style={{
@@ -303,7 +315,9 @@ export default function Sidebar() {
                 }
                 align="left"
               >
-                <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
+                {userProfile?.role !== 'member' && (
+                  <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
+                )}
                 <DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
               </Dropdown>
 

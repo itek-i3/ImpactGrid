@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import BlockEditor from '@/components/editor/BlockEditor';
-import DatabaseContainer from '@/components/database/DatabaseContainer';
 import { ToastProvider } from '@/components/ui/Toast';
 import { Lock, FileWarning, Globe } from 'lucide-react';
 import styles from '@/styles/layout.module.css';
@@ -31,10 +30,10 @@ function PublicPageContent() {
 
   // Initialize blocks when page is resolved
   useEffect(() => {
-    if (page && !page.isDatabase) {
+    if (page) {
       initBlocks(page.id);
     }
-  }, [page?.id, page?.isDatabase, initBlocks]);
+  }, [page?.id, initBlocks]);
 
   if (loading) {
     return (
@@ -195,12 +194,7 @@ function PublicPageContent() {
           </h1>
         </div>
 
-        {/* Dynamic renderer */}
-        {page.isDatabase ? (
-          <DatabaseContainer pageId={page.id} readOnly={true} />
-        ) : (
-          <BlockEditor pageId={page.id} readOnly={true} />
-        )}
+        <BlockEditor pageId={page.id} readOnly={true} />
       </div>
 
       {/* Footer */}

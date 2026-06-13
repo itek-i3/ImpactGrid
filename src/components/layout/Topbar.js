@@ -15,7 +15,7 @@ export default function Topbar() {
   const {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage, duplicatePage, deletePage,
-    toggleSearch, workspace,
+    toggleSearch, workspace, userProfile,
   } = useWorkspaceStore();
   const { isSaving, lastSaved } = useEditorStore();
   const toast = useToast();
@@ -48,6 +48,8 @@ export default function Topbar() {
     flexShrink: 0,
   };
 
+  const isReadOnly = userProfile?.role === 'member';
+
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 14,
@@ -65,7 +67,7 @@ export default function Topbar() {
 
       {/* Page title */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {saveLabel && (
+        {saveLabel && !isReadOnly && (
           <div style={{ fontSize: 11, color: '#3D5A8A', fontWeight: 600, letterSpacing: '.03em', marginBottom: 1 }}>
             {saveLabel}
           </div>
@@ -105,7 +107,7 @@ export default function Topbar() {
       )}
 
       {/* Share / Publish */}
-      {currentPage && (
+      {currentPage && !isReadOnly && (
         <div style={{ position: 'relative' }}>
           <button
             className="ig-kbtn"
@@ -178,7 +180,7 @@ export default function Topbar() {
       )}
 
       {/* More actions */}
-      {currentPage && (
+      {currentPage && !isReadOnly && (
         <Dropdown trigger={<button className="ig-kbtn" title="More actions" style={btnStyle}><MoreHorizontal size={16} /></button>} align="right">
           <DropdownItem icon={<Copy size={14} />} onClick={async () => {
             const dupId = await duplicatePage(currentPage.id);
@@ -199,20 +201,28 @@ export default function Topbar() {
       </button>
 
       {/* New page */}
-      <button
-        onClick={() => toggleSearch()}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 7,
-          padding: '0 16px', height: 38, borderRadius: 11,
-          background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
-          color: '#fff', border: 'none', fontFamily: 'inherit',
-          fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(48,108,236,0.40)',
-          flexShrink: 0,
-        }}
-      >
-        <Plus size={16} /> New
-      </button>
+      {!isReadOnly && (
+        <button
+          onClick={async () => {
+            const newId = await updatePage(null, {}); // Let's check how sidebar does it
+            // Actually sidebar does: addPage({ title: '', icon: '📄', parentId: null, isDatabase: false })
+            const { addPage } = useWorkspaceStore.getState();
+            const newIdCreated = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
+            if (newIdCreated && workspace) router.push(`/${workspace.id}/${newIdCreated}`);
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '0 16px', height: 38, borderRadius: 11,
+            background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+            color: '#fff', border: 'none', fontFamily: 'inherit',
+            fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(48,108,236,0.40)',
+            flexShrink: 0,
+          }}
+        >
+          <Plus size={16} /> New
+        </button>
+      )}
     </header>
   );
 }

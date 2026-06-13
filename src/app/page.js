@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import WorkspaceWrapper from './WorkspaceWrapper';
 
-// next/navigation redirect() does not prepend basePath automatically,
-// so we include /os explicitly here.
 const BASE = '/os';
 
 export default async function Home() {
@@ -13,5 +12,5 @@ export default async function Home() {
     redirect(BASE + '/login');
   }
 
-  redirect(`${BASE}/demo`);
+  return <WorkspaceWrapper />;
 }

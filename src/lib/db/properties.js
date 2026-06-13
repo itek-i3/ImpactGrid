@@ -68,14 +68,13 @@ export async function deleteProperty(id) {
 
 export async function reorderProperties(databaseId, orderedIds) {
   const supabase = await createClient();
-  const updates = orderedIds.map((id, index) => ({
-    id,
-    database_id: databaseId,
-    sort_order: index,
-  }));
-  const { error } = await supabase
-    .from('database_properties')
-    .upsert(updates, { onConflict: 'id' });
-
+  const promises = orderedIds.map((id, index) =>
+    supabase
+      .from('database_properties')
+      .update({ sort_order: index })
+      .eq('id', id)
+  );
+  const results = await Promise.all(promises);
+  const error = results.find((r) => r.error)?.error || null;
   return { error };
 }

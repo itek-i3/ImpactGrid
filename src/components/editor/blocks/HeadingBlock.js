@@ -23,12 +23,13 @@ const placeholders = {
 export default function HeadingBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
   const level = block.type;
   const ref = useRef(null);
-  const blockIdRef = useRef(block.id);
 
   useEffect(() => {
-    if (ref.current && blockIdRef.current !== block.id) {
-      ref.current.innerText = block.content?.text || '';
-      blockIdRef.current = block.id;
+    if (ref.current) {
+      const text = block.content?.text || '';
+      if (ref.current.innerText !== text) {
+        ref.current.innerText = text;
+      }
     }
   }, [block.id, block.content?.text]);
 

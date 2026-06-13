@@ -1,11 +1,14 @@
 'use client';
 
-import dynamic from 'next/dynamic';
-
-const DemoWorkspaceClient = dynamic(() => import('./DemoWorkspaceClient'), {
-  ssr: false,
-});
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function DemoPage() {
-  return <DemoWorkspaceClient />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/');
+  }, [router]);
+
+  return null;
 }

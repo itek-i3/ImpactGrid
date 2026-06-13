@@ -100,10 +100,13 @@ export async function deletePage(id) {
 
 export async function reorderPages(workspaceId, orderedIds) {
   const supabase = await createClient();
-  const updates = orderedIds.map((id, index) => ({ id, sort_order: index }));
-  const { error } = await supabase
-    .from('pages')
-    .upsert(updates, { onConflict: 'id' });
-
+  const promises = orderedIds.map((id, index) =>
+    supabase
+      .from('pages')
+      .update({ sort_order: index })
+      .eq('id', id)
+  );
+  const results = await Promise.all(promises);
+  const error = results.find((r) => r.error)?.error || null;
   return { error };
 }

@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { useWorkspaceStore } from './useWorkspaceStore';
 
 const isDemoMode = () => {
+  try {
+    const isDemo = useWorkspaceStore.getState().isDemo;
+    if (isDemo !== undefined) return isDemo;
+  } catch {}
   if (typeof window !== 'undefined') {
     return window.location.pathname.includes('/demo');
   }
@@ -19,7 +23,7 @@ const saveBlockDebounced = (blockId, pageId, updates) => {
   debounceTimers[blockId] = setTimeout(async () => {
     delete debounceTimers[blockId];
     try {
-      await fetch(`/api/pages/${pageId}/blocks/${blockId}`, {
+      await fetch(`/os/api/pages/${pageId}/blocks/${blockId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -105,7 +109,7 @@ export const useEditorStore = create((set, get) => ({
     if (isDemoMode()) return;
     const orderedIds = get().blocks.map((b) => b.id);
     try {
-      await fetch(`/api/pages/${pageId}/blocks`, {
+      await fetch(`/os/api/pages/${pageId}/blocks`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderedIds }),
@@ -166,7 +170,7 @@ export const useEditorStore = create((set, get) => ({
     }
 
     try {
-      const res = await fetch(`/api/pages/${pageId}/blocks`, {
+      const res = await fetch(`/os/api/pages/${pageId}/blocks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +255,7 @@ export const useEditorStore = create((set, get) => ({
 
     try {
       for (const id of toDelete) {
-        await fetch(`/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
+        await fetch(`/os/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
       }
       if (pageId) {
         get().syncBlockOrder(pageId);
@@ -336,7 +340,7 @@ export const useEditorStore = create((set, get) => ({
 
     try {
       for (const b of newBlocksToInsert) {
-        await fetch(`/api/pages/${pageId}/blocks`, {
+        await fetch(`/os/api/pages/${pageId}/blocks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -371,7 +375,7 @@ export const useEditorStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      await fetch(`/api/pages/${pageId}/blocks/${blockId}`, {
+      await fetch(`/os/api/pages/${pageId}/blocks/${blockId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: newType }),
@@ -416,68 +420,22 @@ export const useEditorStore = create((set, get) => ({
           return;
         }
 
-        const page = useWorkspaceStore.getState().pages.find((p) => p.id === pageId);
-        let seededBlocks = [];
-
-        if (page?.title === 'Getting Started') {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h1', content: { text: 'Welcome to ImpactNotion! 👋' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'ImpactNotion is a workspace platform that combines flexible document editing with powerful databases, custom dashboards, and public publishing. Here are a few things to try:' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Type / in an empty block to open the slash command menu.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Select any text to open the floating formatting toolbar.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Click the + button in the sidebar to create your own pages.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'callout', content: { text: '💡 Tip: You can navigate between blocks using the Up and Down arrow keys on your keyboard!' }, properties: { color: 'blue' }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Pre-built Community Modules' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'We have pre-configured 5 custom databases for Impact360 operations. Go ahead and explore them in the sidebar:' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '🏢 Agencies: View partners, their onboarding checklist, and revenue breakdown.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '💰 Asset Tracker: Track community vehicles and gear, and log operational income in real-time.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '📅 Event Manager: View budget utilization and upcoming community drives.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '👥 Member Directory: Quick-filter staff and volunteers by their skill sets.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '💬 WhatsApp Groups: Coordinate invite links and track active member counts.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'divider', content: {}, pageId },
-            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Real-time updates' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Any edits you make inside the dashboards or database tables persist instantly. Go ahead and try it out!' }, pageId }
-          ];
-        } else if (page?.title === 'Meeting Notes') {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h1', content: { text: 'Weekly Sync - May 28, 2026 📝' }, pageId },
-            { id: crypto.randomUUID(), type: 'callout', content: { text: 'Attendees: Erick Omondi, Faith Mutua, John Doe, Grace Wanjiku' }, properties: { color: 'blue' }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Agenda' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Review budget utilization for Youth Leadership Summit 2026' }, properties: { checked: true }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Follow up with Summit Digital agency onboarding' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Update members directory with new volunteer skills list' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Log recent rental income for Toyota Hiace van' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Notes' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Erick mentioned we need to make sure all WhatsApp group invite links are active. Faith will verify the volunteer group link and update it in the WhatsApp Groups database.' }, pageId }
-          ];
-        } else if (['Itek', 'I360', 'I3x Africa', 'I3 studio', 'i3+', 'I3 launchpad'].includes(page?.title)) {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h2', content: { text: `Welcome to ${page.title} Workspace! 🏢` }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: `This is the dedicated management space for ${page.title}. Use this document canvas to write weekly briefs, share agency guidelines, draft strategy notes, or list member tasks.` }, pageId },
-            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Weekly Deliverables Checklist' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Deliver design assets for the new project landing page' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Prepare the weekly operations report for TOIG HQ' }, properties: { checked: false }, pageId }
-          ];
-        } else {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
-          ];
-        }
-
-        const finalBlocks = seededBlocks.map((b, i) => ({ ...b, sortOrder: i }));
+        const seededBlocks = [
+          { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
+        ];
 
         set((state) => ({
-          blocks: finalBlocks,
-          activeBlockId: finalBlocks[0]?.id || null,
+          blocks: seededBlocks,
+          activeBlockId: seededBlocks[0]?.id || null,
           blocksByPage: {
             ...(state.blocksByPage || {}),
-            [pageId]: finalBlocks,
+            [pageId]: seededBlocks,
           },
         }));
         return;
       }
 
-      const res = await fetch(`/api/pages/${pageId}/blocks`);
+      const res = await fetch(`/os/api/pages/${pageId}/blocks`);
       if (!res.ok) throw new Error('Failed to fetch blocks');
       const dataJson = await res.json();
       const data = dataJson.data || [];
@@ -497,71 +455,23 @@ export const useEditorStore = create((set, get) => ({
       let blocks = data.map(mapBlockFromDb);
 
       if (blocks.length === 0) {
-        const page = useWorkspaceStore.getState().pages.find((p) => p.id === pageId);
-        let seededBlocks = [];
+        const seededBlocks = [
+          { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
+        ];
 
-        if (page?.title === 'Getting Started') {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h1', content: { text: 'Welcome to ImpactNotion! 👋' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'ImpactNotion is a workspace platform that combines flexible document editing with powerful databases, custom dashboards, and public publishing. Here are a few things to try:' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Type / in an empty block to open the slash command menu.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Select any text to open the floating formatting toolbar.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Click the + button in the sidebar to create your own pages.' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'callout', content: { text: '💡 Tip: You can navigate between blocks using the Up and Down arrow keys on your keyboard!' }, properties: { color: 'blue' }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Pre-built Community Modules' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'We have pre-configured 5 custom databases for Impact360 operations. Go ahead and explore them in the sidebar:' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '🏢 Agencies: View partners, their onboarding checklist, and revenue breakdown.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '💰 Asset Tracker: Track community vehicles and gear, and log operational income in real-time.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '📅 Event Manager: View budget utilization and upcoming community drives.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '👥 Member Directory: Quick-filter staff and volunteers by their skill sets.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'list', content: { text: '💬 WhatsApp Groups: Coordinate invite links and track active member counts.' }, properties: { listType: 'bullet' }, pageId },
-            { id: crypto.randomUUID(), type: 'divider', content: {}, pageId },
-            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Real-time updates' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Any edits you make inside the dashboards or database tables persist instantly. Go ahead and try it out!' }, pageId }
-          ];
-        } else if (page?.title === 'Meeting Notes') {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h1', content: { text: 'Weekly Sync - May 28, 2026 📝' }, pageId },
-            { id: crypto.randomUUID(), type: 'callout', content: { text: 'Attendees: Erick Omondi, Faith Mutua, John Doe, Grace Wanjiku' }, properties: { color: 'blue' }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Agenda' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Review budget utilization for Youth Leadership Summit 2026' }, properties: { checked: true }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Follow up with Summit Digital agency onboarding' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Update members directory with new volunteer skills list' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Log recent rental income for Toyota Hiace van' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'h2', content: { text: 'Notes' }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: 'Erick mentioned we need to make sure all WhatsApp group invite links are active. Faith will verify the volunteer group link and update it in the WhatsApp Groups database.' }, pageId }
-          ];
-        } else if (['Itek', 'I360', 'I3x Africa', 'I3 studio', 'i3+', 'I3 launchpad'].includes(page?.title)) {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'h2', content: { text: `Welcome to ${page.title} Workspace! 🏢` }, pageId },
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: `This is the dedicated management space for ${page.title}. Use this document canvas to write weekly briefs, share agency guidelines, draft strategy notes, or list member tasks.` }, pageId },
-            { id: crypto.randomUUID(), type: 'h3', content: { text: 'Weekly Deliverables Checklist' }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Deliver design assets for the new project landing page' }, properties: { checked: false }, pageId },
-            { id: crypto.randomUUID(), type: 'checkbox', content: { text: 'Prepare the weekly operations report for TOIG HQ' }, properties: { checked: false }, pageId }
-          ];
-        } else {
-          seededBlocks = [
-            { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
-          ];
-        }
+        await fetch(`/os/api/pages/${pageId}/blocks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'paragraph',
+            content: { text: '' },
+            properties: {},
+            parentBlockId: null,
+            sortOrder: 0,
+          }),
+        });
 
-        const finalBlocks = seededBlocks.map((b, i) => ({ ...b, sortOrder: i }));
-
-        for (const b of finalBlocks) {
-          await fetch(`/api/pages/${pageId}/blocks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: b.type,
-              content: b.content,
-              properties: b.properties,
-              parentBlockId: b.parentBlockId,
-              sortOrder: b.sortOrder,
-            }),
-          });
-        }
-
-        blocks = finalBlocks;
+        blocks = seededBlocks;
       }
 
       set((state) => ({

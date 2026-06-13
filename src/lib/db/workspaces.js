@@ -5,15 +5,25 @@ export async function listWorkspaces() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };
 
-  const { data, error } = await supabase
-    .from('workspaces')
-    .select(`
-      *,
-      workspace_members!inner(role)
-    `)
-    .eq('workspace_members.user_id', user.id)
-    .order('created_at');
+  // Fetch the user's agency_id and role
+  const { data: profile, error: profileErr } = await supabase
+    .from('profiles')
+    .select('role, agency_id')
+    .eq('id', user.id)
+    .single();
 
+  if (profileErr) return { data: null, error: profileErr };
+
+  let query = supabase.from('workspaces').select('*');
+
+  if (profile.role !== 'superadmin') {
+    if (!profile.agency_id) {
+      return { data: [], error: null };
+    }
+    query = query.eq('agency_id', profile.agency_id);
+  }
+
+  const { data, error } = await query.order('created_at');
   return { data, error };
 }
 
@@ -21,7 +31,7 @@ export async function getWorkspace(id) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('workspaces')
-    .select(`*, workspace_members(user_id, role)`)
+    .select(`*`)
     .eq('id', id)
     .single();
 
@@ -33,22 +43,31 @@ export async function createWorkspace({ name, icon = '🚀' }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };
 
+  // Fetch the user's agency_id and role
+  const { data: profile, error: profileErr } = await supabase
+    .from('profiles')
+    .select('role, agency_id')
+    .eq('id', user.id)
+    .single();
+
+  if (profileErr) return { data: null, error: profileErr };
+
+  if (profile.role === 'member') {
+    return { data: null, error: { message: 'Forbidden: Members cannot create workspaces', status: 403 } };
+  }
+
   const { data: workspace, error: wsError } = await supabase
     .from('workspaces')
-    .insert({ name, icon, owner_id: user.id })
+    .insert({
+      name,
+      icon,
+      owner_id: user.id,
+      agency_id: profile.agency_id
+    })
     .select()
     .single();
 
-  if (wsError) return { data: null, error: wsError };
-
-  // Add the creator as owner
-  await supabase.from('workspace_members').insert({
-    workspace_id: workspace.id,
-    user_id: user.id,
-    role: 'owner',
-  });
-
-  return { data: workspace, error: null };
+  return { data: workspace, error: wsError };
 }
 
 export async function updateWorkspace(id, updates) {
@@ -120,3 +139,19 @@ export async function removeMember(workspaceId, userId) {
 
   return { error };
 }
+
+export async function createAgencyWorkspace({ name, icon = '🚀', agencyId }) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('workspaces')
+    .insert({ name, icon, agency_id: agencyId })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function seedWorkspace(workspaceId) {
+  // Return empty success since we want workspaces to start clean without seeded pages
+  return { error: null };
+}
+

@@ -9,13 +9,14 @@ import styles from '@/styles/editor.module.css';
  */
 export default function TextBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
   const ref = useRef(null);
-  const blockIdRef = useRef(block.id);
 
-  // Only set innerHTML when block ID changes (switching pages/blocks)
+  // Sync innerText with store content
   useEffect(() => {
-    if (ref.current && blockIdRef.current !== block.id) {
-      ref.current.innerText = block.content?.text || '';
-      blockIdRef.current = block.id;
+    if (ref.current) {
+      const text = block.content?.text || '';
+      if (ref.current.innerText !== text) {
+        ref.current.innerText = text;
+      }
     }
   }, [block.id, block.content?.text]);
 
