@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Search, Bell, Plus, PanelLeft, Star, Share2, MoreHorizontal, Trash2, Copy,
 } from 'lucide-react';
@@ -150,14 +151,14 @@ export default function Topbar() {
                     style={{ width: '100%', padding: '7px 10px', background: '#0d1b38', border: '1px solid rgba(48,108,236,0.30)', borderRadius: 8, color: '#7EB3FF', fontSize: 11, outline: 'none' }}
                     onClick={(e) => e.target.select()} />
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { navigator.clipboard.writeText(`${origin}/public/${currentPage.id}`); toast.success('Link Copied', 'Public link copied!'); }}
+                    <button onClick={() => { navigator.clipboard.writeText(`${origin}/os/public/${currentPage.id}`); toast.success('Link Copied', 'Public link copied!'); }}
                       style={{ flex: 1, padding: '7px', background: '#306CEC', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                       Copy Link
                     </button>
-                    <a href={`/public/${currentPage.id}`} target="_blank" rel="noopener noreferrer"
+                    <Link href={`/public/${currentPage.id}`} target="_blank" rel="noopener noreferrer"
                       style={{ flex: 1, padding: '7px', background: 'rgba(255,255,255,0.06)', color: '#E2EEFF', border: '1px solid rgba(48,108,236,0.25)', borderRadius: 8, fontSize: 12, fontWeight: 600, textAlign: 'center', textDecoration: 'none' }}>
                       Open
-                    </a>
+                    </Link>
                   </div>
                 </div>
               )}
