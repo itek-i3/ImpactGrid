@@ -20,7 +20,7 @@ export default function SignupPage() {
   useEffect(() => {
     async function loadAgencies() {
       try {
-        const res = await fetch('/os/api/agencies');
+        const res = await fetch('/api/agencies');
         if (res.ok) {
           const json = await res.json();
           const list = json.data || [];

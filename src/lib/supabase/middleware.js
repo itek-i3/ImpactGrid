@@ -68,7 +68,7 @@ export async function updateSession(request) {
     const proto = request.headers.get('x-forwarded-proto') || 'https';
     const scheme = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : proto;
     const origin = `${scheme}://${host}`;
-    const redirectUrl = new URL('/os/login', origin);
+    const redirectUrl = new URL('/login', origin);
     redirectUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(redirectUrl);
   }
@@ -79,7 +79,7 @@ export async function updateSession(request) {
     const proto = request.headers.get('x-forwarded-proto') || 'https';
     const scheme = (host.includes('localhost') || host.includes('127.0.0.1')) ? 'http' : proto;
     const origin = `${scheme}://${host}`;
-    return NextResponse.redirect(new URL('/os/', origin));
+    return NextResponse.redirect(new URL('/', origin));
   }
 
   return supabaseResponse;

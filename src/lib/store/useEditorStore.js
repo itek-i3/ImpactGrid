@@ -23,7 +23,7 @@ const saveBlockDebounced = (blockId, pageId, updates) => {
   debounceTimers[blockId] = setTimeout(async () => {
     delete debounceTimers[blockId];
     try {
-      await fetch(`/os/api/pages/${pageId}/blocks/${blockId}`, {
+      await fetch(`/api/pages/${pageId}/blocks/${blockId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -109,7 +109,7 @@ export const useEditorStore = create((set, get) => ({
     if (isDemoMode()) return;
     const orderedIds = get().blocks.map((b) => b.id);
     try {
-      await fetch(`/os/api/pages/${pageId}/blocks`, {
+      await fetch(`/api/pages/${pageId}/blocks`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderedIds }),
@@ -170,7 +170,7 @@ export const useEditorStore = create((set, get) => ({
     }
 
     try {
-      const res = await fetch(`/os/api/pages/${pageId}/blocks`, {
+      const res = await fetch(`/api/pages/${pageId}/blocks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,7 +256,7 @@ export const useEditorStore = create((set, get) => ({
 
     try {
       for (const id of toDelete) {
-        await fetch(`/os/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
+        await fetch(`/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
       }
       if (pageId) {
         get().syncBlockOrder(pageId);
@@ -341,7 +341,7 @@ export const useEditorStore = create((set, get) => ({
 
     try {
       for (const b of newBlocksToInsert) {
-        await fetch(`/os/api/pages/${pageId}/blocks`, {
+        await fetch(`/api/pages/${pageId}/blocks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -377,7 +377,7 @@ export const useEditorStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      await fetch(`/os/api/pages/${pageId}/blocks/${blockId}`, {
+      await fetch(`/api/pages/${pageId}/blocks/${blockId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: newType }),
@@ -437,7 +437,7 @@ export const useEditorStore = create((set, get) => ({
         return;
       }
 
-      const res = await fetch(`/os/api/pages/${pageId}/blocks`);
+      const res = await fetch(`/api/pages/${pageId}/blocks`);
       if (!res.ok) throw new Error('Failed to fetch blocks');
       const dataJson = await res.json();
       const data = dataJson.data || [];
@@ -461,7 +461,7 @@ export const useEditorStore = create((set, get) => ({
           { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
         ];
 
-        await fetch(`/os/api/pages/${pageId}/blocks`, {
+        await fetch(`/api/pages/${pageId}/blocks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
