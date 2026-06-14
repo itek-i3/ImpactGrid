@@ -3,17 +3,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink } from 'lucide-react';
+import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown } from 'lucide-react';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 
 function AdminPanelContent() {
   const router = useRouter();
   const toast = useToast();
-  
+
+  const [activeTab, setActiveTab] = useState('agencies');
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [agencies, setAgencies] = useState([]);
   const [loadingAgencies, setLoadingAgencies] = useState(true);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [updatingRole, setUpdatingRole] = useState(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -72,7 +76,54 @@ function AdminPanelContent() {
     }
   };
 
-  // 3. Handle Name change to auto-fill Slug
+  // 3. Load members list
+  const loadMembers = async () => {
+    setLoadingMembers(true);
+    try {
+      const res = await fetch('/os/api/admin/members');
+      if (res.ok) {
+        const json = await res.json();
+        setMembers(json.data || []);
+      } else {
+        toast.error('Failed to load members', 'Could not fetch member list.');
+      }
+    } catch (err) {
+      console.error('Failed to load members:', err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    setUpdatingRole(userId);
+    try {
+      const res = await fetch('/os/api/admin/members', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role: newRole }),
+      });
+      if (res.ok) {
+        setMembers((prev) => prev.map((m) => m.id === userId ? { ...m, role: newRole } : m));
+        toast.success('Role Updated', `User role changed to ${newRole}.`);
+      } else {
+        const json = await res.json();
+        toast.error('Update Failed', json.error?.message || 'Could not update role.');
+      }
+    } catch (err) {
+      console.error('Failed to update role:', err);
+      toast.error('Error', 'A network error occurred.');
+    } finally {
+      setUpdatingRole(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'members' && members.length === 0 && !loadingMembers) {
+      loadMembers();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 4. Handle Name change to auto-fill Slug
   const handleNameChange = (e) => {
     const val = e.target.value;
     setName(val);
@@ -290,8 +341,91 @@ function AdminPanelContent() {
             </Link>
           </div>
 
-          {/* Grid Layout */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 32, alignItems: 'start' }}>
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 28 }}>
+            {[{ key: 'agencies', label: 'Agencies', icon: <Building size={14} /> }, { key: 'members', label: 'Members', icon: <Users size={14} /> }].map(({ key, label, icon }) => (
+              <button key={key} onClick={() => setActiveTab(key)} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 13, fontWeight: 600, transition: 'all .15s',
+                background: activeTab === key ? 'rgba(48,108,236,0.25)' : 'rgba(255,255,255,0.04)',
+                color: activeTab === key ? '#7EB3FF' : '#3D5A8A',
+                borderBottom: activeTab === key ? '2px solid #306CEC' : '2px solid transparent',
+              }}>
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Members Tab */}
+          {activeTab === 'members' && (
+            <div style={{
+              background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(30px)',
+              border: '1.5px solid rgba(48,108,236,0.35)', borderRadius: 20,
+              padding: 24, boxShadow: '0 16px 48px rgba(0,0,0,.50)', marginBottom: 32,
+            }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginTop: 0, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={18} style={{ color: '#5B9BFF' }} /> All Members
+              </h2>
+              {loadingMembers ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0', gap: 10 }}>
+                  <div style={{ width: 24, height: 24, border: '2.5px solid rgba(48,108,236,0.15)', borderTopColor: '#5B9BFF', borderRadius: '50%', animation: 'ig-spin .7s linear infinite' }} />
+                  <span style={{ fontSize: 13, color: '#3D5A8A' }}>Loading members…</span>
+                </div>
+              ) : members.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '48px 0', color: 'rgba(148,180,255,0.40)', fontSize: 14 }}>No members found.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid rgba(48,108,236,0.20)' }}>
+                        {['Name', 'Email', 'Agency', 'Role'].map((h) => (
+                          <th key={h} style={{ padding: '0 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {members.map((member) => (
+                        <tr key={member.id} className="agency-row" style={{ borderBottom: '1px solid rgba(48,108,236,0.10)', transition: 'background .15s' }}>
+                          <td style={{ padding: '13px 12px', fontWeight: 600, color: '#fff', fontSize: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#7EB3FF', flexShrink: 0 }}>
+                                {(member.full_name || member.email || '?').charAt(0).toUpperCase()}
+                              </div>
+                              {member.full_name || '—'}
+                            </div>
+                          </td>
+                          <td style={{ padding: '13px 12px', fontSize: 13, color: '#7EB3FF' }}>{member.email}</td>
+                          <td style={{ padding: '13px 12px', fontSize: 13, color: 'rgba(148,180,255,0.70)' }}>{member.agency?.name || '—'}</td>
+                          <td style={{ padding: '13px 12px' }}>
+                            <select
+                              value={member.role || 'member'}
+                              disabled={updatingRole === member.id}
+                              onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                              style={{
+                                background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.35)',
+                                borderRadius: 8, color: member.role === 'superadmin' ? '#F5A623' : member.role === 'manager' ? '#5B9BFF' : '#7EB3FF',
+                                fontSize: 12, fontWeight: 600, padding: '5px 10px', cursor: 'pointer',
+                                fontFamily: 'inherit', outline: 'none',
+                                opacity: updatingRole === member.id ? 0.5 : 1,
+                              }}
+                            >
+                              <option value="member">Member</option>
+                              <option value="manager">Manager</option>
+                              <option value="superadmin">Superadmin</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Agencies Grid Layout */}
+          {activeTab === 'agencies' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 32, alignItems: 'start' }}>
             
             {/* List Column */}
             <div style={{
@@ -488,7 +622,7 @@ function AdminPanelContent() {
               </form>
             </div>
 
-          </div>
+          </div>}
 
         </div>
       </div>
