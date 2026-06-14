@@ -332,6 +332,7 @@ function AdminPanelContent() {
                         <th style={{ padding: '0 12px 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>Members</th>
                         <th style={{ padding: '0 12px 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>Seeded Workspace</th>
                         <th style={{ padding: '0 12px 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>Registered At</th>
+                        <th style={{ padding: '0 12px 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>Access</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -379,6 +380,22 @@ function AdminPanelContent() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <Calendar size={12} /> {new Date(agency.createdAt).toLocaleDateString()}
                             </span>
+                          </td>
+                          <td style={{ padding: '14px 12px' }}>
+                            {agency.workspaceId ? (
+                              <Link href={`/?workspaceId=${agency.workspaceId}`} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                padding: '5px 12px', borderRadius: 8,
+                                background: 'rgba(48,108,236,0.18)',
+                                border: '1px solid rgba(48,108,236,0.40)',
+                                color: '#7EB3FF', fontSize: 12, fontWeight: 600,
+                                textDecoration: 'none', whiteSpace: 'nowrap',
+                              }}>
+                                <ExternalLink size={11} /> View
+                              </Link>
+                            ) : (
+                              <span style={{ fontSize: 12, color: '#3D5A8A' }}>—</span>
+                            )}
                           </td>
                         </tr>
                       ))}

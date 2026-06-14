@@ -20,7 +20,8 @@ export async function GET() {
     .from('agencies')
     .select(`
       *,
-      profiles(id)
+      profiles(id),
+      workspaces(id, name)
     `)
     .order('name');
 
@@ -32,7 +33,8 @@ export async function GET() {
     slug: agency.slug,
     logoUrl: agency.logo_url,
     createdAt: agency.created_at,
-    memberCount: (agency.profiles || []).length
+    memberCount: (agency.profiles || []).length,
+    workspaceId: (agency.workspaces || [])[0]?.id || null,
   }));
 
   return ok(mappedAgencies);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import Sidebar from '@/components/layout/Sidebar';
@@ -11,6 +12,9 @@ import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
 function WorkspaceContent() {
+  const searchParams = useSearchParams();
+  const targetWorkspaceId = searchParams.get('workspaceId');
+
   const {
     workspace,
     currentPage,
@@ -33,7 +37,7 @@ function WorkspaceContent() {
     async function init() {
       const profile = await fetchUserProfile();
       if (profile) {
-        await loadWorkspace();
+        await loadWorkspace(targetWorkspaceId || undefined);
       } else {
         const { pages } = initDemoWorkspace();
         if (pages.length > 0) {
