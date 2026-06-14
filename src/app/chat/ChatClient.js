@@ -90,7 +90,7 @@ function ChatContent() {
     // Load actual messages from database
     async function fetchMessages() {
       try {
-        const res = await fetch(`/api/workspaces/${workspaceId}/chat`);
+        const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`);
         if (res.ok) {
           const json = await res.json();
           if (json.data) {
@@ -191,7 +191,7 @@ function ChatContent() {
     }
 
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/chat`, {
+      const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: currentMsg }),

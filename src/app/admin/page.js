@@ -26,7 +26,7 @@ function AdminPanelContent() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch('/api/profile');
+        const res = await fetch('/os/api/profile');
         if (!res.ok) {
           if (res.status === 401) {
             router.push('/login');
@@ -58,7 +58,7 @@ function AdminPanelContent() {
   const loadAgencies = async () => {
     setLoadingAgencies(true);
     try {
-      const res = await fetch('/api/admin/agencies');
+      const res = await fetch('/os/api/admin/agencies');
       if (res.ok) {
         const json = await res.json();
         setAgencies(json.data || []);
@@ -102,7 +102,7 @@ function AdminPanelContent() {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/admin/agencies', {
+      const res = await fetch('/os/api/admin/agencies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
