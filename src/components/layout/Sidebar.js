@@ -19,6 +19,7 @@ import {
   NotepadText,
   ShieldCheck,
   MessageSquare,
+  Wand2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -66,6 +67,7 @@ export default function Sidebar() {
   } = useWorkspaceStore();
 
   const [trashOpen, setTrashOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const favoritePages = pages.filter((p) => p.isFavorite && !p.isArchived);
   const archivedPages = pages.filter((p) => p.isArchived);
@@ -89,6 +91,24 @@ export default function Sidebar() {
   const handleSettingsClick = () => {
     if (workspace) router.push(`/${workspace.id}/settings`);
   };
+
+  const handleSeedWorkspace = useCallback(async () => {
+    if (!workspace?.id || seeding) return;
+    setSeeding(true);
+    try {
+      const res = await fetch(`/os/api/workspaces/${workspace.id}/seed`, { method: 'POST' });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        const json = await res.json().catch(() => ({}));
+        alert(json.error || 'Setup failed. Please try again.');
+      }
+    } catch {
+      alert('Setup failed. Please try again.');
+    } finally {
+      setSeeding(false);
+    }
+  }, [workspace?.id, seeding]);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -272,6 +292,26 @@ export default function Sidebar() {
               <PageTree />
             </div>
 
+            {/* Set up workspace — shown when no pages exist yet */}
+            {pages.filter(p => !p.isArchived).length === 0 && userProfile?.role !== 'member' && (
+              <div style={{ padding: '8px 10px' }}>
+                <button
+                  onClick={handleSeedWorkspace}
+                  disabled={seeding}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', borderRadius: 10, border: '1px dashed rgba(48,108,236,0.40)',
+                    background: 'rgba(48,108,236,0.07)', color: '#5B9BFF',
+                    fontSize: 12, fontWeight: 600, cursor: seeding ? 'wait' : 'pointer',
+                    fontFamily: 'inherit', transition: 'background .15s',
+                  }}
+                >
+                  <Wand2 size={13} />
+                  {seeding ? 'Setting up…' : 'Set up workspace'}
+                </button>
+              </div>
+            )}
+
             {/* ── Footer ── */}
             <div style={{
               padding: '8px 8px 12px',
@@ -327,6 +367,11 @@ export default function Sidebar() {
               >
                 {userProfile?.role !== 'member' && (
                   <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
+                )}
+                {userProfile?.role !== 'member' && (
+                  <DropdownItem icon={<Wand2 size={14} />} onClick={handleSeedWorkspace}>
+                    {seeding ? 'Setting up…' : 'Set up workspace'}
+                  </DropdownItem>
                 )}
                 <DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
               </Dropdown>
