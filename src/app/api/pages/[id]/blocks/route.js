@@ -11,11 +11,11 @@ export async function GET(_, { params }) {
 export async function POST(request, { params }) {
   const { id: pageId } = await params;
   const body = await request.json().catch(() => ({}));
-  const { type, content, properties, parentBlockId, sortOrder } = body;
+  const { id, type, content, properties, parentBlockId, sortOrder } = body;
 
   if (!type) return badRequest('type is required');
 
-  const { data, error } = await createBlock({ pageId, type, content, properties, parentBlockId, sortOrder });
+  const { data, error } = await createBlock({ id, pageId, type, content, properties, parentBlockId, sortOrder });
   if (error) return fromSupabaseError(error);
   return created(data);
 }

@@ -1017,3 +1017,221 @@
   display: flex;
   justify-content: center;
 }
+
+/* ── Table Column Data Types Custom Styles ── */
+
+.tableHeader {
+  padding: 0 !important;
+  position: relative;
+  background: var(--color-bg-tertiary);
+  z-index: 10;
+}
+
+.editMode,
+.editMode .table {
+  overflow: visible !important;
+}
+
+.headerContainer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.headerText {
+  flex: 1;
+  outline: none;
+  min-width: 60px;
+  word-break: break-word;
+}
+
+.headerText:empty::before {
+  content: 'Column';
+  color: var(--color-text-muted);
+}
+
+.columnTypeTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 2px 5px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  height: 22px;
+  box-sizing: border-box;
+}
+
+.columnTypeTrigger:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-primary-hover);
+}
+
+.typeIcon {
+  color: var(--color-accent-primary);
+}
+
+.chevronIcon {
+  color: var(--color-text-tertiary);
+}
+
+.dropdownBackdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-popover);
+  background: transparent;
+}
+
+.columnTypeMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: calc(var(--z-popover) + 1);
+  background: #080f1e; /* Match --color-bg-secondary */
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-1);
+  width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: fadeInDown 0.12s ease forwards;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.columnTypeMenuItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+  color: var(--color-text-primary);
+}
+
+.columnTypeMenuItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.menuItemActive {
+  background: var(--color-accent-primary-subtle) !important;
+}
+
+.menuItemActive .menuItemIcon {
+  color: var(--color-accent-primary-hover) !important;
+}
+
+.menuItemActive .menuItemLabel {
+  color: var(--color-accent-primary-hover) !important;
+  font-weight: var(--font-semibold);
+}
+
+.menuItemIcon {
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.menuItemText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.menuItemLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+}
+
+.menuItemDesc {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  line-height: 1.2;
+  margin-top: 1px;
+}
+
+.table td {
+  padding: 0 !important;
+}
+
+.cellText {
+  padding: var(--space-2) var(--space-3);
+  width: 100%;
+  height: 100%;
+  min-height: 34px;
+  outline: none;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.cellText:focus {
+  box-shadow: inset 0 0 0 2px var(--color-accent-primary);
+  border-radius: 0;
+}
+
+.alignLeft {
+  text-align: left;
+}
+
+.alignRight {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+.dateCellInput {
+  background: transparent;
+  border: none;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+  width: 100%;
+  height: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  cursor: pointer;
+  box-sizing: border-box;
+  display: block;
+}
+
+.dateCellInput:focus {
+  box-shadow: inset 0 0 0 2px var(--color-accent-primary);
+  border-radius: 0;
+}
+
+.dateCellInput::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.dateCellInput::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

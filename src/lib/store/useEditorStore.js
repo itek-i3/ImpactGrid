@@ -174,6 +174,7 @@ export const useEditorStore = create((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: optimisticBlock.id,
           type: optimisticBlock.type,
           content: optimisticBlock.content,
           properties: optimisticBlock.properties,
@@ -344,6 +345,7 @@ export const useEditorStore = create((set, get) => ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            id: b.id,
             type: b.type,
             content: b.content,
             properties: b.properties,

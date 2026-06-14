@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
-import { Plus, Trash2, BarChart2 } from 'lucide-react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Plus, Trash2, BarChart2, Type, Hash, DollarSign, Percent, Calendar, ChevronDown } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -18,6 +18,94 @@ import {
   Legend
 } from 'recharts';
 import styles from '@/styles/editor.module.css';
+
+const COLUMN_TYPES = [
+  { value: 'text', label: 'Letters / Text', icon: Type, description: 'Free-form text, names, descriptions' },
+  { value: 'number', label: 'Number', icon: Hash, description: 'Plain numbers, decimals, quantities' },
+  { value: 'currency', label: 'Currency', icon: DollarSign, description: 'USD currency formatting' },
+  { value: 'percent', label: 'Percentage', icon: Percent, description: 'Percentage values' },
+  { value: 'date', label: 'Date', icon: Calendar, description: 'Calendar date selection' },
+];
+
+const getTypeIcon = (type) => {
+  switch (type) {
+    case 'number': return Hash;
+    case 'currency': return DollarSign;
+    case 'percent': return Percent;
+    case 'date': return Calendar;
+    default: return Type;
+  }
+};
+
+const formatValue = (value, type) => {
+  if (value === undefined || value === null) return '';
+  const text = String(value).trim();
+  if (!text) return '';
+
+  switch (type) {
+    case 'number': {
+      const cleanVal = text.replace(/[^0-9.-]/g, '');
+      const numVal = parseFloat(cleanVal);
+      if (isNaN(numVal)) return text;
+      return numVal.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+    case 'currency': {
+      const cleanVal = text.replace(/[^0-9.-]/g, '');
+      const numVal = parseFloat(cleanVal);
+      if (isNaN(numVal)) return text;
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numVal);
+    }
+    case 'percent': {
+      const cleanVal = text.replace(/[^0-9.-]/g, '');
+      const numVal = parseFloat(cleanVal);
+      if (isNaN(numVal)) return text;
+      return `${numVal}%`;
+    }
+    case 'date': {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const parts = text.split('-');
+        const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (!isNaN(date.getTime())) {
+          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+      return text;
+    }
+    default:
+      return text;
+  }
+};
+
+const EditableCell = ({ value, onBlur, className, readOnly, placeholder }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current && ref.current.innerHTML !== value) {
+      ref.current.innerHTML = value;
+    }
+  }, [value]);
+
+  return (
+    <div
+      ref={ref}
+      contentEditable={!readOnly}
+      suppressContentEditableWarning
+      onBlur={(e) => {
+        if (!readOnly) {
+          onBlur(e.target.innerText);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.target.blur();
+        }
+      }}
+      className={className}
+      data-placeholder={placeholder}
+    />
+  );
+};
 
 /**
  * TableBlock — simple editable table with automatic graph generation (Bar, Line, Pie).
@@ -38,6 +126,21 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     if (!html) return '';
     return html.replace(/<[^>]*>/g, '').trim();
   };
+
+  const columnTypes = useMemo(() => {
+    const stored = properties.columnTypes;
+    const colCount = rows[0]?.length || 0;
+    const types = Array.isArray(stored) ? [...stored] : [];
+    while (types.length < colCount) {
+      types.push('text');
+    }
+    if (types.length > colCount) {
+      types.length = colCount;
+    }
+    return types;
+  }, [properties.columnTypes, rows]);
+
+  const [activeDropdownCol, setActiveDropdownCol] = useState(null);
 
   // ── Derived Chart Properties ──
   const headers = useMemo(() => {
@@ -103,8 +206,12 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       ...row,
       i === 0 ? `Header ${row.length + 1}` : '',
     ]);
-    onUpdate({ content: { ...block.content, rows: newRows } });
-  }, [rows, block.content, onUpdate]);
+    const newColumnTypes = [...columnTypes, 'text'];
+    onUpdate({
+      content: { ...block.content, rows: newRows },
+      properties: { ...properties, columnTypes: newColumnTypes }
+    });
+  }, [rows, columnTypes, block.content, properties, onUpdate]);
 
   const removeRow = useCallback(
     (index) => {
@@ -119,10 +226,63 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     (colIndex) => {
       if ((rows[0]?.length || 0) <= 1) return;
       const newRows = rows.map((row) => row.filter((_, ci) => ci !== colIndex));
-      onUpdate({ content: { ...block.content, rows: newRows } });
+      const newColumnTypes = columnTypes.filter((_, ci) => ci !== colIndex);
+      onUpdate({
+        content: { ...block.content, rows: newRows },
+        properties: { ...properties, columnTypes: newColumnTypes }
+      });
     },
-    [rows, block.content, onUpdate]
+    [rows, columnTypes, block.content, properties, onUpdate]
   );
+
+  const handleColumnTypeChange = useCallback(
+    (colIndex, newType) => {
+      const newColumnTypes = [...columnTypes];
+      newColumnTypes[colIndex] = newType;
+
+      const newRows = rows.map((row, ri) => {
+        if (ri === 0) return row;
+        return row.map((cell, ci) => {
+          if (ci !== colIndex) return cell;
+          const text = cleanText(cell);
+          if (!text) return '';
+          
+          if (newType === 'date') {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+            const parsedDate = new Date(text);
+            if (!isNaN(parsedDate.getTime())) {
+              return parsedDate.toISOString().split('T')[0];
+            }
+            return text;
+          } else {
+            const cleanVal = text.replace(/[^0-9.-]/g, '');
+            const numVal = parseFloat(cleanVal);
+            if (isNaN(numVal)) return text;
+            
+            if (newType === 'currency') {
+              return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(numVal);
+            } else if (newType === 'percent') {
+              return `${numVal}%`;
+            } else if (newType === 'number') {
+              return numVal.toLocaleString(undefined, { maximumFractionDigits: 6 });
+            } else {
+              return String(numVal);
+            }
+          }
+        });
+      });
+
+      onUpdate({
+        content: { ...block.content, rows: newRows },
+        properties: {
+          ...properties,
+          columnTypes: newColumnTypes,
+        },
+      });
+    },
+    [rows, columnTypes, block.content, properties, onUpdate]
+  );
+
 
   const toggleChart = useCallback(() => {
     onUpdate({
@@ -339,33 +499,124 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
   };
 
   return (
-    <div className={styles.tableBlock}>
+    <div className={`${styles.tableBlock} ${!readOnly ? styles.editMode : ''}`}>
       <table className={styles.table}>
         <thead>
           <tr>
-            {rows[0]?.map((cell, ci) => (
-              <th
-                key={ci}
-                contentEditable={!readOnly}
-                suppressContentEditableWarning
-                onBlur={(e) => !readOnly && updateCell(0, ci, e.target.innerText)}
-                dangerouslySetInnerHTML={{ __html: cell }}
-              />
-            ))}
+            {rows[0]?.map((cell, ci) => {
+              const colType = columnTypes[ci] || 'text';
+              const IconComponent = getTypeIcon(colType);
+              return (
+                <th key={ci} className={styles.tableHeader}>
+                  <div className={styles.headerContainer}>
+                    {!readOnly && (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <button
+                          className={styles.columnTypeTrigger}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownCol(activeDropdownCol === ci ? null : ci);
+                          }}
+                          title={`Change column type (current: ${colType})`}
+                        >
+                          <IconComponent size={13} className={styles.typeIcon} />
+                          <ChevronDown size={8} className={styles.chevronIcon} />
+                        </button>
+                        
+                        {activeDropdownCol === ci && (
+                          <>
+                            <div
+                              className={styles.dropdownBackdrop}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdownCol(null);
+                              }}
+                            />
+                            <div className={styles.columnTypeMenu}>
+                              <div className={styles.menuHeader}>Column Data Type</div>
+                              {COLUMN_TYPES.map((t) => {
+                                const TypeIcon = t.icon;
+                                const isSelected = colType === t.value;
+                                return (
+                                  <button
+                                    key={t.value}
+                                    className={`${styles.columnTypeMenuItem} ${isSelected ? styles.menuItemActive : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleColumnTypeChange(ci, t.value);
+                                      setActiveDropdownCol(null);
+                                    }}
+                                  >
+                                    <TypeIcon size={14} className={styles.menuItemIcon} />
+                                    <div className={styles.menuItemText}>
+                                      <span className={styles.menuItemLabel}>{t.label}</span>
+                                      <span className={styles.menuItemDesc}>{t.description}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <EditableCell
+                      value={cell}
+                      onBlur={(text) => updateCell(0, ci, text)}
+                      className={styles.headerText}
+                      readOnly={readOnly}
+                      placeholder="Column"
+                    />
+                  </div>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
           {rows.slice(1).map((row, ri) => (
             <tr key={ri + 1}>
-              {row.map((cell, ci) => (
-                <td
-                  key={ci}
-                  contentEditable={!readOnly}
-                  suppressContentEditableWarning
-                  onBlur={(e) => !readOnly && updateCell(ri + 1, ci, e.target.innerText)}
-                  dangerouslySetInnerHTML={{ __html: cell }}
-                />
-              ))}
+              {row.map((cell, ci) => {
+                const colType = columnTypes[ci] || 'text';
+                
+                // If Date and editing, render a native date input
+                if (!readOnly && colType === 'date') {
+                  return (
+                    <td key={ci}>
+                      <input
+                        type="date"
+                        value={cell || ''}
+                        onChange={(e) => updateCell(ri + 1, ci, e.target.value)}
+                        className={styles.dateCellInput}
+                      />
+                    </td>
+                  );
+                }
+
+                // Determine alignment style
+                let alignClass = styles.alignLeft;
+                if (colType === 'number' || colType === 'currency' || colType === 'percent') {
+                  alignClass = styles.alignRight;
+                } else if (colType === 'date') {
+                  alignClass = styles.alignCenter;
+                }
+
+                const displayVal = formatValue(cell, colType);
+
+                return (
+                  <td key={ci}>
+                    <EditableCell
+                      value={displayVal}
+                      onBlur={(newVal) => {
+                        const formatted = formatValue(newVal, colType);
+                        updateCell(ri + 1, ci, formatted);
+                      }}
+                      className={`${styles.cellText} ${alignClass}`}
+                      readOnly={readOnly}
+                    />
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

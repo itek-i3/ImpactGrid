@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   NotepadText,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -222,6 +223,15 @@ export default function Sidebar() {
                   ))
                 )}
               </Dropdown>
+
+              <button
+                className={`ig-nav ${pathname === '/chat' ? 'active' : ''}`}
+                onClick={() => router.push('/chat')}
+                style={{ marginTop: '2px' }}
+              >
+                <MessageSquare size={15} />
+                <span>Chat Room</span>
+              </button>
             </nav>
 
             {/* ── Favorites section (pinned in sidebar) ── */}

@@ -22,18 +22,24 @@ export async function getBlock(id) {
   return { data, error };
 }
 
-export async function createBlock({ pageId, type, content = {}, properties = {}, parentBlockId = null, sortOrder = 0 }) {
+export async function createBlock({ id, pageId, type, content = {}, properties = {}, parentBlockId = null, sortOrder = 0 }) {
   const supabase = await createClient();
+  const insertData = {
+    page_id: pageId,
+    parent_block_id: parentBlockId,
+    type,
+    content,
+    properties,
+    sort_order: sortOrder,
+  };
+
+  if (id) {
+    insertData.id = id;
+  }
+
   const { data, error } = await supabase
     .from('blocks')
-    .insert({
-      page_id: pageId,
-      parent_block_id: parentBlockId,
-      type,
-      content,
-      properties,
-      sort_order: sortOrder,
-    })
+    .insert(insertData)
     .select()
     .single();
 
