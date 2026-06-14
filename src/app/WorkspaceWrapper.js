@@ -1,11 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import WorkspaceClient from './WorkspaceClient';
 
-export default function WorkspaceWrapper() {
+function WorkspaceWithParams() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
   return <WorkspaceClient />;
+}
+
+export default function WorkspaceWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <WorkspaceWithParams />
+    </Suspense>
+  );
 }

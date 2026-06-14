@@ -51,7 +51,7 @@ function WorkspaceContent() {
     if (savedTheme) {
       setTheme(savedTheme);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [targetWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (currentPage) {
