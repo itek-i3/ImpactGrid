@@ -39,7 +39,7 @@ export const useWorkspaceStore = create((set, get) => ({
 
   fetchUserProfile: async () => {
     try {
-      const res = await fetch('/api/profile');
+      const res = await fetch('/os/api/profile');
       if (res.ok) {
         const json = await res.json();
         if (json.data) {
@@ -110,13 +110,13 @@ export const useWorkspaceStore = create((set, get) => ({
 
     set({ isLoading: true });
     try {
-      const wsRes = await fetch('/api/workspaces');
+      const wsRes = await fetch('/os/api/workspaces');
       if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
       const wsJson = await wsRes.json();
       let workspaces = wsJson.data || [];
 
       if (workspaces.length === 0) {
-        const createRes = await fetch('/api/workspaces', {
+        const createRes = await fetch('/os/api/workspaces', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'Personal Workspace', icon: '🚀' }),
@@ -136,8 +136,8 @@ export const useWorkspaceStore = create((set, get) => ({
       set({ workspace: activeWs });
 
       const [activePagesRes, archivedPagesRes] = await Promise.all([
-        fetch(`/api/pages?workspaceId=${activeWs.id}&archived=false`),
-        fetch(`/api/pages?workspaceId=${activeWs.id}&archived=true`),
+        fetch(`/os/api/pages?workspaceId=${activeWs.id}&archived=false`),
+        fetch(`/os/api/pages?workspaceId=${activeWs.id}&archived=true`),
       ]);
 
       let activePages = [];
@@ -227,7 +227,7 @@ export const useWorkspaceStore = create((set, get) => ({
     }));
 
     try {
-      const res = await fetch('/api/pages', {
+      const res = await fetch('/os/api/pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -301,7 +301,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (updates.isFavorite !== undefined) dbUpdates.is_favorite = updates.isFavorite;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbUpdates),
@@ -323,7 +323,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'archive' }),
@@ -344,7 +344,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore' }),
@@ -364,7 +364,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete page');
@@ -383,7 +383,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sort_order: newSortOrder }),
@@ -413,7 +413,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (isDemoMode()) return;
 
     try {
-      const res = await fetch(`/api/pages/${pageId}`, {
+      const res = await fetch(`/os/api/pages/${pageId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_favorite: nextFavorite }),
@@ -479,7 +479,7 @@ export const useWorkspaceStore = create((set, get) => ({
     const duplicatedTitle = page.title ? `${page.title} (Copy)` : 'Untitled Copy';
 
     try {
-      const res = await fetch('/api/pages', {
+      const res = await fetch('/os/api/pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -521,7 +521,7 @@ export const useWorkspaceStore = create((set, get) => ({
       }));
 
       try {
-        const blocksRes = await fetch(`/api/pages/${pageId}/blocks`);
+        const blocksRes = await fetch(`/os/api/pages/${pageId}/blocks`);
         if (blocksRes.ok) {
           const oldBlocks = await blocksRes.json();
           const idMap = {};
@@ -540,7 +540,7 @@ export const useWorkspaceStore = create((set, get) => ({
           }));
 
           for (const b of duplicatedBlocks) {
-            await fetch(`/api/pages/${newPage.id}/blocks`, {
+            await fetch(`/os/api/pages/${newPage.id}/blocks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
