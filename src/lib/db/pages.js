@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { clientForUser } from './clientForUser';
 
 export async function listPages(workspaceId, { archived = false } = {}) {
   const supabase = await createClient();
@@ -24,8 +25,7 @@ export async function getPage(id) {
 }
 
 export async function createPage({ workspaceId, parentId = null, title = 'Untitled', icon = '📄', isDatabase = false, databaseType = null, sortOrder = 0, isFavorite = false }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, userId } = await clientForUser();
 
   const { data, error } = await supabase
     .from('pages')
@@ -38,7 +38,7 @@ export async function createPage({ workspaceId, parentId = null, title = 'Untitl
       database_type: databaseType,
       sort_order: sortOrder,
       is_favorite: isFavorite,
-      created_by: user?.id ?? null,
+      created_by: userId ?? null,
     })
     .select()
     .single();
@@ -47,7 +47,7 @@ export async function createPage({ workspaceId, parentId = null, title = 'Untitl
 }
 
 export async function updatePage(id, updates) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const allowed = {};
   const fields = ['title', 'icon', 'cover_url', 'parent_id', 'is_public', 'sort_order', 'is_favorite'];
   fields.forEach((f) => {
@@ -69,7 +69,7 @@ export async function updatePage(id, updates) {
 }
 
 export async function archivePage(id) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const { data, error } = await supabase
     .from('pages')
     .update({ is_archived: true })
@@ -81,7 +81,7 @@ export async function archivePage(id) {
 }
 
 export async function restorePage(id) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const { data, error } = await supabase
     .from('pages')
     .update({ is_archived: false })
@@ -93,7 +93,7 @@ export async function restorePage(id) {
 }
 
 export async function deletePage(id) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const { error } = await supabase.from('pages').delete().eq('id', id);
   return { error };
 }

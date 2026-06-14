@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { clientForUser } from './clientForUser';
 
 export async function listBlocks(pageId) {
   const supabase = await createClient();
@@ -23,7 +24,7 @@ export async function getBlock(id) {
 }
 
 export async function createBlock({ id, pageId, type, content = {}, properties = {}, parentBlockId = null, sortOrder = 0 }) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const insertData = {
     page_id: pageId,
     parent_block_id: parentBlockId,
@@ -47,7 +48,7 @@ export async function createBlock({ id, pageId, type, content = {}, properties =
 }
 
 export async function updateBlock(id, updates) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const allowed = {};
   if (updates.content    !== undefined) allowed.content    = updates.content;
   if (updates.properties !== undefined) allowed.properties = updates.properties;
@@ -66,14 +67,14 @@ export async function updateBlock(id, updates) {
 }
 
 export async function deleteBlock(id) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const { error } = await supabase.from('blocks').delete().eq('id', id);
   return { error };
 }
 
 // Batch-reorder blocks within a page
 export async function reorderBlocks(pageId, orderedIds) {
-  const supabase = await createClient();
+  const { supabase } = await clientForUser();
   const promises = orderedIds.map((id, index) =>
     supabase
       .from('blocks')

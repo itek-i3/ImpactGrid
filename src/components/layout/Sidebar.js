@@ -226,7 +226,7 @@ export default function Sidebar() {
 
               <button
                 className={`ig-nav ${pathname === '/chat' ? 'active' : ''}`}
-                onClick={() => router.push('/chat')}
+                onClick={() => router.push(workspace?.id ? `/chat?workspaceId=${workspace.id}` : '/chat')}
                 style={{ marginTop: '2px' }}
               >
                 <MessageSquare size={15} />

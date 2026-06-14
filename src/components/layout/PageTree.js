@@ -150,10 +150,7 @@ function PageTreeItem({
         <div className={styles.pageTreeActions}>
           <Dropdown
             trigger={
-              <button
-                className={styles.pageTreeActionBtn}
-                onClick={(e) => e.stopPropagation()}
-              >
+              <button className={styles.pageTreeActionBtn}>
                 <MoreHorizontal size={14} />
               </button>
             }

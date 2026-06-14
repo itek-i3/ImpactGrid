@@ -1,8 +1,14 @@
-import { ok, created, badRequest, fromSupabaseError } from '@/lib/api/response';
+import { ok, created, badRequest, forbidden, fromSupabaseError } from '@/lib/api/response';
 import { createClient } from '@/lib/supabase/server';
+
+const VALID_CHANNELS = ['daily_tasks', 'weekly_tasks', 'random'];
+const MANAGER_ONLY_CHANNELS = ['weekly_tasks'];
 
 export async function GET(request, { params }) {
   const { id: workspaceId } = await params;
+  const { searchParams } = new URL(request.url);
+  const channel = searchParams.get('channel') || 'random';
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -10,6 +16,7 @@ export async function GET(request, { params }) {
     .select(`
       id,
       message,
+      channel,
       created_at,
       user_id,
       profiles:user_id (
@@ -19,14 +26,15 @@ export async function GET(request, { params }) {
       )
     `)
     .eq('workspace_id', workspaceId)
+    .eq('channel', channel)
     .order('created_at', { ascending: true });
 
   if (error) return fromSupabaseError(error);
-  
-  // Format response data to make it cleaner
+
   const formatted = (data || []).map((msg) => ({
     id: msg.id,
     message: msg.message,
+    channel: msg.channel,
     createdAt: msg.created_at,
     userId: msg.user_id,
     userName: msg.profiles?.full_name || 'Anonymous Member',
@@ -40,18 +48,27 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
   const { id: workspaceId } = await params;
   const supabase = await createClient();
-  
-  // Get current user auth
+
   const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return badRequest('Unauthorized');
-  }
+  if (authError || !user) return badRequest('Unauthorized');
 
   const body = await request.json().catch(() => ({}));
-  const { message } = body;
+  const { message, channel = 'random' } = body;
 
-  if (!message || message.trim() === '') {
-    return badRequest('message is required');
+  if (!message || message.trim() === '') return badRequest('message is required');
+  if (!VALID_CHANNELS.includes(channel)) return badRequest('invalid channel');
+
+  // Weekly tasks: only managers and superadmins can post
+  if (MANAGER_ONLY_CHANNELS.includes(channel)) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || profile.role === 'member') {
+      return forbidden('Only managers can post in Weekly Tasks');
+    }
   }
 
   const { data, error } = await supabase
@@ -60,10 +77,12 @@ export async function POST(request, { params }) {
       workspace_id: workspaceId,
       user_id: user.id,
       message: message.trim(),
+      channel,
     })
     .select(`
       id,
       message,
+      channel,
       created_at,
       user_id,
       profiles:user_id (
@@ -75,16 +94,15 @@ export async function POST(request, { params }) {
     .single();
 
   if (error) return fromSupabaseError(error);
-  
-  const formatted = {
+
+  return created({
     id: data.id,
     message: data.message,
+    channel: data.channel,
     createdAt: data.created_at,
     userId: data.user_id,
     userName: data.profiles?.full_name || 'Anonymous Member',
     userEmail: data.profiles?.email || '',
     userRole: data.profiles?.role || 'member',
-  };
-
-  return created(formatted);
+  });
 }

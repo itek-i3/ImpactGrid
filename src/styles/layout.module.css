@@ -6,7 +6,8 @@
 /* ── Workspace Shell ── */
 .workspaceShell {
   display: flex;
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--color-bg-primary);
 }
 
@@ -270,13 +271,8 @@
 
 .pageTreeActions {
   display: flex;
-  gap: var(--space-0);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.pageTreeItem:hover .pageTreeActions {
-  opacity: 1;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 .pageTreeActionBtn {
@@ -289,6 +285,8 @@
   color: var(--color-sidebar-text);
   cursor: pointer;
   transition: all var(--transition-fast);
+  border: none;
+  background: none;
 }
 
 .pageTreeActionBtn:hover {
