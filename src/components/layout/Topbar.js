@@ -7,7 +7,6 @@ import {
   Search, Bell, Plus, PanelLeft, Star, Share2, MoreHorizontal, Trash2, Copy,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
-import { useEditorStore } from '@/lib/store/useEditorStore';
 import { useToast } from '@/components/ui/Toast';
 import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 
@@ -18,11 +17,27 @@ export default function Topbar() {
     updatePage, toggleFavoritePage, duplicatePage, deletePage,
     toggleSearch, workspace, userProfile,
   } = useWorkspaceStore();
-  const { isSaving, lastSaved } = useEditorStore();
   const toast = useToast();
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
   const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [origin, setOrigin] = useState('');
+
+  useEffect(() => {
+    let unsubscribe;
+    import('@/lib/store/useEditorStore').then(({ useEditorStore }) => {
+      if (!useEditorStore?.subscribe) return;
+      const s = useEditorStore.getState();
+      setIsSaving(s.isSaving);
+      setLastSaved(s.lastSaved);
+      unsubscribe = useEditorStore.subscribe((state) => {
+        setIsSaving(state.isSaving);
+        setLastSaved(state.lastSaved);
+      });
+    }).catch(() => {});
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, []);
   useEffect(() => { setOrigin(window.location.origin); }, []);
   useEffect(() => {
     if (!showPublishMenu) return;
