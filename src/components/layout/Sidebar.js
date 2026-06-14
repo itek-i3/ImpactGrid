@@ -288,21 +288,17 @@ export default function Sidebar() {
               )}
             </div>
 
-            <div className={styles.pageTree}>
-              <PageTree />
-            </div>
-
-            {/* Set up workspace — shown when no pages exist yet */}
-            {pages.filter(p => !p.isArchived).length === 0 && userProfile?.role !== 'member' && (
-              <div style={{ padding: '8px 10px' }}>
+            {/* Set up workspace — always visible for managers/superadmins */}
+            {userProfile?.role !== 'member' && (
+              <div style={{ padding: '0 10px 6px' }}>
                 <button
                   onClick={handleSeedWorkspace}
                   disabled={seeding}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '8px 12px', borderRadius: 10, border: '1px dashed rgba(48,108,236,0.40)',
+                    padding: '7px 12px', borderRadius: 10, border: '1px dashed rgba(48,108,236,0.40)',
                     background: 'rgba(48,108,236,0.07)', color: '#5B9BFF',
-                    fontSize: 12, fontWeight: 600, cursor: seeding ? 'wait' : 'pointer',
+                    fontSize: 11.5, fontWeight: 600, cursor: seeding ? 'wait' : 'pointer',
                     fontFamily: 'inherit', transition: 'background .15s',
                   }}
                 >
@@ -311,6 +307,10 @@ export default function Sidebar() {
                 </button>
               </div>
             )}
+
+            <div className={styles.pageTree}>
+              <PageTree />
+            </div>
 
             {/* ── Footer ── */}
             <div style={{
