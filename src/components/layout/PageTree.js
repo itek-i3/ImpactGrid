@@ -40,7 +40,8 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
       isDatabase: false,
     });
     if (newId) {
-      // pages closure is stale — read fresh state from the store
+      // Auto-expand the parent so the new subpage is immediately visible
+      if (!expandedPages.has(parentId)) togglePageExpanded(parentId);
       const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
       if (freshPage) setCurrentPage(freshPage);
     }
@@ -109,8 +110,10 @@ function PageTreeItem({
     (e) => {
       e.stopPropagation();
       onSelect();
+      // Toggle children open/closed when clicking the row
+      if (hasChildren) onToggle();
     },
-    [onSelect]
+    [onSelect, onToggle, hasChildren, isExpanded]
   );
 
   const handleChevronClick = useCallback(
