@@ -49,12 +49,14 @@ export async function createPage({ workspaceId, parentId = null, title = 'Untitl
 export async function updatePage(id, updates) {
   const { supabase } = await clientForUser();
   const allowed = {};
-  const fields = ['title', 'icon', 'cover_url', 'parent_id', 'is_public', 'sort_order', 'is_favorite'];
+  const fields = ['title', 'icon', 'cover_url', 'parent_id', 'is_public', 'sort_order', 'is_favorite', 'is_published'];
   fields.forEach((f) => {
     if (updates[f] !== undefined) {
       allowed[f] = updates[f];
     } else if (f === 'is_favorite' && updates.isFavorite !== undefined) {
       allowed.is_favorite = updates.isFavorite;
+    } else if (f === 'is_published' && updates.isPublished !== undefined) {
+      allowed.is_published = updates.isPublished;
     }
   });
 

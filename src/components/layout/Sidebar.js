@@ -19,6 +19,7 @@ import {
   NotepadText,
   ShieldCheck,
   MessageSquare,
+  ChevronRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -68,11 +69,24 @@ export default function Sidebar() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
+  const [currentChannel, setCurrentChannel] = useState(null);
   const [copyModal, setCopyModal] = useState({ open: false, page: null });
   const [allWorkspaces, setAllWorkspaces] = useState([]);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState(null);
+
+  // Auto-expand chat and track active channel when on /chat
+  useEffect(() => {
+    if (pathname === '/chat') {
+      setChatExpanded(true);
+      const params = new URLSearchParams(window.location.search);
+      setCurrentChannel(params.get('channel') || 'daily_tasks');
+    } else {
+      setCurrentChannel(null);
+    }
+  }, [pathname]);
 
   // Fetch target workspaces when copy modal opens
   useEffect(() => {
@@ -145,8 +159,9 @@ export default function Sidebar() {
     if (newId) {
       const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
       if (freshPage) setCurrentPage(freshPage);
+      if (pathname !== '/') router.push('/');
     }
-  }, [addPage, setCurrentPage]);
+  }, [addPage, setCurrentPage, pathname, router]);
 
   const handleSettingsClick = () => {
     if (workspace) router.push(`/${workspace.id}/settings`);
@@ -211,7 +226,14 @@ export default function Sidebar() {
             {/* ── Quick Actions ── */}
             <nav style={{ padding: '8px 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               {userProfile?.role === 'superadmin' && (
-                <button className="ig-nav" onClick={() => router.push('/admin')} style={{ color: '#5B9BFF', fontWeight: 600 }}>
+                <button
+                  className="ig-nav"
+                  onClick={() => router.push('/admin')}
+                  style={{
+                    color: '#5B9BFF', fontWeight: 600,
+                    ...(pathname.startsWith('/admin') ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}),
+                  }}
+                >
                   <ShieldCheck size={15} />
                   <span>Admin Panel</span>
                 </button>
@@ -238,13 +260,46 @@ export default function Sidebar() {
               </button>
 
               <button
-                className={`ig-nav ${pathname === '/chat' ? 'active' : ''}`}
-                onClick={() => router.push(workspace?.id ? `/chat?workspaceId=${workspace.id}` : '/chat')}
-                style={{ marginTop: '2px' }}
+                className="ig-nav"
+                onClick={() => setChatExpanded((v) => !v)}
+                style={{
+                  marginTop: '2px',
+                  ...(pathname === '/chat' ? { background: 'rgba(48,108,236,0.10)', color: '#E2EEFF' } : {}),
+                }}
               >
                 <MessageSquare size={15} />
                 <span>Chat Room</span>
+                <ChevronRight size={12} style={{ marginLeft: 'auto', transition: 'transform .2s', transform: chatExpanded ? 'rotate(90deg)' : 'none', color: '#3D5A8A' }} />
               </button>
+              {chatExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 12 }}>
+                  {[
+                    { id: 'daily_tasks',  label: 'Daily Tasks',  icon: '📋' },
+                    { id: 'weekly_tasks', label: 'Weekly Tasks', icon: '📅' },
+                    { id: 'random',       label: 'Random',       icon: '💬' },
+                  ].map((ch) => {
+                    const isActive = pathname === '/chat' && currentChannel === ch.id;
+                    return (
+                      <button
+                        key={ch.id}
+                        className="ig-nav"
+                        onClick={() => {
+                          setCurrentChannel(ch.id);
+                          router.push(`/chat?workspaceId=${workspace?.id}&channel=${ch.id}`);
+                        }}
+                        style={{
+                          fontSize: 12, padding: '5px 10px',
+                          ...(isActive ? { background: 'rgba(48,108,236,0.18)', color: '#7EB3FF', fontWeight: 600 } : {}),
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{ch.icon}</span>
+                        <span>{ch.label}</span>
+                        {isActive && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 99, background: '#306CEC', flexShrink: 0 }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </nav>
 
             {/* ── Favorites section (pinned in sidebar) ── */}
@@ -281,7 +336,7 @@ export default function Sidebar() {
               )}
             </div>
 
-<div className={styles.pageTree}>
+            <div className={styles.pageTree}>
               <PageTree
                 onCopyTo={userProfile?.role !== 'member' ? (page) => setCopyModal({ open: true, page }) : null}
               />
@@ -343,7 +398,7 @@ export default function Sidebar() {
                 {userProfile?.role !== 'member' && (
                   <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
                 )}
-<DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
+                <DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
               </Dropdown>
 
               <button className="ig-nav" onClick={handleLogout}>

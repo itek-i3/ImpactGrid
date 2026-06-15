@@ -205,11 +205,9 @@ export default function Topbar() {
       {!isReadOnly && (
         <button
           onClick={async () => {
-            const newId = await updatePage(null, {}); // Let's check how sidebar does it
-            // Actually sidebar does: addPage({ title: '', icon: '📄', parentId: null, isDatabase: false })
             const { addPage } = useWorkspaceStore.getState();
-            const newIdCreated = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
-            if (newIdCreated && workspace) router.push(`/${workspace.id}/${newIdCreated}`);
+            const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
+            if (newId && workspace) router.push(`/${workspace.id}/${newId}`);
           }}
           style={{
             display: 'flex', alignItems: 'center', gap: 7,

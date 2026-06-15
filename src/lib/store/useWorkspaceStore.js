@@ -301,6 +301,7 @@ export const useWorkspaceStore = create((set, get) => ({
     if (updates.isPublic !== undefined) dbUpdates.is_public = updates.isPublic;
     if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
     if (updates.isFavorite !== undefined) dbUpdates.is_favorite = updates.isFavorite;
+    if (updates.isPublished !== undefined) dbUpdates.is_published = updates.isPublished;
 
     try {
       const res = await fetch(`/os/api/pages/${pageId}`, {

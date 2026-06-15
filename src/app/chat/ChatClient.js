@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Users, Lock, Trash2 } from 'lucide-react';
+import { Send, MessageSquare, Users, Lock, Trash2, Smile } from 'lucide-react';
 import styles from '@/styles/layout.module.css';
 import chatStyles from '@/styles/chat.module.css';
 
@@ -24,13 +24,17 @@ function ChatContent() {
     isDemo,
   } = useWorkspaceStore();
 
-  const [activeChannel, setActiveChannel] = useState('daily_tasks');
+  const urlChannel = searchParams.get('channel') || 'daily_tasks';
+  const [activeChannel, setActiveChannel] = useState(urlChannel);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const emojiRef = useRef(null);
 
   const CHANNELS = [
     { id: 'daily_tasks',  label: 'Daily Tasks',   icon: '📋', desc: 'Everyone can post',  managerOnly: false },
@@ -53,6 +57,17 @@ function ChatContent() {
     }
     init();
   }, [targetWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync channel when URL param changes (clicking from sidebar)
+  useEffect(() => { setActiveChannel(urlChannel); }, [urlChannel]);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const handler = (e) => { if (emojiRef.current && !emojiRef.current.contains(e.target)) setEmojiOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiOpen]);
 
   const workspaceId = workspace?.id;
 
@@ -232,6 +247,14 @@ function ChatContent() {
     }
   };
 
+  const EMOJIS = ['😀','😂','😍','🥰','😎','🤔','😅','🙏','👍','👏','🔥','❤️','✅','🎉','💡','📌','⚡','🚀','💪','😢','😤','🤝','👀','💯','🎯','📋','✍️','🗓️','💬','📢'];
+
+  const handleEmojiClick = (emoji) => {
+    setInputText((prev) => prev + emoji);
+    setEmojiOpen(false);
+    inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -285,31 +308,6 @@ function ChatContent() {
 
         {workspaceId ? (
           <div className={chatStyles.chatShell}>
-
-            {/* Channel list */}
-            <div className={chatStyles.channelPanel}>
-              <div className={chatStyles.channelPanelHeader}>
-                <div className={chatStyles.channelPanelTitle}>{workspace?.name || 'Workspace'}</div>
-                <div className={chatStyles.channelPanelSub}>Channels</div>
-              </div>
-              <div className={chatStyles.channelList}>
-                {CHANNELS.map((ch) => (
-                  <button
-                    key={ch.id}
-                    className={`${chatStyles.channelItem} ${activeChannel === ch.id ? chatStyles.channelItemActive : ''}`}
-                    onClick={() => setActiveChannel(ch.id)}
-                  >
-                    <div className={chatStyles.channelIcon}>{ch.icon}</div>
-                    <div className={chatStyles.channelInfo}>
-                      <div className={chatStyles.channelName}>{ch.label}</div>
-                      <div className={chatStyles.channelDesc}>{ch.desc}</div>
-                    </div>
-                    {ch.managerOnly && <Lock size={11} className={chatStyles.channelLock} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-
           <div className={chatStyles.chatContainer}>
             {/* Header */}
             <div className={chatStyles.chatHeader}>
@@ -409,8 +407,42 @@ function ChatContent() {
 
             {/* Input bar */}
             {canPost ? (
-              <form onSubmit={handleSendMessage} className={chatStyles.chatInputBar}>
+              <form onSubmit={handleSendMessage} className={chatStyles.chatInputBar} style={{ position: 'relative' }}>
+                <div ref={emojiRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEmojiOpen((v) => !v)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', color: '#3D5A8A', display: 'flex', alignItems: 'center', borderRadius: 6, transition: '.15s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#7EB3FF'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = '#3D5A8A'}
+                  >
+                    <Smile size={18} />
+                  </button>
+                  {emojiOpen && (
+                    <div style={{
+                      position: 'absolute', bottom: '100%', left: 0, marginBottom: 8,
+                      background: 'rgba(8,15,35,0.96)', backdropFilter: 'blur(24px)',
+                      border: '1px solid rgba(48,108,236,0.25)', borderRadius: 12,
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.6)', padding: 10,
+                      display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, width: 220,
+                    }}>
+                      {EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => handleEmojiClick(emoji)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: 4, borderRadius: 6, transition: '.1s', lineHeight: 1 }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.2)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <input
+                  ref={inputRef}
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
