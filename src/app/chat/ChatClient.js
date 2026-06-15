@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Users, Lock } from 'lucide-react';
+import { Send, MessageSquare, Users, Lock, Trash2 } from 'lucide-react';
 import styles from '@/styles/layout.module.css';
 import chatStyles from '@/styles/chat.module.css';
 
@@ -28,6 +28,8 @@ function ChatContent() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const messagesEndRef = useRef(null);
 
   const CHANNELS = [
@@ -88,6 +90,7 @@ function ChatContent() {
   useEffect(() => {
     if (!workspaceId) return;
     setMessages([]);
+    setConfirmClear(false);
 
     if (isDemo) {
       const stored = localStorage.getItem(`demo-chat-${workspaceId}-${activeChannel}`);
@@ -212,6 +215,23 @@ function ChatContent() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!workspaceId) return;
+    setConfirmClear(false);
+    const previous = messages;
+    setMessages([]);
+    if (isDemo) {
+      localStorage.removeItem(`demo-chat-${workspaceId}-${activeChannel}`);
+      return;
+    }
+    try {
+      const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${activeChannel}`, { method: 'DELETE' });
+      if (!res.ok) setMessages(previous);
+    } catch {
+      setMessages(previous);
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -300,6 +320,41 @@ function ChatContent() {
                 <div className={chatStyles.chatTitle}>{CHANNELS.find(c => c.id === activeChannel)?.label}</div>
                 <div className={chatStyles.chatSubTitle}>{CHANNELS.find(c => c.id === activeChannel)?.desc}</div>
               </div>
+              {['manager', 'superadmin'].includes(userProfile?.role) && (
+                confirmClear ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, color: '#aaa' }}>Clear channel?</span>
+                    <button
+                      onClick={handleClearChat}
+                      disabled={clearing}
+                      style={{ fontSize: 11, padding: '2px 8px', borderRadius: 5, border: 'none', background: '#e05a5a', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      {clearing ? '…' : 'Yes'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmClear(false)}
+                      style={{ fontSize: 11, padding: '2px 8px', borderRadius: 5, border: '1px solid #3D5A8A', background: 'none', color: '#aaa', cursor: 'pointer' }}
+                    >
+                      No
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmClear(true)}
+                    disabled={messages.length === 0}
+                    title="Clear chat"
+                    style={{
+                      background: 'none', border: 'none', cursor: messages.length === 0 ? 'default' : 'pointer',
+                      padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center',
+                      color: messages.length === 0 ? '#2a3a55' : '#3D5A8A', transition: '.15s',
+                    }}
+                    onMouseEnter={(e) => { if (messages.length > 0) e.currentTarget.style.color = '#e05a5a'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = messages.length === 0 ? '#2a3a55' : '#3D5A8A'; }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )
+              )}
               <Users size={18} style={{ color: '#3D5A8A', flexShrink: 0 }} />
             </div>
 

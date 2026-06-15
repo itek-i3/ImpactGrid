@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronRight, Plus, MoreHorizontal, Trash2, Copy, FileText, Star } from 'lucide-react';
+import { ChevronRight, Plus, MoreHorizontal, Trash2, Copy, FileText, Star, Send } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
@@ -11,7 +11,7 @@ import styles from '@/styles/layout.module.css';
  * PageTree — recursive page navigation tree for the sidebar.
  * Supports nesting, expand/collapse, and page actions.
  */
-export default function PageTree({ parentId = null, depth = 0 }) {
+export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
   const router = useRouter();
   const pathname = usePathname();
   const {
@@ -40,8 +40,9 @@ export default function PageTree({ parentId = null, depth = 0 }) {
       isDatabase: false,
     });
     if (newId) {
-      const page = pages.find((p) => p.id === newId);
-      if (page) setCurrentPage(page);
+      // pages closure is stale — read fresh state from the store
+      const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
+      if (freshPage) setCurrentPage(freshPage);
     }
   };
 
@@ -69,12 +70,13 @@ export default function PageTree({ parentId = null, depth = 0 }) {
           onToggle={() => togglePageExpanded(page.id)}
           onSelect={() => handleSelect(page)}
           onAddChild={() => handleAddChild(page.id)}
+          onCopyTo={onCopyTo ? () => onCopyTo(page) : null}
           onDelete={() => deletePage(page.id)}
           onDuplicate={async () => {
             const dupId = await duplicatePage(page.id);
             if (dupId) {
-              const page = pages.find((p) => p.id === dupId);
-              if (page) setCurrentPage(page);
+              const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === dupId);
+              if (freshPage) setCurrentPage(freshPage);
             }
           }}
           onToggleFavorite={() => toggleFavoritePage(page.id)}
@@ -99,6 +101,7 @@ function PageTreeItem({
   onDelete,
   onDuplicate,
   onToggleFavorite,
+  onCopyTo,
   hasChildren,
   isReadOnly,
 }) {
@@ -187,6 +190,17 @@ function PageTreeItem({
                 Duplicate
               </DropdownItem>
             )}
+            {!isReadOnly && onCopyTo && (
+              <DropdownItem
+                icon={<Send size={14} />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyTo();
+                }}
+              >
+                Copy to workspace…
+              </DropdownItem>
+            )}
             {!isReadOnly && <DropdownDivider />}
             {!isReadOnly && (
               <DropdownItem
@@ -218,7 +232,7 @@ function PageTreeItem({
 
       {/* Render children if expanded */}
       {isExpanded && hasChildren && (
-        <PageTree parentId={page.id} depth={depth + 1} />
+        <PageTree parentId={page.id} depth={depth + 1} onCopyTo={onCopyTo} />
       )}
     </>
   );

@@ -1,5 +1,5 @@
-import { ok, created, badRequest, forbidden, fromSupabaseError } from '@/lib/api/response';
-import { createClient } from '@/lib/supabase/server';
+import { ok, created, noContent, badRequest, forbidden, fromSupabaseError } from '@/lib/api/response';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 const VALID_CHANNELS = ['daily_tasks', 'weekly_tasks', 'random'];
 const MANAGER_ONLY_CHANNELS = ['weekly_tasks'];
@@ -105,4 +105,28 @@ export async function POST(request, { params }) {
     userEmail: data.profiles?.email || '',
     userRole: data.profiles?.role || 'member',
   });
+}
+
+export async function DELETE(request, { params }) {
+  const { id: workspaceId } = await params;
+  const { searchParams } = new URL(request.url);
+  const channel = searchParams.get('channel') || 'random';
+
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return badRequest('Unauthorized');
+
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  if (!profile || profile.role === 'member') return forbidden('Only managers can clear chat');
+
+  if (!VALID_CHANNELS.includes(channel)) return badRequest('invalid channel');
+
+  const { error } = await supabase
+    .from('chat_messages')
+    .delete()
+    .eq('workspace_id', workspaceId)
+    .eq('channel', channel);
+
+  if (error) return fromSupabaseError(error);
+  return noContent();
 }

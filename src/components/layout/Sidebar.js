@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import logoImg from '../../../public/logo3.png';
@@ -19,7 +19,6 @@ import {
   NotepadText,
   ShieldCheck,
   MessageSquare,
-  Wand2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -67,7 +66,65 @@ export default function Sidebar() {
   } = useWorkspaceStore();
 
   const [trashOpen, setTrashOpen] = useState(false);
-  const [seeding, setSeeding] = useState(false);
+  const [copyModal, setCopyModal] = useState({ open: false, page: null });
+  const [allWorkspaces, setAllWorkspaces] = useState([]);
+  const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
+  const [copying, setCopying] = useState(false);
+  const [copyResult, setCopyResult] = useState(null);
+
+  // Fetch target workspaces when copy modal opens
+  useEffect(() => {
+    if (!copyModal.open) return;
+    setSelectedWorkspaces([]);
+    setCopyResult(null);
+    setAllWorkspaces([]);
+
+    async function loadTargets() {
+      // Try admin agencies endpoint first (works for superadmins, gives cross-agency list)
+      try {
+        const res = await fetch('/os/api/admin/agencies');
+        if (res.ok) {
+          const { data } = await res.json();
+          const targets = (data || [])
+            .filter((a) => a.workspaceId && a.workspaceId !== workspace?.id)
+            .map((a) => ({ id: a.workspaceId, name: a.name, icon: '🏢' }));
+          if (targets.length > 0) {
+            setAllWorkspaces(targets);
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // Fallback: same-agency workspaces (for managers)
+      try {
+        const res = await fetch('/os/api/workspaces');
+        if (res.ok) {
+          const { data } = await res.json();
+          setAllWorkspaces((data || []).filter((w) => w.id !== workspace?.id));
+        }
+      } catch (_) {}
+    }
+
+    loadTargets();
+  }, [copyModal.open, workspace?.id]);
+
+  const handleCopyToWorkspaces = useCallback(async () => {
+    if (!copyModal.page || selectedWorkspaces.length === 0) return;
+    setCopying(true);
+    setCopyResult(null);
+    const results = await Promise.allSettled(
+      selectedWorkspaces.map((wid) =>
+        fetch(`/os/api/workspaces/${wid}/copy-page`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageId: copyModal.page.id }),
+        })
+      )
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    setCopyResult(failed === 0 ? 'success' : `${failed} failed`);
+    setCopying(false);
+  }, [copyModal.page, selectedWorkspaces]);
 
   const favoritePages = pages.filter((p) => p.isFavorite && !p.isArchived);
   const archivedPages = pages.filter((p) => p.isArchived);
@@ -83,32 +140,15 @@ export default function Sidebar() {
   const handleNewPage = useCallback(async () => {
     const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
     if (newId) {
-      const page = pages.find((p) => p.id === newId);
-      if (page) setCurrentPage(page);
+      const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
+      if (freshPage) setCurrentPage(freshPage);
     }
-  }, [addPage, pages, setCurrentPage]);
+  }, [addPage, setCurrentPage]);
 
   const handleSettingsClick = () => {
     if (workspace) router.push(`/${workspace.id}/settings`);
   };
 
-  const handleSeedWorkspace = useCallback(async () => {
-    if (!workspace?.id || seeding) return;
-    setSeeding(true);
-    try {
-      const res = await fetch(`/os/api/workspaces/${workspace.id}/seed`, { method: 'POST' });
-      if (res.ok) {
-        window.location.reload();
-      } else {
-        const json = await res.json().catch(() => ({}));
-        alert(json.error || 'Setup failed. Please try again.');
-      }
-    } catch {
-      alert('Setup failed. Please try again.');
-    } finally {
-      setSeeding(false);
-    }
-  }, [workspace?.id, seeding]);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -288,28 +328,10 @@ export default function Sidebar() {
               )}
             </div>
 
-            {/* Set up workspace — always visible for managers/superadmins */}
-            {userProfile?.role !== 'member' && (
-              <div style={{ padding: '0 10px 6px' }}>
-                <button
-                  onClick={handleSeedWorkspace}
-                  disabled={seeding}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '7px 12px', borderRadius: 10, border: '1px dashed rgba(48,108,236,0.40)',
-                    background: 'rgba(48,108,236,0.07)', color: '#5B9BFF',
-                    fontSize: 11.5, fontWeight: 600, cursor: seeding ? 'wait' : 'pointer',
-                    fontFamily: 'inherit', transition: 'background .15s',
-                  }}
-                >
-                  <Wand2 size={13} />
-                  {seeding ? 'Setting up…' : 'Set up workspace'}
-                </button>
-              </div>
-            )}
-
-            <div className={styles.pageTree}>
-              <PageTree />
+<div className={styles.pageTree}>
+              <PageTree
+                onCopyTo={userProfile?.role !== 'member' ? (page) => setCopyModal({ open: true, page }) : null}
+              />
             </div>
 
             {/* ── Footer ── */}
@@ -368,12 +390,7 @@ export default function Sidebar() {
                 {userProfile?.role !== 'member' && (
                   <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
                 )}
-                {userProfile?.role !== 'member' && (
-                  <DropdownItem icon={<Wand2 size={14} />} onClick={handleSeedWorkspace}>
-                    {seeding ? 'Setting up…' : 'Set up workspace'}
-                  </DropdownItem>
-                )}
-                <DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
+<DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
               </Dropdown>
 
               <button className="ig-nav" onClick={handleLogout}>
@@ -389,6 +406,89 @@ export default function Sidebar() {
       {sidebarOpen && (
         <div className={styles.sidebarOverlay} onClick={toggleSidebar} />
       )}
+
+      {/* Copy to workspace Modal */}
+      <Modal
+        isOpen={copyModal.open}
+        onClose={() => setCopyModal({ open: false, page: null })}
+        title={`Copy "${copyModal.page?.title || 'Page'}" to…`}
+        maxWidth="420px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {allWorkspaces.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              No other workspaces available
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: 280, overflowY: 'auto' }}>
+              {allWorkspaces.map((w) => {
+                const checked = selectedWorkspaces.includes(w.id);
+                return (
+                  <label
+                    key={w.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      background: checked ? 'rgba(48,108,236,0.12)' : 'var(--color-bg-secondary)',
+                      border: `1px solid ${checked ? 'rgba(48,108,236,0.4)' : 'var(--color-border)'}`,
+                      cursor: 'pointer', transition: '.15s',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setSelectedWorkspaces((prev) =>
+                          prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                        )
+                      }
+                      style={{ accentColor: '#306CEC', width: 15, height: 15, flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: 16 }}>{w.icon ?? '🏢'}</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)', fontWeight: 500 }}>
+                      {w.name}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {copyResult && (
+            <div style={{
+              padding: 'var(--space-2) var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              background: copyResult === 'success' ? 'rgba(22,163,74,0.12)' : 'rgba(239,68,68,0.12)',
+              color: copyResult === 'success' ? '#4ade80' : '#f87171',
+              fontSize: 'var(--text-sm)', textAlign: 'center',
+            }}>
+              {copyResult === 'success' ? '✓ Copied successfully' : `⚠ ${copyResult}`}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+            <button
+              onClick={() => setCopyModal({ open: false, page: null })}
+              style={{ padding: '7px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 'var(--text-sm)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCopyToWorkspaces}
+              disabled={selectedWorkspaces.length === 0 || copying}
+              style={{
+                padding: '7px 16px', borderRadius: 'var(--radius-md)', border: 'none',
+                background: selectedWorkspaces.length === 0 || copying ? 'rgba(48,108,236,0.4)' : '#306CEC',
+                color: '#fff', cursor: selectedWorkspaces.length === 0 || copying ? 'not-allowed' : 'pointer',
+                fontSize: 'var(--text-sm)', fontWeight: 600,
+              }}
+            >
+              {copying ? 'Copying…' : `Copy to ${selectedWorkspaces.length || ''} workspace${selectedWorkspaces.length !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Trash Modal */}
       <Modal isOpen={trashOpen} onClose={() => setTrashOpen(false)} title="Trash" maxWidth="480px">

@@ -81,15 +81,17 @@ const PAGES = [
         sort: 0,
         blocks: [
           heading('Revenue Tracker', 'h1'),
-          callout('Compare your goal revenue vs actual revenue each month to spot gaps early.', 'green', '📈'),
+          callout('Compare your goal revenue vs actual revenue each month. Variance is auto-calculated.', 'green', '📈'),
           divider(),
-          table(
-            [
-              ['Month', 'Goal Revenue', 'Actual Revenue', 'Variance'],
-              ...MONTH_ROWS,
-            ],
-            ['text', 'currency', 'currency', 'currency']
-          ),
+          {
+            type: 'table',
+            content: { rows: [['Month', 'Goal Revenue', 'Actual Revenue', 'Variance'], ...MONTH_ROWS] },
+            properties: {
+              columnTypes: ['text', 'currency', 'currency', 'formula'],
+              columnFormulas: { '3': { colA: 2, op: '-', colB: 1 } },
+              showTotals: true,
+            },
+          },
         ],
       },
       {
@@ -100,16 +102,11 @@ const PAGES = [
           heading('Loss Analysis', 'h1'),
           callout('Record where revenue was lost — client drop-offs, project cancellations, scope reductions.', 'red', '📉'),
           divider(),
-          table(
-            [
+          { type: 'table', content: { rows: [
               ['Month', 'Loss Source', 'Amount Lost', 'Root Cause', 'Action Taken'],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-            ],
-            ['text', 'text', 'currency', 'text', 'text']
-          ),
+              ['', '', '', '', ''], ['', '', '', '', ''],
+              ['', '', '', '', ''], ['', '', '', '', ''],
+            ]}, properties: { columnTypes: ['text', 'text', 'currency', 'text', 'text'], showTotals: true } },
         ],
       },
       {
@@ -120,16 +117,11 @@ const PAGES = [
           heading('Expenditure', 'h1'),
           callout('Track all outgoing costs — tools, salaries, freelancers, office, marketing.', 'yellow', '💸'),
           divider(),
-          table(
-            [
+          { type: 'table', content: { rows: [
               ['Category', 'Description', 'Amount', 'Date', 'Approved By'],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-              ['', '', '', '', ''],
-            ],
-            ['text', 'text', 'currency', 'date', 'text']
-          ),
+              ['', '', '', '', ''], ['', '', '', '', ''],
+              ['', '', '', '', ''], ['', '', '', '', ''],
+            ]}, properties: { columnTypes: ['text', 'text', 'currency', 'date', 'text'], showTotals: true } },
         ],
       },
       {

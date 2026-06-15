@@ -2,7 +2,7 @@ import { ok, created, forbidden, unauthorized, fromSupabaseError, badRequest } f
 import { getUserProfile } from '@/lib/db/profiles';
 import { createAgency } from '@/lib/db/agencies';
 import { createAgencyWorkspace, seedWorkspace } from '@/lib/db/workspaces';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 export async function GET() {
   const { data: profile, error: profileError } = await getUserProfile();
@@ -14,8 +14,8 @@ export async function GET() {
     return forbidden('Forbidden: Superadmin access required');
   }
 
-  // Fetch all agencies with their profile member counts
-  const supabase = await createClient();
+  // Use service role to bypass RLS and see all agencies
+  const supabase = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
   const { data: agencies, error: agError } = await supabase
     .from('agencies')
     .select(`
