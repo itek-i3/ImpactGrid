@@ -402,10 +402,10 @@
   left: 0;
   margin-top: var(--space-1);
   min-width: 200px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
+  background: #111827;
+  border: 1px solid rgba(48, 108, 236, 0.2);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   z-index: var(--z-dropdown);
   padding: var(--space-1);
   animation: fadeInDown 0.15s ease forwards;

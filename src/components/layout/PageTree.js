@@ -30,6 +30,8 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
 
   const handleSelect = (page) => {
     setCurrentPage(page);
+    // If on a different route (e.g. /chat), navigate back to the main workspace
+    if (pathname !== '/') router.push('/');
   };
 
   const handleAddChild = async (parentId) => {

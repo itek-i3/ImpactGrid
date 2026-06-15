@@ -135,7 +135,8 @@ export default function Sidebar() {
 
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);
-  }, [setCurrentPage]);
+    if (pathname !== '/') router.push('/');
+  }, [setCurrentPage, pathname, router]);
 
   const handleNewPage = useCallback(async () => {
     const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });

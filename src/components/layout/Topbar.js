@@ -4,17 +4,16 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Search, Bell, Plus, PanelLeft, Star, Share2, MoreHorizontal, Trash2, Copy,
+  Search, Bell, Plus, PanelLeft, Star, Share2,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useToast } from '@/components/ui/Toast';
-import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 
 export default function Topbar() {
   const router = useRouter();
   const {
     currentPage, sidebarOpen, toggleSidebar,
-    updatePage, toggleFavoritePage, duplicatePage, deletePage,
+    updatePage, toggleFavoritePage,
     toggleSearch, workspace, userProfile,
   } = useWorkspaceStore();
   const toast = useToast();
@@ -195,20 +194,6 @@ export default function Topbar() {
         </div>
       )}
 
-      {/* More actions */}
-      {currentPage && !isReadOnly && (
-        <Dropdown trigger={<button className="ig-kbtn" title="More actions" style={btnStyle}><MoreHorizontal size={16} /></button>} align="right">
-          <DropdownItem icon={<Copy size={14} />} onClick={async () => {
-            const dupId = await duplicatePage(currentPage.id);
-            if (dupId && workspace) router.push(`/${workspace.id}/${dupId}`);
-          }}>Duplicate Page</DropdownItem>
-          <DropdownDivider />
-          <DropdownItem icon={<Trash2 size={14} />} danger onClick={async () => {
-            await deletePage(currentPage.id);
-            if (workspace) router.push(`/${workspace.id}`);
-          }}>Move to Trash</DropdownItem>
-        </Dropdown>
-      )}
 
       {/* Bell */}
       <button className="ig-kbtn" style={{ ...btnStyle, position: 'relative' }}>
