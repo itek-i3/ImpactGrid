@@ -24,7 +24,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
-import Dropdown, { DropdownItem, DropdownDivider, DropdownLabel } from '@/components/ui/Dropdown';
+import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
 
 function ImpactLogo({ size = 28 }) {
@@ -66,6 +66,8 @@ export default function Sidebar() {
   } = useWorkspaceStore();
 
   const [trashOpen, setTrashOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [copyModal, setCopyModal] = useState({ open: false, page: null });
   const [allWorkspaces, setAllWorkspaces] = useState([]);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
@@ -225,65 +227,15 @@ export default function Sidebar() {
                 }}>⌘K</span>
               </button>
 
-              <Dropdown
-                trigger={
-                  <button className="ig-nav">
-                    <History size={15} />
-                    <span>Recent</span>
-                  </button>
-                }
-                align="left"
-              >
-                <DropdownLabel>Recently Updated</DropdownLabel>
-                <DropdownDivider />
-                {recentPages.length === 0 ? (
-                  <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                    No recent pages
-                  </div>
-                ) : (
-                  recentPages.map((page) => (
-                    <DropdownItem
-                      key={page.id}
-                      icon={<span>{page.icon || '📄'}</span>}
-                      onClick={() => handleOpenPage(page)}
-                    >
-                      <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px', display: 'inline-block' }}>
-                        {page.title || 'Untitled'}
-                      </span>
-                    </DropdownItem>
-                  ))
-                )}
-              </Dropdown>
+              <button className="ig-nav" onClick={() => setRecentOpen(true)}>
+                <History size={15} />
+                <span>Recent</span>
+              </button>
 
-              <Dropdown
-                trigger={
-                  <button className="ig-nav">
-                    <BookMarked size={15} />
-                    <span>Bookmarks</span>
-                  </button>
-                }
-                align="left"
-              >
-                <DropdownLabel>Favorites</DropdownLabel>
-                <DropdownDivider />
-                {favoritePages.length === 0 ? (
-                  <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                    No favorites yet
-                  </div>
-                ) : (
-                  favoritePages.map((page) => (
-                    <DropdownItem
-                      key={page.id}
-                      icon={<span>{page.icon || '📄'}</span>}
-                      onClick={() => handleOpenPage(page)}
-                    >
-                      <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px', display: 'inline-block' }}>
-                        {page.title || 'Untitled'}
-                      </span>
-                    </DropdownItem>
-                  ))
-                )}
-              </Dropdown>
+              <button className="ig-nav" onClick={() => setBookmarksOpen(true)}>
+                <BookMarked size={15} />
+                <span>Bookmarks</span>
+              </button>
 
               <button
                 className={`ig-nav ${pathname === '/chat' ? 'active' : ''}`}
@@ -488,6 +440,60 @@ export default function Sidebar() {
               {copying ? 'Copying…' : `Copy to ${selectedWorkspaces.length || ''} workspace${selectedWorkspaces.length !== 1 ? 's' : ''}`}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Recent Modal */}
+      <Modal isOpen={recentOpen} onClose={() => setRecentOpen(false)} title="Recently Updated" maxWidth="420px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {recentPages.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>No recent pages</div>
+          ) : recentPages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => { setRecentOpen(false); handleOpenPage(page); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 14px', borderRadius: 10, border: 'none',
+                background: 'transparent', cursor: 'pointer', width: '100%', textAlign: 'left',
+                transition: '.15s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{page.icon || '📄'}</span>
+              <span style={{ fontSize: 13, color: '#E2EEFF', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {page.title || 'Untitled'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Bookmarks Modal */}
+      <Modal isOpen={bookmarksOpen} onClose={() => setBookmarksOpen(false)} title="Bookmarks" maxWidth="420px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {favoritePages.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>No bookmarks yet. Star a page to add it here.</div>
+          ) : favoritePages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => { setBookmarksOpen(false); handleOpenPage(page); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 14px', borderRadius: 10, border: 'none',
+                background: 'transparent', cursor: 'pointer', width: '100%', textAlign: 'left',
+                transition: '.15s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{page.icon || '📄'}</span>
+              <span style={{ fontSize: 13, color: '#E2EEFF', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {page.title || 'Untitled'}
+              </span>
+            </button>
+          ))}
         </div>
       </Modal>
 
