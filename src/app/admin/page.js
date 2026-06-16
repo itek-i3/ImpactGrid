@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown } from 'lucide-react';
+import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown, Pencil, X, ImageOff } from 'lucide-react';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 
 function AdminPanelContent() {
@@ -19,12 +19,18 @@ function AdminPanelContent() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [updatingRole, setUpdatingRole] = useState(null);
 
-  // Form state
+  // Form state (create agency)
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Edit logo state
+  const [editingAgency, setEditingAgency] = useState(null); // { id, name, logoUrl }
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [savingLogo, setSavingLogo] = useState(false);
+  const [logoPreviewError, setLogoPreviewError] = useState(false);
 
   // 1. Fetch user profile to verify superadmin status
   useEffect(() => {
@@ -179,6 +185,32 @@ function AdminPanelContent() {
       setFormError('A network error occurred. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleUpdateLogo = async () => {
+    if (!editingAgency) return;
+    setSavingLogo(true);
+    try {
+      const res = await fetch('/os/api/admin/agencies', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agencyId: editingAgency.id, logoUrl: editLogoUrl.trim() || null }),
+      });
+      if (res.ok) {
+        setAgencies((prev) =>
+          prev.map((a) => a.id === editingAgency.id ? { ...a, logoUrl: editLogoUrl.trim() || null } : a)
+        );
+        toast.success('Logo Updated', `Logo for "${editingAgency.name}" has been updated.`);
+        setEditingAgency(null);
+      } else {
+        const json = await res.json();
+        toast.error('Update Failed', json.error?.message || 'Could not update logo.');
+      }
+    } catch {
+      toast.error('Error', 'A network error occurred.');
+    } finally {
+      setSavingLogo(false);
     }
   };
 
@@ -474,19 +506,34 @@ function AdminPanelContent() {
                         <tr key={agency.id} className="agency-row" style={{ borderBottom: '1px solid rgba(48, 108, 236, 0.10)', transition: 'background-color .15s' }}>
                           <td style={{ padding: '14px 12px', verticalAlign: 'middle' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{
-                                width: 32, height: 32, borderRadius: 8,
-                                background: 'rgba(48, 108, 236, 0.15)',
-                                border: '1px solid rgba(48, 108, 236, 0.30)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: 14, fontWeight: 'bold', color: '#7EB3FF',
-                                overflow: 'hidden'
-                              }}>
-                                {agency.logoUrl ? (
-                                  <img src={agency.logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                  agency.name.charAt(0).toUpperCase()
-                                )}
+                              <div style={{ position: 'relative', flexShrink: 0 }}>
+                                <div style={{
+                                  width: 32, height: 32, borderRadius: 8,
+                                  background: 'rgba(48, 108, 236, 0.15)',
+                                  border: '1px solid rgba(48, 108, 236, 0.30)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 14, fontWeight: 'bold', color: '#7EB3FF',
+                                  overflow: 'hidden'
+                                }}>
+                                  {agency.logoUrl ? (
+                                    <img src={agency.logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    agency.name.charAt(0).toUpperCase()
+                                  )}
+                                </div>
+                                <button
+                                  title="Edit logo"
+                                  onClick={() => { setEditingAgency({ id: agency.id, name: agency.name, logoUrl: agency.logoUrl }); setEditLogoUrl(agency.logoUrl || ''); setLogoPreviewError(false); }}
+                                  style={{
+                                    position: 'absolute', bottom: -5, right: -5,
+                                    width: 16, height: 16, borderRadius: 4, border: 'none',
+                                    background: '#306CEC', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                                  }}
+                                >
+                                  <Pencil size={9} color="#fff" />
+                                </button>
                               </div>
                               <span style={{ fontWeight: 600, color: '#fff', fontSize: 14 }}>{agency.name}</span>
                             </div>
@@ -539,87 +586,193 @@ function AdminPanelContent() {
               )}
             </div>
 
-            {/* Create Form Column */}
+            {/* Right Panel — toggles between Register and Edit Logo */}
             <div style={{
               background: 'rgba(255, 255, 255, 0.02)',
               backdropFilter: 'blur(30px)',
               WebkitBackdropFilter: 'blur(30px)',
-              border: '1.5px solid rgba(48, 108, 236, 0.35)',
-              borderTop: '1.5px solid rgba(91, 155, 255, 0.50)',
+              border: `1.5px solid ${editingAgency ? 'rgba(91,155,255,0.50)' : 'rgba(48,108,236,0.35)'}`,
+              borderTop: `1.5px solid ${editingAgency ? 'rgba(245,166,35,0.60)' : 'rgba(91,155,255,0.50)'}`,
               borderRadius: 20,
               padding: 24,
               boxShadow: '0 16px 48px rgba(0, 0, 0, 0.50)',
+              transition: 'border-color .2s',
             }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginTop: 0, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Plus size={18} style={{ color: '#5B9BFF' }} /> Register Agency
-              </h2>
 
-              {formError && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(224,72,90,0.12)', border: '1px solid rgba(224,72,90,0.30)', borderRadius: 10, color: '#FF6B7A', fontSize: 13, marginBottom: 20 }}>
-                  <AlertCircle size={14} style={{ flexShrink: 0 }} />{formError}
-                </div>
-              )}
+              {editingAgency ? (
+                /* ── Edit Logo Mode ── */
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Pencil size={16} style={{ color: '#F5A623' }} /> Edit Logo
+                    </h2>
+                    <button
+                      onClick={() => setEditingAgency(null)}
+                      title="Cancel"
+                      style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid rgba(48,108,236,0.25)', background: 'rgba(255,255,255,0.04)', color: '#7EB3FF', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
 
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Name</label>
-                  <input
-                    className="admin-input"
-                    type="text"
-                    placeholder="e.g. Itek, i3+"
-                    value={name}
-                    onChange={handleNameChange}
-                    required
-                  />
-                </div>
+                  <div style={{ fontSize: 13, color: '#7EB3FF', marginBottom: 20, padding: '8px 12px', background: 'rgba(48,108,236,0.08)', borderRadius: 8, border: '1px solid rgba(48,108,236,0.18)' }}>
+                    Agency: <strong style={{ color: '#fff' }}>{editingAgency.name}</strong>
+                  </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Slug</label>
-                  <input
-                    className="admin-input"
-                    type="text"
-                    placeholder="e.g. itek, i3-plus"
-                    value={slug}
-                    onChange={e => setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                    required
-                  />
-                  <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>Used for scoping users and workspaces (a-z, 0-9, hyphens).</span>
-                </div>
+                  {/* Logo preview */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                    <div style={{
+                      width: 80, height: 80, borderRadius: 16,
+                      background: 'rgba(48,108,236,0.15)',
+                      border: '2px solid rgba(48,108,236,0.35)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', fontSize: 28, fontWeight: 700, color: '#7EB3FF',
+                    }}>
+                      {editLogoUrl && !logoPreviewError ? (
+                        <img
+                          src={editLogoUrl}
+                          alt="Preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={() => setLogoPreviewError(true)}
+                          onLoad={() => setLogoPreviewError(false)}
+                        />
+                      ) : logoPreviewError ? (
+                        <ImageOff size={28} style={{ color: '#E0485A', opacity: 0.7 }} />
+                      ) : (
+                        editingAgency.name.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, color: '#3D5A8A' }}>
+                      {editLogoUrl && !logoPreviewError ? 'Preview' : editLogoUrl ? 'Invalid URL' : 'No logo set'}
+                    </span>
+                  </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Logo URL (Optional)</label>
-                  <input
-                    className="admin-input"
-                    type="url"
-                    placeholder="https://example.com/logo.png"
-                    value={logoUrl}
-                    onChange={e => setLogoUrl(e.target.value)}
-                  />
-                </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Logo URL</label>
+                      <input
+                        className="admin-input"
+                        type="url"
+                        placeholder="https://example.com/logo.png"
+                        value={editLogoUrl}
+                        onChange={(e) => { setEditLogoUrl(e.target.value); setLogoPreviewError(false); }}
+                        autoFocus
+                      />
+                      <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>
+                        Leave blank to remove the logo.
+                      </span>
+                    </div>
 
-                <button type="submit" className="btn-submit" disabled={submitting} style={{
-                  width: '100%', height: 48,
-                  background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
-                  color: '#FFFFFF', border: 'none', borderRadius: 12,
-                  fontSize: 13.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  transition: 'all .15s', opacity: submitting ? 0.75 : 1,
-                  boxShadow: '0 4px 18px rgba(48,108,236,0.30)',
-                  marginTop: 10
-                }}>
-                  {submitting ? (
-                    <>
-                      <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.30)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ig-spin .6s linear infinite', display: 'inline-block' }} />
-                      Creating…
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={15} /> Create Agency
-                    </>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button
+                        onClick={() => setEditingAgency(null)}
+                        style={{
+                          flex: 1, height: 44, borderRadius: 12,
+                          border: '1px solid rgba(48,108,236,0.30)',
+                          background: 'transparent', color: '#7EB3FF',
+                          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdateLogo}
+                        disabled={savingLogo}
+                        className="btn-submit"
+                        style={{
+                          flex: 2, height: 44,
+                          background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                          color: '#fff', border: 'none', borderRadius: 12,
+                          fontSize: 13, fontWeight: 700, cursor: savingLogo ? 'not-allowed' : 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          opacity: savingLogo ? 0.75 : 1, transition: 'all .15s',
+                        }}
+                      >
+                        {savingLogo ? (
+                          <>
+                            <span style={{ width: 13, height: 13, border: '2px solid rgba(255,255,255,.30)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ig-spin .6s linear infinite', display: 'inline-block' }} />
+                            Saving…
+                          </>
+                        ) : 'Save Logo'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ── Register Agency Mode ── */
+                <>
+                  <h2 style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginTop: 0, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Plus size={18} style={{ color: '#5B9BFF' }} /> Register Agency
+                  </h2>
+
+                  {formError && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(224,72,90,0.12)', border: '1px solid rgba(224,72,90,0.30)', borderRadius: 10, color: '#FF6B7A', fontSize: 13, marginBottom: 20 }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />{formError}
+                    </div>
                   )}
-                </button>
-              </form>
+
+                  <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Name</label>
+                      <input
+                        className="admin-input"
+                        type="text"
+                        placeholder="e.g. Itek, i3+"
+                        value={name}
+                        onChange={handleNameChange}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Slug</label>
+                      <input
+                        className="admin-input"
+                        type="text"
+                        placeholder="e.g. itek, i3-plus"
+                        value={slug}
+                        onChange={e => setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+                        required
+                      />
+                      <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>Used for scoping users and workspaces (a-z, 0-9, hyphens).</span>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Logo URL (Optional)</label>
+                      <input
+                        className="admin-input"
+                        type="url"
+                        placeholder="https://example.com/logo.png"
+                        value={logoUrl}
+                        onChange={e => setLogoUrl(e.target.value)}
+                      />
+                    </div>
+
+                    <button type="submit" className="btn-submit" disabled={submitting} style={{
+                      width: '100%', height: 48,
+                      background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                      color: '#FFFFFF', border: 'none', borderRadius: 12,
+                      fontSize: 13.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      transition: 'all .15s', opacity: submitting ? 0.75 : 1,
+                      boxShadow: '0 4px 18px rgba(48,108,236,0.30)',
+                      marginTop: 10
+                    }}>
+                      {submitting ? (
+                        <>
+                          <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.30)', borderTopColor: '#fff', borderRadius: '50%', animation: 'ig-spin .6s linear infinite', display: 'inline-block' }} />
+                          Creating…
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={15} /> Create Agency
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </>
+              )}
             </div>
 
           </div>}

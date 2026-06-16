@@ -4,6 +4,30 @@ import { createAgency } from '@/lib/db/agencies';
 import { createAgencyWorkspace, seedWorkspace } from '@/lib/db/workspaces';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 
+export async function PATCH(request) {
+  const { data: profile, error: profileError } = await getUserProfile();
+  if (profileError) {
+    if (profileError.status === 401) return unauthorized(profileError.message);
+    return fromSupabaseError(profileError);
+  }
+  if (profile.role !== 'superadmin') return forbidden('Superadmin access required');
+
+  const body = await request.json().catch(() => ({}));
+  const { agencyId, logoUrl } = body;
+  if (!agencyId) return badRequest('agencyId is required');
+
+  const supabase = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { data, error } = await supabase
+    .from('agencies')
+    .update({ logo_url: logoUrl || null })
+    .eq('id', agencyId)
+    .select()
+    .single();
+
+  if (error) return fromSupabaseError(error);
+  return ok(data);
+}
+
 export async function GET() {
   const { data: profile, error: profileError } = await getUserProfile();
   if (profileError) {

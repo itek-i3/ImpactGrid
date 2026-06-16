@@ -18,3 +18,14 @@ export async function createAgency({ name, slug, logoUrl = null }) {
     .single();
   return { data, error };
 }
+
+export async function updateAgencyLogo(agencyId, logoUrl) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('agencies')
+    .update({ logo_url: logoUrl || null })
+    .eq('id', agencyId)
+    .select()
+    .single();
+  return { data, error };
+}
