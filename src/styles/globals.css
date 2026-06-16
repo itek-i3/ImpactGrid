@@ -456,6 +456,21 @@ input, textarea, select {
   outline: none;
 }
 
+/* ── Select / Option dark-mode fix ──────────────────────────────── */
+/* Native <option> elements inherit the OS chrome by default.        */
+/* Force a dark background + readable text so they're visible on     */
+/* all browsers that support this (Chromium, Firefox).               */
+select option {
+  background-color: #0d1b38;
+  color: #E2EEFF;
+}
+
+select option:checked,
+select option:hover {
+  background-color: rgba(48, 108, 236, 0.35);
+  color: #7EB3FF;
+}
+
 /* ── Keyframe Animations ─────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }

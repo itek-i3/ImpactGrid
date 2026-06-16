@@ -464,7 +464,7 @@ function AdminPanelContent() {
                               disabled={updatingRole === member.id}
                               onChange={(e) => handleRoleChange(member.id, e.target.value)}
                               style={{
-                                background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.35)',
+                                background: '#0d1b38', border: '1px solid rgba(48,108,236,0.35)',
                                 borderRadius: 8, color: member.role === 'superadmin' ? '#F5A623' : member.role === 'manager' ? '#5B9BFF' : '#7EB3FF',
                                 fontSize: 12, fontWeight: 600, padding: '5px 10px', cursor: 'pointer',
                                 fontFamily: 'inherit', outline: 'none',
