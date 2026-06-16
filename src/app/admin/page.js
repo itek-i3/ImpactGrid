@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown, Pencil, X, ImageOff } from 'lucide-react';
+import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown, Pencil, X, ImageOff, Upload } from 'lucide-react';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
+import { createClient } from '@/lib/supabase/client';
 
 function AdminPanelContent() {
   const router = useRouter();
@@ -30,7 +31,9 @@ function AdminPanelContent() {
   const [editingAgency, setEditingAgency] = useState(null); // { id, name, logoUrl }
   const [editLogoUrl, setEditLogoUrl] = useState('');
   const [savingLogo, setSavingLogo] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
+  const fileInputRef = useRef(null);
 
   // 1. Fetch user profile to verify superadmin status
   useEffect(() => {
@@ -185,6 +188,32 @@ function AdminPanelContent() {
       setFormError('A network error occurred. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      toast.error('Invalid File', 'Please select a PNG, JPG, WEBP, or GIF image.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File Too Large', 'Max file size is 2 MB.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = file.name.split('.').pop().toLowerCase();
+      const path = `agency-logos/${editingAgency.id}.${ext}`;
+      const { error: upError } = await supabase.storage.from('logos').upload(path, file, { upsert: true, contentType: file.type });
+      if (upError) throw upError;
+      const { data: { publicUrl } } = supabase.storage.from('logos').getPublicUrl(path);
+      setEditLogoUrl(publicUrl);
+      setLogoPreviewError(false);
+    } catch (err) {
+      toast.error('Upload Failed', err.message || 'Could not upload image.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -662,6 +691,52 @@ function AdminPanelContent() {
                         Leave blank to remove the logo.
                       </span>
                     </div>
+
+                    {/* Divider */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, height: 1, background: 'rgba(48,108,236,0.18)' }} />
+                      <span style={{ fontSize: 11, color: '#3D5A8A', fontWeight: 600 }}>OR UPLOAD A FILE</span>
+                      <div style={{ flex: 1, height: 1, background: 'rgba(48,108,236,0.18)' }} />
+                    </div>
+
+                    {/* File drop zone */}
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); }}
+                      style={{
+                        border: '1.5px dashed rgba(48,108,236,0.40)',
+                        borderRadius: 12,
+                        padding: '18px 16px',
+                        textAlign: 'center',
+                        cursor: uploading ? 'wait' : 'pointer',
+                        background: 'rgba(48,108,236,0.05)',
+                        transition: 'all .15s',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                      }}
+                      onMouseEnter={(e) => { if (!uploading) e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.05)'; }}
+                    >
+                      {uploading ? (
+                        <>
+                          <span style={{ width: 20, height: 20, border: '2.5px solid rgba(48,108,236,0.20)', borderTopColor: '#5B9BFF', borderRadius: '50%', animation: 'ig-spin .7s linear infinite', display: 'inline-block' }} />
+                          <span style={{ fontSize: 12, color: '#3D5A8A' }}>Uploading…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={20} style={{ color: '#5B9BFF' }} />
+                          <span style={{ fontSize: 12, color: '#7EB3FF', fontWeight: 500 }}>Click or drag & drop</span>
+                          <span style={{ fontSize: 10, color: '#3D5A8A' }}>PNG, JPG, WEBP, GIF — max 2 MB</span>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
+                    />
 
                     <div style={{ display: 'flex', gap: 10 }}>
                       <button

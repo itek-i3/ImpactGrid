@@ -14,7 +14,7 @@ export async function listWorkspaces() {
 
   if (profileErr) return { data: null, error: profileErr };
 
-  let query = supabase.from('workspaces').select('*');
+  let query = supabase.from('workspaces').select('*, agencies(logo_url)');
 
   if (profile.role !== 'superadmin') {
     if (!profile.agency_id) {
@@ -24,7 +24,14 @@ export async function listWorkspaces() {
   }
 
   const { data, error } = await query.order('created_at');
-  return { data, error };
+
+  // Flatten agency logo onto the workspace object
+  const mapped = (data || []).map((w) => ({
+    ...w,
+    logoUrl: w.agencies?.logo_url || null,
+    agencies: undefined,
+  }));
+  return { data: error ? null : mapped, error };
 }
 
 export async function getWorkspace(id) {

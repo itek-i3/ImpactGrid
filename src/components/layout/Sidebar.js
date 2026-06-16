@@ -202,8 +202,13 @@ export default function Sidebar() {
                 width: 32, height: 32, borderRadius: 8,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0, overflow: 'hidden',
+                background: workspace?.logoUrl ? 'transparent' : undefined,
               }}>
-                <Image src={logoImg} width={32} height={32} alt="Logo" style={{ objectFit: 'contain' }} />
+                {workspace?.logoUrl ? (
+                  <img src={workspace.logoUrl} alt="Logo" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }} />
+                ) : (
+                  <Image src={logoImg} width={32} height={32} alt="Logo" style={{ objectFit: 'contain' }} />
+                )}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="display" style={{
