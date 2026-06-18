@@ -22,6 +22,7 @@ import QuoteBlock from './blocks/QuoteBlock';
 import { BulletListBlock, NumberedListBlock } from './blocks/ListBlock';
 import ColumnsBlock from './blocks/ColumnsBlock';
 import ColumnBlock from './blocks/ColumnBlock';
+import CardBlock from './blocks/CardBlock';
 
 import styles from '@/styles/editor.module.css';
 
@@ -47,6 +48,7 @@ const BLOCK_COMPONENTS = {
   numbered_list: NumberedListBlock,
   columns: ColumnsBlock,
   column: ColumnBlock,
+  card: CardBlock,
 };
 
 /**
@@ -89,12 +91,8 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   const handleGripClick = useCallback((e, block) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    const editorRect = editorRef.current?.getBoundingClientRect();
-    // Position relative to the editor container
-    const top = rect.bottom - (editorRect?.top || 0) + 4;
-    const left = rect.left - (editorRect?.left || 0);
     setActionMenuBlock(block);
-    setActionMenuPosition({ top, left });
+    setActionMenuPosition({ top: rect.bottom + 4, left: rect.left });
     setActionMenuOpen(true);
   }, []);
 
@@ -134,6 +132,10 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
                 ['', '', ''],
               ],
             },
+          });
+        } else if (type === 'card') {
+          updateBlock(menuTargetBlockId, {
+            content: { icon: '🌐', title: '', description: '', fullContent: '', accent: '#306CEC' },
           });
         } else if (type === 'callout') {
           updateBlock(menuTargetBlockId, {
@@ -236,7 +238,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       // Enter creates a new block below
       if (e.key === 'Enter' && !e.shiftKey) {
         // Don't intercept Enter in code blocks or toggles
-        if (block?.type === 'code' || block?.type === 'table') return;
+        if (block?.type === 'code' || block?.type === 'table' || block?.type === 'card') return;
 
         e.preventDefault();
         const newBlockId = crypto.randomUUID();
@@ -283,7 +285,8 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
           block?.type !== 'divider' &&
           block?.type !== 'image' &&
           block?.type !== 'table' &&
-          block?.type !== 'embed'
+          block?.type !== 'embed' &&
+          block?.type !== 'card'
         ) {
           e.preventDefault();
           changeBlockType(blockId, 'paragraph');
@@ -335,11 +338,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       // Detect '/' at the start of a block
       if (text === '/') {
         const rect = e.target.getBoundingClientRect();
-        const editorRect = editorRef.current?.getBoundingClientRect();
-        // Position relative to the editor container
-        const top = rect.bottom - (editorRect?.top || 0) + 4;
-        const left = rect.left - (editorRect?.left || 0);
-        handleSlashCommand(blockId, { top, left });
+        handleSlashCommand(blockId, { top: rect.bottom + 4, left: rect.left });
       }
     },
     [handleSlashCommand, readOnly]

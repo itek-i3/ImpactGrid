@@ -20,6 +20,7 @@ import {
   ListOrdered,
   Columns2,
   Columns3,
+  LayoutTemplate,
 } from 'lucide-react';
 import styles from '@/styles/editor.module.css';
 
@@ -56,6 +57,7 @@ const BLOCK_TYPES = [
       { type: 'quote', name: 'Quote', desc: 'Blockquote text', icon: <Quote size={18} /> },
       { type: 'divider', name: 'Divider', desc: 'Visual separator line', icon: <Minus size={18} /> },
       { type: 'table', name: 'Table', desc: 'Simple table with rows/columns', icon: <Table size={18} /> },
+      { type: 'card', name: 'Card', desc: 'Idea card with title, description and detail view', icon: <LayoutTemplate size={18} /> },
     ],
   },
   {

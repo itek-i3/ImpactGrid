@@ -242,7 +242,7 @@ export default function BlockActionMenu({
       }}
     >
       {/* Main Context Menu */}
-      <div className={styles.gripMainMenu}>
+      <div className={styles.gripMainMenu} style={{ background: '#020912' }}>
         {/* Search */}
         <input
           ref={searchInputRef}
@@ -314,7 +314,7 @@ export default function BlockActionMenu({
 
       {/* Floating Nested Submenu */}
       {activeSubmenu === 'turn_into' && (
-        <div className={styles.gripSubMenu} onMouseLeave={() => setActiveSubmenu(null)}>
+        <div className={styles.gripSubMenu} style={{ background: '#020912' }} onMouseLeave={() => setActiveSubmenu(null)}>
           <div className={styles.menuHeader}>Turn into</div>
           {CONVERT_TYPES.map((ct) => (
             <button
@@ -330,7 +330,7 @@ export default function BlockActionMenu({
       )}
 
       {activeSubmenu === 'color' && (
-        <div className={styles.gripSubMenu} onMouseLeave={() => setActiveSubmenu(null)}>
+        <div className={styles.gripSubMenu} style={{ background: '#020912' }} onMouseLeave={() => setActiveSubmenu(null)}>
           <div className={styles.menuHeader}>Last used</div>
           <button
             className={styles.menuItem}
@@ -384,7 +384,7 @@ export default function BlockActionMenu({
       )}
 
       {activeSubmenu === 'align' && (
-        <div className={styles.gripSubMenu} onMouseLeave={() => setActiveSubmenu(null)}>
+        <div className={styles.gripSubMenu} style={{ background: '#020912' }} onMouseLeave={() => setActiveSubmenu(null)}>
           <div className={styles.menuHeader}>Alignment</div>
           <button className={styles.menuItem} onClick={() => handleAlign('left')}>
             <span className={styles.menuItemIcon}>
