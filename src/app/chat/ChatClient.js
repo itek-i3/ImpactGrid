@@ -32,6 +32,10 @@ function ChatContent() {
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [reactions, setReactions] = useState({});
+  const [reactPickerOpen, setReactPickerOpen] = useState(null);
+  const [reactPickerPos, setReactPickerPos] = useState({ top: 0, left: 0, right: 'auto', alignRight: false });
+  const [reactMoreOpen, setReactMoreOpen] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const emojiRef = useRef(null);
@@ -68,6 +72,14 @@ function ChatContent() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [emojiOpen]);
+
+  // Close reaction picker on outside click
+  useEffect(() => {
+    if (!reactPickerOpen) return;
+    const handler = (e) => { if (!e.target.closest('[data-reaction]')) setReactPickerOpen(null); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [reactPickerOpen]);
 
   const workspaceId = workspace?.id;
 
@@ -145,37 +157,62 @@ function ChatContent() {
         },
         async (payload) => {
           if (payload.new.channel !== activeChannel) return;
-          const { data } = await supabase
-            .from('chat_messages')
-            .select(`
-              id, message, channel, created_at, user_id,
-              profiles:user_id ( full_name, email, role )
-            `)
-            .eq('id', payload.new.id)
-            .single();
-
-          if (data) {
-            const formatted = {
-              id: data.id,
-              message: data.message,
-              channel: data.channel,
-              createdAt: data.created_at,
-              userId: data.user_id,
-              userName: data.profiles?.full_name || 'Anonymous Member',
-              userEmail: data.profiles?.email || '',
-              userRole: data.profiles?.role || 'member',
-            };
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === formatted.id)) return prev;
-              return [...prev, formatted];
-            });
-          }
+          // Fetch via API so the server-side admin client can join profiles without RLS issues
+          try {
+            const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${activeChannel}&messageId=${payload.new.id}`);
+            if (res.ok) {
+              const json = await res.json();
+              const msg = json.data?.[0];
+              if (msg) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === msg.id)) return prev;
+                  return [...prev, msg];
+                });
+              }
+            }
+          } catch (_) {}
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(realtimeChannel); };
   }, [workspaceId, activeChannel, isDemo, getDemoMessages]);
+
+  const loadReactions = useCallback(async (msgIds) => {
+    if (!msgIds?.length || isDemo) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('chat_reactions')
+      .select('message_id, user_id, emoji')
+      .in('message_id', msgIds);
+    if (!data) return;
+    const grouped = {};
+    data.forEach((r) => {
+      if (!grouped[r.message_id]) grouped[r.message_id] = {};
+      if (!grouped[r.message_id][r.emoji]) grouped[r.message_id][r.emoji] = [];
+      grouped[r.message_id][r.emoji].push(r.user_id);
+    });
+    setReactions(grouped);
+  }, [isDemo]);
+
+  // Load reactions whenever messages change
+  useEffect(() => {
+    if (messages.length > 0) loadReactions(messages.map((m) => m.id));
+    else setReactions({});
+  }, [messages, loadReactions]);
+
+  // Realtime subscription for reaction changes
+  useEffect(() => {
+    if (!workspaceId || isDemo) return;
+    const supabase = createClient();
+    const ch = supabase
+      .channel(`reactions:${workspaceId}:${activeChannel}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_reactions' },
+        () => { loadReactions(messages.map((m) => m.id)); }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [workspaceId, activeChannel, isDemo, messages, loadReactions]);
 
   // Scroll to bottom when messages list updates
   useEffect(() => {
@@ -248,11 +285,48 @@ function ChatContent() {
   };
 
   const EMOJIS = ['😀','😂','😍','🥰','😎','🤔','😅','🙏','👍','👏','🔥','❤️','✅','🎉','💡','📌','⚡','🚀','💪','😢','😤','🤝','👀','💯','🎯','📋','✍️','🗓️','💬','📢'];
+  const REACTION_EMOJIS = ['👍','❤️','😂','😮','😢','😍','🔥','👏','✅','🎉'];
+  const ALL_REACTION_EMOJIS = [
+    '👍','👎','❤️','🧡','💛','💚','💙','💜','🖤','🤍',
+    '😀','😂','😍','🥰','😎','🤔','😅','🙏','😢','😤',
+    '🤝','👀','💯','🎯','🔥','⚡','🚀','💡','✅','❌',
+    '🎉','🎊','🏆','🌟','⭐','💎','🙌','👌','✌️','🤞',
+    '😮','😱','🤯','😭','🥳','😇','🤗','😬','🤭','😃',
+    '💪','🦾','🫶','🫡','🫠','🤌','👋','🙋','🤦','🤷',
+  ];
 
   const handleEmojiClick = (emoji) => {
     setInputText((prev) => prev + emoji);
     setEmojiOpen(false);
     inputRef.current?.focus();
+  };
+
+  const toggleReaction = async (messageId, emoji) => {
+    if (!currentUserId || isDemo) return;
+    setReactPickerOpen(null);
+    setReactMoreOpen(null);
+    const hasReacted = (reactions[messageId]?.[emoji] || []).includes(currentUserId);
+    // Optimistic update
+    setReactions((prev) => {
+      const msg = { ...(prev[messageId] || {}) };
+      if (hasReacted) {
+        const filtered = (msg[emoji] || []).filter((id) => id !== currentUserId);
+        if (filtered.length === 0) delete msg[emoji]; else msg[emoji] = filtered;
+      } else {
+        msg[emoji] = [...(msg[emoji] || []), currentUserId];
+      }
+      return { ...prev, [messageId]: msg };
+    });
+    const supabase = createClient();
+    if (hasReacted) {
+      await supabase.from('chat_reactions').delete()
+        .eq('message_id', messageId).eq('user_id', currentUserId).eq('emoji', emoji);
+    } else {
+      await supabase.from('chat_reactions').upsert(
+        { message_id: messageId, user_id: currentUserId, emoji },
+        { onConflict: 'message_id,user_id,emoji' }
+      );
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -369,6 +443,8 @@ function ChatContent() {
                   const msgDate = msg.createdAt ? new Date(msg.createdAt).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) : null;
                   const showSeparator = msgDate && msgDate !== lastDate;
                   if (showSeparator) lastDate = msgDate;
+                  const msgReactions = reactions[msg.id] || {};
+                  const reactionEntries = Object.entries(msgReactions).filter(([, ids]) => ids.length > 0);
 
                   return (
                     <div key={msg.id}>
@@ -383,19 +459,68 @@ function ChatContent() {
                             {(msg.userName || '?').charAt(0).toUpperCase()}
                           </div>
                         )}
-                        <div className={isOwn ? chatStyles.sentBubble : chatStyles.receivedBubble}>
-                          {!isOwn && (
-                            <div className={chatStyles.senderName}>
-                              {msg.userName || 'Unknown'}
-                              <span className={chatStyles.rolePill} style={getRolePillStyle(msg.userRole)}>
-                                {getRoleLabel(msg.userRole)}
-                              </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start', maxWidth: '70%' }}>
+                          <div
+                            data-reaction="true"
+                            className={isOwn ? chatStyles.sentBubble : chatStyles.receivedBubble}
+                            style={{ position: 'relative', maxWidth: '100%', cursor: 'pointer' }}
+                            onClick={(e) => {
+                              if (reactPickerOpen === msg.id) {
+                                setReactPickerOpen(null);
+                                setReactMoreOpen(null);
+                                return;
+                              }
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const pickerH = 70;
+                              const top = rect.top > pickerH + 16 ? rect.top - pickerH - 8 : rect.bottom + 8;
+                              setReactPickerPos({
+                                top,
+                                left: isOwn ? 'auto' : rect.left,
+                                right: isOwn ? window.innerWidth - rect.right : 'auto',
+                                alignRight: isOwn,
+                              });
+                              setReactPickerOpen(msg.id);
+                            }}
+                          >
+                            {!isOwn && (
+                              <div className={chatStyles.senderName}>
+                                {msg.userName || 'Unknown'}
+                                <span className={chatStyles.rolePill} style={getRolePillStyle(msg.userRole)}>
+                                  {getRoleLabel(msg.userRole)}
+                                </span>
+                              </div>
+                            )}
+                            <div className={chatStyles.messageText}>{msg.message}</div>
+                            <div className={chatStyles.messageFooter}>
+                              <span className={chatStyles.timestamp}>{formatMessageTime(msg.createdAt)}</span>
+                            </div>
+
+                          </div>
+
+                          {/* Reaction pills */}
+                          {reactionEntries.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                              {reactionEntries.map(([emoji, ids]) => {
+                                const iReacted = ids.includes(currentUserId);
+                                return (
+                                  <button key={emoji} type="button"
+                                    onClick={() => toggleReaction(msg.id, emoji)}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                                      background: iReacted ? 'rgba(48,108,236,0.18)' : 'rgba(255,255,255,0.06)',
+                                      border: `1px solid ${iReacted ? 'rgba(48,108,236,0.45)' : 'rgba(255,255,255,0.10)'}`,
+                                      borderRadius: 99, padding: '2px 8px',
+                                      cursor: 'pointer', fontSize: 13, color: iReacted ? '#7EB3FF' : '#C8DEFF',
+                                      fontFamily: 'inherit', transition: '.15s',
+                                    }}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 700 }}>{ids.length}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
-                          <div className={chatStyles.messageText}>{msg.message}</div>
-                          <div className={chatStyles.messageFooter}>
-                            <span className={chatStyles.timestamp}>{formatMessageTime(msg.createdAt)}</span>
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -404,6 +529,73 @@ function ChatContent() {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Reaction picker — fixed so it's never clipped by scroll overflow */}
+            {reactPickerOpen && (() => {
+              const openReactions = reactions[reactPickerOpen] || {};
+              return (
+                <div data-reaction="true" style={{
+                  position: 'fixed',
+                  top: reactPickerPos.top,
+                  left: reactPickerPos.left,
+                  right: reactPickerPos.right,
+                  background: 'rgba(6,12,28,0.97)',
+                  border: '1px solid rgba(48,108,236,0.32)',
+                  borderRadius: 14, padding: '10px 12px',
+                  zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.85)',
+                  minWidth: 'max-content',
+                }}>
+                  <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    {REACTION_EMOJIS.map((emoji, i) => {
+                      const iReacted = openReactions[emoji]?.includes(currentUserId);
+                      return (
+                        <button key={`q-${i}`} type="button"
+                          onClick={() => toggleReaction(reactPickerOpen, emoji)}
+                          style={{
+                            background: iReacted ? 'rgba(48,108,236,0.30)' : 'none',
+                            border: 'none', cursor: 'pointer', fontSize: 24,
+                            padding: '4px 6px', borderRadius: 8, lineHeight: 1, transition: '.1s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.transform = 'scale(1.2)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = iReacted ? 'rgba(48,108,236,0.30)' : 'none'; e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                          {emoji}
+                        </button>
+                      );
+                    })}
+                    <button type="button" data-reaction="true"
+                      onClick={(e) => { e.stopPropagation(); setReactMoreOpen((v) => v === reactPickerOpen ? null : reactPickerOpen); }}
+                      style={{
+                        background: reactMoreOpen ? 'rgba(48,108,236,0.25)' : 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(48,108,236,0.25)',
+                        borderRadius: 8, cursor: 'pointer',
+                        fontSize: 16, padding: '4px 8px', color: '#7EB3FF',
+                        fontWeight: 700, lineHeight: 1, marginLeft: 4,
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {reactMoreOpen && (
+                    <div style={{
+                      marginTop: 10, borderTop: '1px solid rgba(48,108,236,0.18)', paddingTop: 10,
+                      display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2,
+                    }}>
+                      {ALL_REACTION_EMOJIS.map((emoji, i) => (
+                        <button key={`a-${i}`} type="button"
+                          onClick={() => toggleReaction(reactPickerOpen, emoji)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: '4px', borderRadius: 6, lineHeight: 1, transition: '.1s' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; e.currentTarget.style.transform = 'scale(1.15)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Input bar */}
             {canPost ? (

@@ -8,10 +8,16 @@ export async function GET(request, { params }) {
   const { id: workspaceId } = await params;
   const { searchParams } = new URL(request.url);
   const channel = searchParams.get('channel') || 'random';
+  const messageId = searchParams.get('messageId');
 
+  // Auth check via session client
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return badRequest('Unauthorized');
 
-  const { data, error } = await supabase
+  // Use admin client so profiles join always works regardless of RLS
+  const admin = createAdminClient();
+  let query = admin
     .from('chat_messages')
     .select(`
       id,
@@ -26,8 +32,15 @@ export async function GET(request, { params }) {
       )
     `)
     .eq('workspace_id', workspaceId)
-    .eq('channel', channel)
-    .order('created_at', { ascending: true });
+    .eq('channel', channel);
+
+  if (messageId) {
+    query = query.eq('id', messageId);
+  } else {
+    query = query.order('created_at', { ascending: true });
+  }
+
+  const { data, error } = await query;
 
   if (error) return fromSupabaseError(error);
 
