@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import logoImg from '../../../public/logo3.png';
@@ -72,6 +72,7 @@ export default function Sidebar() {
   } = useWorkspaceStore();
 
   const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
+  const agencyPickerRef = useRef(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
@@ -83,10 +84,14 @@ export default function Sidebar() {
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState(null);
 
-  // Close agency switcher on outside click
+  // Close agency switcher on outside click — use mousedown but only if outside the picker
   useEffect(() => {
     if (!agencySwitcherOpen) return;
-    const handler = () => setAgencySwitcherOpen(false);
+    const handler = (e) => {
+      if (agencyPickerRef.current && !agencyPickerRef.current.contains(e.target)) {
+        setAgencySwitcherOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [agencySwitcherOpen]);
@@ -421,6 +426,7 @@ export default function Sidebar() {
 
                   {agencySwitcherOpen && (
                     <div
+                      ref={agencyPickerRef}
                       style={{
                         position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, right: 0,
                         background: '#020912', border: '1.5px solid rgba(48,108,236,0.40)',
