@@ -1,7 +1,11 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 export async function listWorkspaces(activeAgencyId = null) {
+  // Use session client for auth checks, admin client for workspace query
+  // (admin client bypasses RLS so members can access agencies they've been added to)
   const supabase = await createClient();
+  const admin = createAdminClient();
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };
 
@@ -13,12 +17,10 @@ export async function listWorkspaces(activeAgencyId = null) {
 
   if (profileErr) return { data: null, error: profileErr };
 
-  let query = supabase.from('workspaces').select('*, agencies(logo_url)');
+  let targetAgencyId = activeAgencyId;
 
-  if (profile.role === 'superadmin') {
-    if (activeAgencyId) query = query.eq('agency_id', activeAgencyId);
-  } else {
-    // Try agency_members — falls back to profile.agency_id if table doesn't exist yet
+  if (profile.role !== 'superadmin') {
+    // Collect all agencies the user belongs to
     let agencyIds = [];
     try {
       const { data: memberships, error: memErr } = await supabase
@@ -34,12 +36,15 @@ export async function listWorkspaces(activeAgencyId = null) {
     if (agencyIds.length === 0 && profile.agency_id) agencyIds = [profile.agency_id];
     if (agencyIds.length === 0) return { data: [], error: null };
 
-    const targetId = activeAgencyId && agencyIds.includes(activeAgencyId)
+    // Validate the requested agency is one the user actually belongs to
+    targetAgencyId = activeAgencyId && agencyIds.includes(activeAgencyId)
       ? activeAgencyId
       : agencyIds[0];
-
-    query = query.eq('agency_id', targetId);
   }
+
+  // Use admin client so RLS doesn't block cross-agency access for members
+  let query = admin.from('workspaces').select('*, agencies(logo_url)');
+  if (targetAgencyId) query = query.eq('agency_id', targetAgencyId);
 
   const { data, error } = await query.order('created_at');
   const mapped = (data || []).map((w) => ({

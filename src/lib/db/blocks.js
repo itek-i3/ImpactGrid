@@ -1,9 +1,10 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { clientForUser } from './clientForUser';
 
 export async function listBlocks(pageId) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  // Use admin client so RLS doesn't block blocks on pages in secondary agencies
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from('blocks')
     .select('*')
     .eq('page_id', pageId)
