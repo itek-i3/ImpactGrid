@@ -18,15 +18,19 @@ export async function listWorkspaces(activeAgencyId = null) {
   if (profile.role === 'superadmin') {
     if (activeAgencyId) query = query.eq('agency_id', activeAgencyId);
   } else {
-    // Look up all agencies the user belongs to via agency_members
-    const { data: memberships } = await supabase
-      .from('agency_members')
-      .select('agency_id')
-      .eq('user_id', user.id);
+    // Try agency_members — falls back to profile.agency_id if table doesn't exist yet
+    let agencyIds = [];
+    try {
+      const { data: memberships, error: memErr } = await supabase
+        .from('agency_members')
+        .select('agency_id')
+        .eq('user_id', user.id);
 
-    let agencyIds = (memberships || []).map((m) => m.agency_id);
+      if (!memErr && memberships) {
+        agencyIds = memberships.map((m) => m.agency_id);
+      }
+    } catch (_) {}
 
-    // Fallback to profile.agency_id for users not yet in agency_members
     if (agencyIds.length === 0 && profile.agency_id) agencyIds = [profile.agency_id];
     if (agencyIds.length === 0) return { data: [], error: null };
 

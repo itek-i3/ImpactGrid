@@ -16,27 +16,32 @@ export async function GET() {
 
   const supabase = await createClient();
 
-  const [profilesRes, membershipsRes] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
-      .order('full_name'),
-    supabase
-      .from('agency_members')
-      .select('user_id, agency_id, agency:agency_id(id, name, slug)'),
-  ]);
+  const { data: profiles, error: profilesErr } = await supabase
+    .from('profiles')
+    .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
+    .order('full_name');
 
-  if (profilesRes.error) return fromSupabaseError(profilesRes.error);
+  if (profilesErr) return fromSupabaseError(profilesErr);
 
+  // Try agency_members — falls back gracefully if table doesn't exist yet
   const byUser = {};
-  (membershipsRes.data || []).forEach((m) => {
-    if (!byUser[m.user_id]) byUser[m.user_id] = [];
-    byUser[m.user_id].push({ id: m.agency_id, name: m.agency?.name, slug: m.agency?.slug });
-  });
+  try {
+    const { data: memberships, error: memErr } = await supabase
+      .from('agency_members')
+      .select('user_id, agency_id, agency:agency_id(id, name, slug)');
 
-  const data = (profilesRes.data || []).map((p) => ({
+    if (!memErr && memberships) {
+      memberships.forEach((m) => {
+        if (!byUser[m.user_id]) byUser[m.user_id] = [];
+        byUser[m.user_id].push({ id: m.agency_id, name: m.agency?.name, slug: m.agency?.slug });
+      });
+    }
+  } catch (_) {}
+
+  const data = (profiles || []).map((p) => ({
     ...p,
-    agencyMemberships: byUser[p.id] || [],
+    // Fall back to profile.agency if no agency_members yet
+    agencyMemberships: byUser[p.id] || (p.agency ? [{ id: p.agency_id, name: p.agency.name }] : []),
   }));
 
   return ok(data);
