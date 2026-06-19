@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 export async function listAgencies() {
   const supabase = await createClient();
@@ -25,8 +25,8 @@ export async function listUserAgencies() {
 }
 
 export async function addAgencyMember(agencyId, userId, role = 'member') {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from('agency_members')
     .upsert({ agency_id: agencyId, user_id: userId, role }, { onConflict: 'user_id,agency_id' })
     .select()
@@ -35,8 +35,8 @@ export async function addAgencyMember(agencyId, userId, role = 'member') {
 }
 
 export async function removeAgencyMember(agencyId, userId) {
-  const supabase = await createClient();
-  const { error } = await supabase
+  const admin = createAdminClient();
+  const { error } = await admin
     .from('agency_members')
     .delete()
     .eq('agency_id', agencyId)
@@ -45,8 +45,8 @@ export async function removeAgencyMember(agencyId, userId) {
 }
 
 export async function listAgencyMembers(agencyId) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from('agency_members')
     .select('role, joined_at, user:user_id(id, email, raw_user_meta_data)')
     .eq('agency_id', agencyId)

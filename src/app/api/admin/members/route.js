@@ -1,7 +1,7 @@
-import { ok, created, noContent, badRequest, forbidden, unauthorized, fromSupabaseError } from '@/lib/api/response';
+import { ok, created, noContent, badRequest, forbidden, unauthorized, fromSupabaseError, serverError } from '@/lib/api/response';
 import { getUserProfile } from '@/lib/db/profiles';
 import { addAgencyMember, removeAgencyMember } from '@/lib/db/agencies';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 async function requireSuperadmin() {
   const { data: profile, error } = await getUserProfile();
@@ -11,40 +11,40 @@ async function requireSuperadmin() {
 }
 
 export async function GET() {
-  const { error } = await requireSuperadmin();
-  if (error) return error;
-
-  const supabase = await createClient();
-
-  const { data: profiles, error: profilesErr } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
-    .order('full_name');
-
-  if (profilesErr) return fromSupabaseError(profilesErr);
-
-  // Try agency_members — falls back gracefully if table doesn't exist yet
-  const byUser = {};
   try {
-    const { data: memberships, error: memErr } = await supabase
+    const { error } = await requireSuperadmin();
+    if (error) return error;
+
+    const supabase = await createClient();
+    const admin = createAdminClient();
+
+    const { data: profiles, error: profilesErr } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
+      .order('full_name');
+
+    if (profilesErr) return fromSupabaseError(profilesErr);
+
+    // Use admin client so RLS doesn't block agency_members read
+    const byUser = {};
+    const { data: memberships } = await admin
       .from('agency_members')
       .select('user_id, agency_id, agency:agency_id(id, name, slug)');
 
-    if (!memErr && memberships) {
-      memberships.forEach((m) => {
-        if (!byUser[m.user_id]) byUser[m.user_id] = [];
-        byUser[m.user_id].push({ id: m.agency_id, name: m.agency?.name, slug: m.agency?.slug });
-      });
-    }
-  } catch (_) {}
+    (memberships || []).forEach((m) => {
+      if (!byUser[m.user_id]) byUser[m.user_id] = [];
+      byUser[m.user_id].push({ id: m.agency_id, name: m.agency?.name, slug: m.agency?.slug });
+    });
 
-  const data = (profiles || []).map((p) => ({
-    ...p,
-    // Fall back to profile.agency if no agency_members yet
-    agencyMemberships: byUser[p.id] || (p.agency ? [{ id: p.agency_id, name: p.agency.name }] : []),
-  }));
+    const data = (profiles || []).map((p) => ({
+      ...p,
+      agencyMemberships: byUser[p.id] || (p.agency ? [{ id: p.agency_id, name: p.agency?.name }] : []),
+    }));
 
-  return ok(data);
+    return ok(data);
+  } catch (err) {
+    return serverError(err);
+  }
 }
 
 export async function PATCH(request) {
