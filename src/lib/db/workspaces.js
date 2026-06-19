@@ -1,11 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 
-export async function listWorkspaces() {
+export async function listWorkspaces(activeAgencyId = null) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };
 
-  // Fetch the user's agency_id and role
   const { data: profile, error: profileErr } = await supabase
     .from('profiles')
     .select('role, agency_id')
@@ -16,16 +15,29 @@ export async function listWorkspaces() {
 
   let query = supabase.from('workspaces').select('*, agencies(logo_url)');
 
-  if (profile.role !== 'superadmin') {
-    if (!profile.agency_id) {
-      return { data: [], error: null };
-    }
-    query = query.eq('agency_id', profile.agency_id);
+  if (profile.role === 'superadmin') {
+    if (activeAgencyId) query = query.eq('agency_id', activeAgencyId);
+  } else {
+    // Look up all agencies the user belongs to via agency_members
+    const { data: memberships } = await supabase
+      .from('agency_members')
+      .select('agency_id')
+      .eq('user_id', user.id);
+
+    let agencyIds = (memberships || []).map((m) => m.agency_id);
+
+    // Fallback to profile.agency_id for users not yet in agency_members
+    if (agencyIds.length === 0 && profile.agency_id) agencyIds = [profile.agency_id];
+    if (agencyIds.length === 0) return { data: [], error: null };
+
+    const targetId = activeAgencyId && agencyIds.includes(activeAgencyId)
+      ? activeAgencyId
+      : agencyIds[0];
+
+    query = query.eq('agency_id', targetId);
   }
 
   const { data, error } = await query.order('created_at');
-
-  // Flatten agency logo onto the workspace object
   const mapped = (data || []).map((w) => ({
     ...w,
     logoUrl: w.agencies?.logo_url || null,

@@ -1,5 +1,6 @@
-import { ok, badRequest, forbidden, unauthorized, fromSupabaseError } from '@/lib/api/response';
+import { ok, created, noContent, badRequest, forbidden, unauthorized, fromSupabaseError } from '@/lib/api/response';
 import { getUserProfile } from '@/lib/db/profiles';
+import { addAgencyMember, removeAgencyMember } from '@/lib/db/agencies';
 import { createClient } from '@/lib/supabase/server';
 
 async function requireSuperadmin() {
@@ -14,12 +15,30 @@ export async function GET() {
   if (error) return error;
 
   const supabase = await createClient();
-  const { data, error: dbError } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
-    .order('full_name');
 
-  if (dbError) return fromSupabaseError(dbError);
+  const [profilesRes, membershipsRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
+      .order('full_name'),
+    supabase
+      .from('agency_members')
+      .select('user_id, agency_id, agency:agency_id(id, name, slug)'),
+  ]);
+
+  if (profilesRes.error) return fromSupabaseError(profilesRes.error);
+
+  const byUser = {};
+  (membershipsRes.data || []).forEach((m) => {
+    if (!byUser[m.user_id]) byUser[m.user_id] = [];
+    byUser[m.user_id].push({ id: m.agency_id, name: m.agency?.name, slug: m.agency?.slug });
+  });
+
+  const data = (profilesRes.data || []).map((p) => ({
+    ...p,
+    agencyMemberships: byUser[p.id] || [],
+  }));
+
   return ok(data);
 }
 
@@ -45,4 +64,31 @@ export async function PATCH(request) {
 
   if (dbError) return fromSupabaseError(dbError);
   return ok(data);
+}
+
+export async function POST(request) {
+  const { error } = await requireSuperadmin();
+  if (error) return error;
+
+  const body = await request.json().catch(() => ({}));
+  const { userId, agencyId, role = 'member' } = body;
+  if (!userId || !agencyId) return badRequest('userId and agencyId are required');
+
+  const { data, error: dbError } = await addAgencyMember(agencyId, userId, role);
+  if (dbError) return fromSupabaseError(dbError);
+  return created(data);
+}
+
+export async function DELETE(request) {
+  const { error } = await requireSuperadmin();
+  if (error) return error;
+
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+  const agencyId = searchParams.get('agencyId');
+  if (!userId || !agencyId) return badRequest('userId and agencyId are required');
+
+  const { error: dbError } = await removeAgencyMember(agencyId, userId);
+  if (dbError) return fromSupabaseError(dbError);
+  return noContent();
 }

@@ -1,8 +1,10 @@
 import { ok, created, badRequest, serverError, fromSupabaseError } from '@/lib/api/response';
 import { listWorkspaces, createWorkspace } from '@/lib/db/workspaces';
 
-export async function GET() {
-  const { data, error } = await listWorkspaces();
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const agencyId = searchParams.get('agencyId') || null;
+  const { data, error } = await listWorkspaces(agencyId);
   if (error) return fromSupabaseError(error);
   return ok(data);
 }

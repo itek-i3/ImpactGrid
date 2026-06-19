@@ -20,6 +20,8 @@ import {
   ShieldCheck,
   MessageSquare,
   ChevronRight,
+  Building2,
+  Check,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -64,8 +66,12 @@ export default function Sidebar() {
     restorePage,
     permanentlyDeletePage,
     userProfile,
+    agencies,
+    activeAgencyId,
+    switchAgency,
   } = useWorkspaceStore();
 
+  const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
@@ -76,6 +82,14 @@ export default function Sidebar() {
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState(null);
+
+  // Close agency switcher on outside click
+  useEffect(() => {
+    if (!agencySwitcherOpen) return;
+    const handler = () => setAgencySwitcherOpen(false);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [agencySwitcherOpen]);
 
   // Auto-expand chat and track active channel when on /chat
   useEffect(() => {
@@ -389,6 +403,66 @@ export default function Sidebar() {
                   }} />
                 </button>
               </div>
+
+              {/* Agency Switcher — only shown when user belongs to multiple agencies */}
+              {agencies.length > 1 && (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className="ig-nav"
+                    onClick={() => setAgencySwitcherOpen((v) => !v)}
+                    style={{ width: '100%' }}
+                  >
+                    <Building2 size={15} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                      {agencies.find((a) => a.id === activeAgencyId)?.name || 'Switch Agency'}
+                    </span>
+                    <ChevronRight size={12} style={{ flexShrink: 0, color: '#3D5A8A', transition: 'transform .2s', transform: agencySwitcherOpen ? 'rotate(90deg)' : 'none' }} />
+                  </button>
+
+                  {agencySwitcherOpen && (
+                    <div
+                      style={{
+                        position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, right: 0,
+                        background: '#020912', border: '1.5px solid rgba(48,108,236,0.40)',
+                        borderRadius: 12, padding: 6,
+                        boxShadow: '0 16px 48px rgba(0,0,0,0.8)',
+                        zIndex: 9000,
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#4a6fa5', textTransform: 'uppercase', letterSpacing: '.08em', padding: '4px 8px 6px' }}>
+                        Your Agencies
+                      </div>
+                      {agencies.map((agency) => {
+                        const isActive = agency.id === activeAgencyId;
+                        return (
+                          <button
+                            key={agency.id}
+                            onClick={() => { switchAgency(agency.id); setAgencySwitcherOpen(false); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              width: '100%', padding: '8px 10px', borderRadius: 8, border: 'none',
+                              background: isActive ? 'rgba(48,108,236,0.20)' : 'none',
+                              color: isActive ? '#E2EEFF' : '#C8DEFF',
+                              cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: isActive ? 600 : 400,
+                              transition: 'background .12s',
+                            }}
+                            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; }}
+                            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'none'; }}
+                          >
+                            {agency.logo_url ? (
+                              <img src={agency.logo_url} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+                            ) : (
+                              <span style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(48,108,236,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 11 }}>🏢</span>
+                            )}
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agency.name}</span>
+                            {isActive && <Check size={13} style={{ color: '#306CEC', flexShrink: 0 }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* More: Trash + Settings in a dropdown */}
               <Dropdown

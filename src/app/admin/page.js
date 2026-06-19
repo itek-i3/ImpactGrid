@@ -19,6 +19,9 @@ function AdminPanelContent() {
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [updatingRole, setUpdatingRole] = useState(null);
+  const [agencyPickerOpen, setAgencyPickerOpen] = useState(null); // userId
+  const [addingAgency, setAddingAgency] = useState(null);   // userId
+  const [removingAgency, setRemovingAgency] = useState(null); // `${userId}-${agencyId}`
 
   // Form state (create agency)
   const [name, setName] = useState('');
@@ -124,6 +127,49 @@ function AdminPanelContent() {
     } finally {
       setUpdatingRole(null);
     }
+  };
+
+  const handleAddToAgency = async (userId, agencyId) => {
+    setAddingAgency(userId);
+    try {
+      const res = await fetch('/os/api/admin/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, agencyId }),
+      });
+      if (res.ok) {
+        const agency = agencies.find((a) => a.id === agencyId);
+        setMembers((prev) => prev.map((m) =>
+          m.id === userId
+            ? { ...m, agencyMemberships: [...(m.agencyMemberships || []), { id: agencyId, name: agency?.name }] }
+            : m
+        ));
+        toast.success('Agency Added', `User added to ${agency?.name}.`);
+      } else {
+        const json = await res.json();
+        toast.error('Failed', json.error?.message || 'Could not add to agency.');
+      }
+    } catch { toast.error('Error', 'A network error occurred.'); }
+    finally { setAddingAgency(null); setAgencyPickerOpen(null); }
+  };
+
+  const handleRemoveFromAgency = async (userId, agencyId) => {
+    const key = `${userId}-${agencyId}`;
+    setRemovingAgency(key);
+    try {
+      const res = await fetch(`/os/api/admin/members?userId=${userId}&agencyId=${agencyId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMembers((prev) => prev.map((m) =>
+          m.id === userId
+            ? { ...m, agencyMemberships: (m.agencyMemberships || []).filter((a) => a.id !== agencyId) }
+            : m
+        ));
+        toast.success('Removed', 'User removed from agency.');
+      } else {
+        toast.error('Failed', 'Could not remove from agency.');
+      }
+    } catch { toast.error('Error', 'A network error occurred.'); }
+    finally { setRemovingAgency(null); }
   };
 
   useEffect(() => {
@@ -440,7 +486,7 @@ function AdminPanelContent() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                       <tr style={{ borderBottom: '1.5px solid rgba(48,108,236,0.20)' }}>
-                        {['Name', 'Email', 'Agency', 'Role'].map((h) => (
+                        {['Name', 'Email', 'Agencies', 'Role'].map((h) => (
                           <th key={h} style={{ padding: '0 12px 12px', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                         ))}
                       </tr>
@@ -457,7 +503,66 @@ function AdminPanelContent() {
                             </div>
                           </td>
                           <td style={{ padding: '13px 12px', fontSize: 13, color: '#7EB3FF' }}>{member.email}</td>
-                          <td style={{ padding: '13px 12px', fontSize: 13, color: 'rgba(148,180,255,0.70)' }}>{member.agency?.name || '—'}</td>
+                          <td style={{ padding: '13px 12px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+                              {(member.agencyMemberships || []).length === 0 && (
+                                <span style={{ fontSize: 12, color: 'rgba(148,180,255,0.40)' }}>—</span>
+                              )}
+                              {(member.agencyMemberships || []).map((ag) => {
+                                const removeKey = `${member.id}-${ag.id}`;
+                                return (
+                                  <span key={ag.id} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                    background: 'rgba(48,108,236,0.15)', border: '1px solid rgba(48,108,236,0.30)',
+                                    borderRadius: 6, padding: '2px 8px', fontSize: 12, color: '#7EB3FF', fontWeight: 500,
+                                  }}>
+                                    {ag.name}
+                                    <button
+                                      onClick={() => handleRemoveFromAgency(member.id, ag.id)}
+                                      disabled={removingAgency === removeKey}
+                                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 14, opacity: removingAgency === removeKey ? 0.4 : 0.7 }}
+                                      title="Remove from agency"
+                                    >×</button>
+                                  </span>
+                                );
+                              })}
+
+                              {/* Add to agency picker */}
+                              <div style={{ position: 'relative' }}>
+                                {agencyPickerOpen === member.id ? (
+                                  <select
+                                    autoFocus
+                                    defaultValue=""
+                                    onChange={(e) => { if (e.target.value) handleAddToAgency(member.id, e.target.value); }}
+                                    onBlur={() => setAgencyPickerOpen(null)}
+                                    disabled={addingAgency === member.id}
+                                    style={{
+                                      background: '#0d1b38', border: '1.5px solid rgba(48,108,236,0.50)',
+                                      borderRadius: 8, color: '#C8DEFF', fontSize: 12,
+                                      padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', outline: 'none',
+                                    }}
+                                  >
+                                    <option value="" disabled>Pick agency…</option>
+                                    {agencies
+                                      .filter((a) => !(member.agencyMemberships || []).some((m) => m.id === a.id))
+                                      .map((a) => <option key={a.id} value={a.id}>{a.name}</option>)
+                                    }
+                                  </select>
+                                ) : (
+                                  <button
+                                    onClick={() => setAgencyPickerOpen(member.id)}
+                                    title="Add to another agency"
+                                    style={{
+                                      background: 'rgba(48,108,236,0.10)', border: '1px dashed rgba(48,108,236,0.40)',
+                                      borderRadius: 6, color: '#5B9BFF', cursor: 'pointer',
+                                      fontSize: 16, lineHeight: 1, width: 24, height: 24,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                                    }}
+                                  >+</button>
+                                )}
+                              </div>
+                            </div>
+                          </td>
                           <td style={{ padding: '13px 12px' }}>
                             <select
                               value={member.role || 'member'}

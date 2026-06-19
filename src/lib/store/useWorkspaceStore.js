@@ -25,6 +25,10 @@ export const useWorkspaceStore = create((set, get) => ({
   isDemo: true,
   userProfile: null,
 
+  // Multi-agency
+  agencies: [],
+  activeAgencyId: null,
+
   // Page tree
   pages: [],
   currentPage: null,
@@ -45,7 +49,14 @@ export const useWorkspaceStore = create((set, get) => ({
       if (res.ok) {
         const json = await res.json();
         if (json.data) {
-          set({ userProfile: json.data, isDemo: false });
+          const agencies = json.data.agencies || [];
+          // Restore last active agency from localStorage
+          const savedAgencyId = typeof window !== 'undefined'
+            ? localStorage.getItem('activeAgencyId')
+            : null;
+          const validSaved = agencies.find((a) => a.id === savedAgencyId);
+          const activeAgencyId = validSaved?.id || agencies[0]?.id || null;
+          set({ userProfile: json.data, isDemo: false, agencies, activeAgencyId });
           return json.data;
         }
       }
@@ -54,6 +65,12 @@ export const useWorkspaceStore = create((set, get) => ({
     }
     set({ isDemo: true });
     return null;
+  },
+
+  switchAgency: async (agencyId) => {
+    if (typeof window !== 'undefined') localStorage.setItem('activeAgencyId', agencyId);
+    set({ activeAgencyId: agencyId, workspace: null, workspaces: [], pages: [], currentPage: null });
+    await get().loadWorkspace(null, agencyId);
   },
 
   setWorkspace: (workspace) => set({ workspace }),
@@ -105,14 +122,19 @@ export const useWorkspaceStore = create((set, get) => ({
 
   // ── Page CRUD (connected to Next.js REST API routes) ──
 
-  loadWorkspace: async (workspaceId) => {
+  loadWorkspace: async (workspaceId, agencyId = null) => {
     if (isDemoMode()) {
       return; // Handled by initDemoWorkspace
     }
 
+    const effectiveAgencyId = agencyId || get().activeAgencyId;
+
     set({ isLoading: true });
     try {
-      const wsRes = await fetch('/os/api/workspaces');
+      const url = effectiveAgencyId
+        ? `/os/api/workspaces?agencyId=${effectiveAgencyId}`
+        : '/os/api/workspaces';
+      const wsRes = await fetch(url);
       if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
       const wsJson = await wsRes.json();
       let workspaces = wsJson.data || [];
