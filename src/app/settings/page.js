@@ -56,17 +56,14 @@ export default function SettingsPage() {
   };
 
   const uploadPhoto = async (file) => {
-    if (!file || !userId) return;
+    if (!file) return;
     setUploading(true);
-    const sb = createClient();
-    const ext = file.name.split('.').pop();
-    const path = `${userId}/avatar.${ext}`;
-    const { error } = await sb.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
-    if (error) { flash(error.message, false); setUploading(false); return; }
-    const { data: { publicUrl } } = sb.storage.from('avatars').getPublicUrl(path);
-    const url = `${publicUrl}?t=${Date.now()}`;
-    await sb.from('profiles').update({ avatar_url: url }).eq('id', userId);
-    setProfile((p) => ({ ...p, avatar_url: url }));
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/os/api/profile/avatar', { method: 'POST', body: form });
+    const json = await res.json();
+    if (!res.ok) { flash(json.error || 'Upload failed', false); setUploading(false); return; }
+    setProfile((p) => ({ ...p, avatar_url: json.url }));
     setUploading(false);
     flash('Photo updated');
   };
