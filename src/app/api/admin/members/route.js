@@ -20,7 +20,7 @@ export async function GET() {
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, agency_id, agency:agency_id(id, name, slug)')
+      .select('id, full_name, email, role, avatar_url, agency_id, agency:agency_id(id, name, slug)')
       .order('full_name');
 
     if (profilesErr) return fromSupabaseError(profilesErr);

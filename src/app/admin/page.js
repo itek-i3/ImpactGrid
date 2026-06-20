@@ -496,8 +496,10 @@ function AdminPanelContent() {
                         <tr key={member.id} className="agency-row" style={{ borderBottom: '1px solid rgba(48,108,236,0.10)', transition: 'background .15s' }}>
                           <td style={{ padding: '13px 12px', fontWeight: 600, color: '#fff', fontSize: 14 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#7EB3FF', flexShrink: 0 }}>
-                                {(member.full_name || member.email || '?').charAt(0).toUpperCase()}
+                              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#7EB3FF', flexShrink: 0, overflow: 'hidden' }}>
+                                {member.avatar_url
+                                  ? <img src={member.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : (member.full_name || member.email || '?').charAt(0).toUpperCase()}
                               </div>
                               {member.full_name || '—'}
                             </div>
@@ -697,20 +699,22 @@ function AdminPanelContent() {
                             </span>
                           </td>
                           <td style={{ padding: '14px 12px' }}>
-                            {agency.workspaceId ? (
-                              <Link href={`/?workspaceId=${agency.workspaceId}`} style={{
+                            <button
+                              onClick={() => {
+                                if (typeof window !== 'undefined') localStorage.setItem('activeAgencyId', agency.id);
+                                router.push('/');
+                              }}
+                              style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 5,
                                 padding: '5px 12px', borderRadius: 8,
                                 background: 'rgba(48,108,236,0.18)',
                                 border: '1px solid rgba(48,108,236,0.40)',
                                 color: '#7EB3FF', fontSize: 12, fontWeight: 600,
-                                textDecoration: 'none', whiteSpace: 'nowrap',
-                              }}>
-                                <ExternalLink size={11} /> View
-                              </Link>
-                            ) : (
-                              <span style={{ fontSize: 12, color: '#3D5A8A' }}>—</span>
-                            )}
+                                cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <ExternalLink size={11} /> View
+                            </button>
                           </td>
                         </tr>
                       ))}
