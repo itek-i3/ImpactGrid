@@ -183,7 +183,7 @@ export default function Sidebar() {
   }, [addPage, setCurrentPage, pathname, router]);
 
   const handleSettingsClick = () => {
-    if (workspace) router.push(`/${workspace.id}/settings`);
+    router.push('/settings');
   };
 
 

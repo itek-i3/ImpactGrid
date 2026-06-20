@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Search, Bell, Plus, PanelLeft, Star, Share2,
+  Search, Bell, Plus, PanelLeft, Star, Share2, Undo2, Redo2,
+  LogOut, Settings, User,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useToast } from '@/components/ui/Toast';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Topbar() {
   const router = useRouter();
@@ -21,7 +23,11 @@ export default function Topbar() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [showPublishMenu, setShowPublishMenu] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [profileMenuPos, setProfileMenuPos] = useState({ top: 0, right: 0 });
   const [origin, setOrigin] = useState('');
+  const profileBtnRef = useRef(null);
+  const profileMenuRef = useRef(null);
 
   useEffect(() => {
     let unsubscribe;
@@ -44,6 +50,23 @@ export default function Topbar() {
     document.addEventListener('click', h);
     return () => document.removeEventListener('click', h);
   }, [showPublishMenu]);
+
+  useEffect(() => {
+    if (!showProfileMenu) return;
+    const h = (e) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [showProfileMenu]);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   const saveLabel = (() => {
     if (isSaving) return 'Saving…';
@@ -79,6 +102,28 @@ export default function Topbar() {
       <button className="ig-kbtn" onClick={toggleSidebar} title="Toggle sidebar">
         <PanelLeft size={17} />
       </button>
+
+      {/* Undo / Redo */}
+      {!isReadOnly && (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            className="ig-kbtn"
+            title="Undo"
+            onClick={() => document.execCommand('undo')}
+            style={{ ...btnStyle, width: 32, height: 32 }}
+          >
+            <Undo2 size={15} />
+          </button>
+          <button
+            className="ig-kbtn"
+            title="Redo"
+            onClick={() => document.execCommand('redo')}
+            style={{ ...btnStyle, width: 32, height: 32 }}
+          >
+            <Redo2 size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Page title */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -221,6 +266,116 @@ export default function Topbar() {
         >
           <Plus size={16} /> New
         </button>
+      )}
+
+      {/* Profile */}
+      {userProfile && (
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            ref={profileBtnRef}
+            onClick={() => {
+              if (!showProfileMenu && profileBtnRef.current) {
+                const rect = profileBtnRef.current.getBoundingClientRect();
+                setProfileMenuPos({ top: rect.bottom + 10, right: window.innerWidth - rect.right });
+              }
+              setShowProfileMenu((v) => !v);
+            }}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+              border: `2px solid ${showProfileMenu ? '#306CEC' : 'rgba(48,108,236,0.45)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer',
+              overflow: 'hidden', boxShadow: '0 0 0 1px rgba(255,255,255,0.06)',
+              padding: 0, transition: 'border-color .15s',
+            }}
+          >
+            {userProfile.avatar_url ? (
+              <img src={userProfile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              (userProfile.full_name || userProfile.email || '?').charAt(0).toUpperCase()
+            )}
+          </button>
+
+          {showProfileMenu && (
+            <div ref={profileMenuRef} style={{
+              position: 'fixed', top: profileMenuPos.top, right: profileMenuPos.right,
+              background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 240, overflow: 'hidden',
+              zIndex: 9999,
+            }}>
+              {/* Header */}
+              <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                    background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, fontWeight: 700, color: '#fff', overflow: 'hidden',
+                  }}>
+                    {userProfile.avatar_url
+                      ? <img src={userProfile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : (userProfile.full_name || userProfile.email || '?').charAt(0).toUpperCase()
+                    }
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E2EEFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {userProfile.full_name || 'No name set'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {userProfile.email}
+                    </div>
+                  </div>
+                </div>
+                <div style={{
+                  marginTop: 10, display: 'inline-flex', alignItems: 'center',
+                  padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                  background: 'rgba(48,108,236,0.15)', color: '#7EB3FF',
+                  border: '1px solid rgba(48,108,236,0.25)', textTransform: 'capitalize',
+                }}>
+                  {userProfile.role || 'member'}
+                </div>
+              </div>
+
+              {/* Menu items */}
+              <div style={{ padding: '6px 0' }}>
+                {[
+                  { icon: <User size={14} />, label: 'My Profile', onClick: () => { router.push('/settings'); setShowProfileMenu(false); } },
+                  { icon: <Settings size={14} />, label: 'Settings', onClick: () => { router.push('/settings'); setShowProfileMenu(false); } },
+                ].map((item) => (
+                  <button key={item.label} type="button" onClick={item.onClick} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '9px 16px', background: 'none', border: 'none',
+                    color: '#9DB8DD', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                    transition: '.12s', textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; e.currentTarget.style.color = '#E2EEFF'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#9DB8DD'; }}
+                  >
+                    <span style={{ color: '#4A6FA5' }}>{item.icon}</span>
+                    {item.label}
+                  </button>
+                ))}
+
+                <div style={{ height: 1, background: 'rgba(48,108,236,0.12)', margin: '4px 0' }} />
+
+                <button type="button" onClick={handleSignOut} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '9px 16px', background: 'none', border: 'none',
+                  color: '#E0485A', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                  transition: '.12s', textAlign: 'left',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(224,72,90,0.10)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                >
+                  <LogOut size={14} />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </header>
   );
