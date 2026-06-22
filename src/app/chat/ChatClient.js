@@ -22,6 +22,7 @@ function ChatContent() {
     initDemoWorkspace,
     userProfile,
     isDemo,
+    activeAgencyId,
   } = useWorkspaceStore();
 
   const urlChannel = searchParams.get('channel') || 'daily_tasks';
@@ -33,6 +34,7 @@ function ChatContent() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [reactions, setReactions] = useState({});
+  const [agencyMembers, setAgencyMembers] = useState([]);
   const [reactPickerOpen, setReactPickerOpen] = useState(null);
   const [reactPickerPos, setReactPickerPos] = useState({ top: 0, left: 0, right: 'auto', alignRight: false });
   const [reactMoreOpen, setReactMoreOpen] = useState(null);
@@ -64,6 +66,35 @@ function ChatContent() {
 
   // Sync channel when URL param changes (clicking from sidebar)
   useEffect(() => { setActiveChannel(urlChannel); }, [urlChannel]);
+
+  // Fetch agency members to resolve partner info for DMs
+  useEffect(() => {
+    const mockMembers = [
+      { id: 'admin-1', full_name: 'System Administrator', role: 'superadmin', email: 'admin@example.com' },
+      { id: 'manager-1', full_name: 'John Doe', role: 'manager', email: 'john@example.com' },
+      { id: 'member-1', full_name: 'Alice Smith', role: 'member', email: 'alice@example.com' },
+    ];
+
+    if (isDemo) {
+      setAgencyMembers(mockMembers);
+      return;
+    }
+    const agencyIdToUse = workspace?.agency_id || activeAgencyId;
+    if (!agencyIdToUse || !userProfile) return;
+
+    async function loadMembers() {
+      const sb = createClient();
+      const { data, error } = await sb
+        .from('profiles')
+        .select('id, full_name, email, role, avatar_url')
+        .eq('agency_id', agencyIdToUse)
+        .eq('approved', true);
+      if (!error && data) {
+        setAgencyMembers(data);
+      }
+    }
+    loadMembers();
+  }, [workspace?.agency_id, activeAgencyId, userProfile, isDemo]);
 
   // Close emoji picker on outside click
   useEffect(() => {
@@ -364,6 +395,31 @@ function ChatContent() {
     }
   };
 
+  const getChannelHeaderInfo = () => {
+    const channelObj = CHANNELS.find((c) => c.id === activeChannel);
+    if (channelObj) return { title: channelObj.label, desc: channelObj.desc, icon: channelObj.icon };
+
+    if (activeChannel?.startsWith('dm:')) {
+      const parts = activeChannel.split(':');
+      const partnerId = parts[1] === userProfile?.id ? parts[2] : parts[1];
+      const partner = agencyMembers.find((m) => m.id === partnerId);
+      const displayName = partner?.full_name || partner?.email || 'Direct Message';
+      return {
+        title: displayName,
+        desc: `Private conversation with ${displayName}`,
+        icon: partner?.avatar_url ? (
+          <img src={partner.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          '👤'
+        ),
+      };
+    }
+
+    return { title: 'Chat Room', desc: 'Team communication', icon: '💬' };
+  };
+
+  const headerInfo = getChannelHeaderInfo();
+
   // Group messages by date for separators
   let lastDate = null;
 
@@ -385,14 +441,14 @@ function ChatContent() {
           <div className={chatStyles.chatContainer}>
             {/* Header */}
             <div className={chatStyles.chatHeader}>
-              <div className={chatStyles.chatHeaderAvatar}>
-                {CHANNELS.find(c => c.id === activeChannel)?.icon || '💬'}
+              <div className={chatStyles.chatHeaderAvatar} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {headerInfo.icon}
               </div>
               <div className={chatStyles.chatHeaderInfo}>
-                <div className={chatStyles.chatTitle}>{CHANNELS.find(c => c.id === activeChannel)?.label}</div>
-                <div className={chatStyles.chatSubTitle}>{CHANNELS.find(c => c.id === activeChannel)?.desc}</div>
+                <div className={chatStyles.chatTitle}>{headerInfo.title}</div>
+                <div className={chatStyles.chatSubTitle}>{headerInfo.desc}</div>
               </div>
-              {['manager', 'superadmin'].includes(userProfile?.role) && (
+              {['manager', 'superadmin'].includes(userProfile?.role) && !activeChannel.startsWith('dm:') && (
                 confirmClear ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 11, color: '#aaa' }}>Clear channel?</span>

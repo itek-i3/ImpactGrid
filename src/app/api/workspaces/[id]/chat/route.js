@@ -15,6 +15,22 @@ export async function GET(request, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return badRequest('Unauthorized');
 
+  // Secure DMs
+  if (channel.startsWith('dm:')) {
+    const parts = channel.split(':');
+    const isParticipant = parts[1] === user.id || parts[2] === user.id;
+    if (!isParticipant) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (profile?.role !== 'superadmin') {
+        return forbidden('You do not have access to this conversation');
+      }
+    }
+  }
+
   // Use admin client so profiles join always works regardless of RLS
   const admin = createAdminClient();
   let query = admin
@@ -69,18 +85,29 @@ export async function POST(request, { params }) {
   const { message, channel = 'random' } = body;
 
   if (!message || message.trim() === '') return badRequest('message is required');
-  if (!VALID_CHANNELS.includes(channel)) return badRequest('invalid channel');
+  
+  const isValidChannel = VALID_CHANNELS.includes(channel) || channel.startsWith('dm:');
+  if (!isValidChannel) return badRequest('invalid channel');
 
-  // Weekly tasks: only managers and superadmins can post
-  if (MANAGER_ONLY_CHANNELS.includes(channel)) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+  // DM channels: ensure the user is one of the participants
+  if (channel.startsWith('dm:')) {
+    const parts = channel.split(':');
+    const isParticipant = parts[1] === user.id || parts[2] === user.id;
+    if (!isParticipant) {
+      return forbidden('You can only post in DMs you are a participant of');
+    }
+  } else {
+    // Weekly tasks: only managers and superadmins can post
+    if (MANAGER_ONLY_CHANNELS.includes(channel)) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-    if (!profile || profile.role === 'member') {
-      return forbidden('Only managers can post in Weekly Tasks');
+      if (!profile || profile.role === 'member') {
+        return forbidden('Only managers can post in Weekly Tasks');
+      }
     }
   }
 
@@ -129,10 +156,17 @@ export async function DELETE(request, { params }) {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return badRequest('Unauthorized');
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (!profile || profile.role === 'member') return forbidden('Only managers can clear chat');
+  const isValidChannel = VALID_CHANNELS.includes(channel) || channel.startsWith('dm:');
+  if (!isValidChannel) return badRequest('invalid channel');
 
-  if (!VALID_CHANNELS.includes(channel)) return badRequest('invalid channel');
+  if (channel.startsWith('dm:')) {
+    const parts = channel.split(':');
+    const isParticipant = parts[1] === user.id || parts[2] === user.id;
+    if (!isParticipant) return forbidden('You do not have access to this conversation');
+  } else {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+    if (!profile || profile.role === 'member') return forbidden('Only managers can clear chat');
+  }
 
   const { error } = await supabase
     .from('chat_messages')

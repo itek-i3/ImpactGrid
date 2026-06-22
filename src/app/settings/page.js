@@ -28,13 +28,17 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
+  const [agencyMembers, setAgencyMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [updatingMember, setUpdatingMember] = useState(null);
+
   useEffect(() => {
     const sb = createClient();
     sb.auth.getUser().then(({ data: { user } }) => {
       if (!user) { router.push('/login'); return; }
       setUserId(user.id);
       sb.from('profiles')
-        .select('full_name, role, avatar_url, phone, agency:agency_id(name)')
+        .select('full_name, role, avatar_url, phone, agency_id, agency:agency_id(name)')
         .eq('id', user.id).single()
         .then(({ data }) => {
           const p = { ...data, email: user.email };
@@ -93,6 +97,78 @@ export default function SettingsPage() {
     const { error } = await createClient().auth.updateUser({ password: newPw });
     setChangingPw(false);
     error ? flash(error.message, false) : (flash('Password changed'), setNewPw(''), setShowPwRow(false));
+  };
+
+  useEffect(() => {
+    if (!profile || !['manager', 'superadmin'].includes(profile.role) || !profile.agency_id) return;
+
+    setLoadingMembers(true);
+    const sb = createClient();
+    sb.from('profiles')
+      .select('id, full_name, email, role, avatar_url, approved, phone')
+      .eq('agency_id', profile.agency_id)
+      .order('full_name')
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setAgencyMembers(data);
+        }
+        setLoadingMembers(false);
+      });
+  }, [profile]);
+
+  const handleApproveMember = async (targetId) => {
+    setUpdatingMember(targetId);
+    const sb = createClient();
+    const { error } = await sb
+      .from('profiles')
+      .update({ approved: true })
+      .eq('id', targetId);
+
+    if (error) {
+      flash(error.message, false);
+    } else {
+      setAgencyMembers((prev) =>
+        prev.map((m) => (m.id === targetId ? { ...m, approved: true } : m))
+      );
+      flash('Member approved successfully');
+    }
+    setUpdatingMember(null);
+  };
+
+  const handleRoleChange = async (targetId, newRole) => {
+    setUpdatingMember(targetId);
+    const sb = createClient();
+    const { error } = await sb
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', targetId);
+
+    if (error) {
+      flash(error.message, false);
+    } else {
+      setAgencyMembers((prev) =>
+        prev.map((m) => (m.id === targetId ? { ...m, role: newRole } : m))
+      );
+      flash(`Role changed to ${newRole}`);
+    }
+    setUpdatingMember(null);
+  };
+
+  const handleRemoveMember = async (targetId) => {
+    setUpdatingMember(targetId);
+    const sb = createClient();
+    const { error } = await sb
+      .from('profiles')
+      .update({ agency_id: null, role: 'member', approved: false })
+      .eq('id', targetId);
+
+    if (error) {
+      flash(error.message, false);
+    } else {
+      setAgencyMembers((prev) => prev.filter((m) => m.id !== targetId));
+      flash('Member removed from agency');
+    }
+    setUpdatingMember(null);
   };
 
   if (!profile) return (
@@ -300,6 +376,146 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+
+          {/* Agency Members card */}
+          {profile && ['manager', 'superadmin'].includes(profile.role) && profile.agency_id && (
+            <div style={{
+              marginTop: 32, background: '#000', border: '1px solid rgba(48,108,236,0.22)',
+              borderRadius: 20, padding: '36px 40px', display: 'flex', flexDirection: 'column', gap: 24,
+            }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Building2 size={20} style={{ color: '#5B9BFF' }} /> Agency Members
+                </h3>
+                <p style={{ color: '#3D5A8A', margin: '6px 0 0', fontSize: 13 }}>
+                  View and manage team memberships for your agency.
+                </p>
+              </div>
+
+              {loadingMembers ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 0', gap: 10 }}>
+                  <div style={{ width: 20, height: 20, border: '2px solid rgba(48,108,236,0.15)', borderTopColor: '#5B9BFF', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+                  <span style={{ fontSize: 13, color: '#3D5A8A' }}>Loading members…</span>
+                </div>
+              ) : agencyMembers.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: 'rgba(148,180,255,0.40)', fontSize: 13 }}>
+                  No members in this agency.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1.5px solid rgba(48,108,236,0.20)' }}>
+                        {['Member', 'Email', 'Role', 'Status', 'Actions'].map((h) => (
+                          <th key={h} style={{ padding: '0 12px 12px', fontSize: 11, fontWeight: 700, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agencyMembers.map((member) => {
+                        const isSelf = member.id === userId;
+                        const initial = (member.full_name || member.email || '?').charAt(0).toUpperCase();
+                        return (
+                          <tr key={member.id} style={{ borderBottom: '1px solid rgba(48,108,236,0.10)' }}>
+                            <td style={{ padding: '13px 12px', fontWeight: 600, color: '#fff', fontSize: 13.5 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{
+                                  width: 28, height: 28, borderRadius: '50%',
+                                  background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 12, fontWeight: 700, color: '#fff', overflow: 'hidden',
+                                  border: '1px solid rgba(48,108,236,0.30)',
+                                }}>
+                                  {member.avatar_url ? (
+                                    <img src={member.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    initial
+                                  )}
+                                </div>
+                                <span>{member.full_name || '—'} {isSelf && <span style={{ color: '#3D5A8A', fontSize: 11 }}>(you)</span>}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '13px 12px', fontSize: 13, color: '#7EB3FF' }}>{member.email}</td>
+                            <td style={{ padding: '13px 12px' }}>
+                              {isSelf ? (
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 99,
+                                  background: member.role === 'superadmin' ? 'rgba(245,166,35,0.18)' : 'rgba(91,155,255,0.18)',
+                                  color: member.role === 'superadmin' ? '#F5A623' : '#5B9BFF',
+                                  border: member.role === 'superadmin' ? '1px solid rgba(245,166,35,0.30)' : '1px solid rgba(91,155,255,0.30)',
+                                  textTransform: 'uppercase', letterSpacing: '.05em'
+                                }}>
+                                  {member.role === 'superadmin' ? 'Admin' : 'Manager'}
+                                </span>
+                              ) : (
+                                <select
+                                  value={member.role || 'member'}
+                                  disabled={updatingMember === member.id}
+                                  onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                                  style={{
+                                    background: '#0d1b38', border: '1px solid rgba(48,108,236,0.35)',
+                                    borderRadius: 8, color: member.role === 'superadmin' ? '#F5A623' : member.role === 'manager' ? '#5B9BFF' : '#22C55E',
+                                    fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                                    fontFamily: 'inherit', outline: 'none',
+                                    opacity: updatingMember === member.id ? 0.5 : 1,
+                                  }}
+                                >
+                                  <option value="member">Member</option>
+                                  <option value="manager">Manager</option>
+                                </select>
+                              )}
+                            </td>
+                            <td style={{ padding: '13px 12px' }}>
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 99,
+                                background: member.approved ? 'rgba(22,163,107,0.18)' : 'rgba(245,166,35,0.18)',
+                                color: member.approved ? '#16A36B' : '#F5A623',
+                                border: member.approved ? '1px solid rgba(22,163,107,0.30)' : '1px solid rgba(245,166,35,0.30)',
+                                textTransform: 'uppercase', letterSpacing: '.05em'
+                              }}>
+                                {member.approved ? 'Approved' : 'Pending'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '13px 12px' }}>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                {!member.approved && !isSelf && (
+                                  <button
+                                    onClick={() => handleApproveMember(member.id)}
+                                    disabled={updatingMember === member.id}
+                                    style={{
+                                      padding: '4px 12px', borderRadius: 50, fontSize: 11.5, fontWeight: 600,
+                                      background: 'rgba(22,163,107,0.18)', color: '#16A36B', border: '1px solid rgba(22,163,107,0.35)',
+                                      cursor: 'pointer', transition: '.15s',
+                                    }}
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+                                {!isSelf && (
+                                  <button
+                                    onClick={() => handleRemoveMember(member.id)}
+                                    disabled={updatingMember === member.id}
+                                    style={{
+                                      padding: '4px 12px', borderRadius: 50, fontSize: 11.5, fontWeight: 600,
+                                      background: 'rgba(224,72,90,0.12)', color: '#E0485A', border: '1px solid rgba(224,72,90,0.25)',
+                                      cursor: 'pointer', transition: '.15s',
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                {isSelf && <span style={{ fontSize: 12, color: '#3D5A8A' }}>—</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>
