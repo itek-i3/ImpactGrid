@@ -15,10 +15,33 @@ export async function GET(request, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return badRequest('Unauthorized');
 
+  const admin = createAdminClient();
+
+  // Resolve this workspace's agency — used for DM isolation
+  const { data: wsRow } = await admin
+    .from('workspaces')
+    .select('agency_id')
+    .eq('id', workspaceId)
+    .single();
+  const wsAgencyId = wsRow?.agency_id || null;
+
   // Secure DMs
+  // Channel format: dm:agencyId:userId1:userId2 (4 parts)
   if (channel.startsWith('dm:')) {
     const parts = channel.split(':');
-    const isParticipant = parts[1] === user.id || parts[2] === user.id;
+    // Reject channels that don't carry an agency prefix — they can't be isolated
+    if (parts.length !== 4) return forbidden('Malformed DM channel');
+
+    const channelAgencyId = parts[1];
+    const u1 = parts[2];
+    const u2 = parts[3];
+
+    // Agency isolation: the channel's agency must match this workspace's agency
+    if (wsAgencyId && channelAgencyId !== wsAgencyId) {
+      return forbidden('DM does not belong to this agency');
+    }
+
+    const isParticipant = u1 === user.id || u2 === user.id;
     if (!isParticipant) {
       const { data: profile } = await supabase
         .from('profiles')
@@ -31,24 +54,13 @@ export async function GET(request, { params }) {
     }
   }
 
-  // Use admin client so profiles join always works regardless of RLS
-  const admin = createAdminClient();
-  let query = admin
-    .from('chat_messages')
-    .select(`
-      id,
-      message,
-      channel,
-      created_at,
-      user_id,
-      profiles:user_id (
-        full_name,
-        email,
-        role
-      )
-    `)
-    .eq('workspace_id', workspaceId)
-    .eq('channel', channel);
+  const selectCols = `id, message, channel, created_at, user_id, profiles:user_id (full_name, email, role)`;
+
+  // DMs: filter only by channel (agency already encoded in channel name + validated above)
+  // Group channels: filter by workspace_id as usual
+  let query = channel.startsWith('dm:')
+    ? admin.from('chat_messages').select(selectCols).eq('channel', channel)
+    : admin.from('chat_messages').select(selectCols).eq('workspace_id', workspaceId).eq('channel', channel);
 
   if (messageId) {
     query = query.eq('id', messageId);
@@ -89,10 +101,26 @@ export async function POST(request, { params }) {
   const isValidChannel = VALID_CHANNELS.includes(channel) || channel.startsWith('dm:');
   if (!isValidChannel) return badRequest('invalid channel');
 
-  // DM channels: ensure the user is one of the participants
+  // DM channels: agency isolation + participant check
   if (channel.startsWith('dm:')) {
     const parts = channel.split(':');
-    const isParticipant = parts[1] === user.id || parts[2] === user.id;
+    if (parts.length !== 4) return badRequest('Malformed DM channel');
+
+    const channelAgencyId = parts[1];
+    const u1 = parts[2];
+    const u2 = parts[3];
+
+    // Reject if the channel's agency doesn't match this workspace's agency
+    const { data: wsCheck } = await createAdminClient()
+      .from('workspaces')
+      .select('agency_id')
+      .eq('id', workspaceId)
+      .single();
+    if (wsCheck?.agency_id && channelAgencyId !== wsCheck.agency_id) {
+      return forbidden('DM does not belong to this agency');
+    }
+
+    const isParticipant = u1 === user.id || u2 === user.id;
     if (!isParticipant) {
       return forbidden('You can only post in DMs you are a participant of');
     }
@@ -161,8 +189,9 @@ export async function DELETE(request, { params }) {
 
   if (channel.startsWith('dm:')) {
     const parts = channel.split(':');
-    const isParticipant = parts[1] === user.id || parts[2] === user.id;
-    if (!isParticipant) return forbidden('You do not have access to this conversation');
+    const u1 = parts.length === 4 ? parts[2] : parts[1];
+    const u2 = parts.length === 4 ? parts[3] : parts[2];
+    if (u1 !== user.id && u2 !== user.id) return forbidden('You do not have access to this conversation');
   } else {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     if (!profile || profile.role === 'member') return forbidden('Only managers can clear chat');

@@ -31,6 +31,8 @@ function ChatContent() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const emojiRef = useRef(null);
+  const dmBcastRef = useRef(null);
+  const workspaceIdRef = useRef(null);
 
   const GROUP_CHANNELS = [
     { id: 'daily_tasks',  name: 'Daily Tasks',  icon: '📋', desc: 'Daily team updates',   managerOnly: false },
@@ -61,20 +63,20 @@ function ChatContent() {
       { id: 'member-1', full_name: 'Alice Smith', role: 'member', email: 'alice@example.com' },
     ];
     if (isDemo) { setAgencyMembers(mockMembers); return; }
-    const agencyIdToUse = activeAgencyId || workspace?.agency_id;
-    if (!agencyIdToUse || !userProfile) return;
+    const wsId = workspace?.id;
+    if (!wsId || !userProfile) return;
     setAgencyMembers([]);
     async function loadMembers() {
       try {
-        const res = await fetch(`/os/api/agencies/${agencyIdToUse}/chat-members`);
+        const res = await fetch(`/os/api/workspaces/${wsId}/chat-members`);
         if (res.ok) {
           const j = await res.json();
-          if (j.data?.length) { setAgencyMembers(j.data); return; }
+          if (j.data?.length) setAgencyMembers(j.data);
         }
       } catch (_) {}
     }
     loadMembers();
-  }, [activeAgencyId, workspace?.agency_id, userProfile, isDemo]);
+  }, [workspace?.id, userProfile, isDemo]);
 
   useEffect(() => {
     if (!emojiOpen) return;
@@ -91,8 +93,13 @@ function ChatContent() {
   }, [reactOpen]);
 
   const workspaceId = workspace?.id;
+  // workspace.agency_id is ground truth; activeAgencyId is the early fallback set by fetchUserProfile
+  const agencyId = workspace?.agency_id || activeAgencyId || null;
   const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
-  const getDmId = (otherId) => `dm:${[currentUserId, otherId].sort().join(':')}`;
+  // DM channel encodes agency so messages never bleed between agencies.
+  // Returns null when agencyId isn't resolved yet — callers must guard against null.
+  const getDmId = (otherId) =>
+    agencyId ? `dm:${agencyId}:${[currentUserId, otherId].sort().join(':')}` : null;
   const otherMembers = agencyMembers.filter(m => m.id !== currentUserId);
   const [notifPermission, setNotifPermission] = useState('default');
 
@@ -131,6 +138,50 @@ function ChatContent() {
       .subscribe();
     return () => sb.removeChannel(notifCh);
   }, [workspaceId, currentUserId, isDemo, agencyMembers, activeChannel]);
+
+  // Keep workspaceIdRef current so broadcast handler never captures a stale value
+  useEffect(() => { workspaceIdRef.current = workspaceId; }, [workspaceId]);
+
+  // DM real-time: broadcast on the DM channel name itself so both users connect
+  // to the same Supabase channel regardless of which workspace they loaded.
+  useEffect(() => {
+    if (!activeChannel.startsWith('dm:') || !currentUserId || isDemo) return;
+    const sb = createClient();
+    const ch = sb.channel(activeChannel)
+      .on('broadcast', { event: 'new_msg' }, () => {
+        const wsId = workspaceIdRef.current;
+        if (!wsId) return;
+        fetch(`/os/api/workspaces/${wsId}/chat?channel=${encodeURIComponent(activeChannel)}`)
+          .then(r => r.json())
+          .then(j => {
+            if (!j.data?.length) return;
+            setMessages(j.data);
+            setLastMessages(p => ({ ...p, [activeChannel]: j.data[j.data.length - 1] }));
+          })
+          .catch(() => {});
+      })
+      .subscribe((status) => { if (status === 'SUBSCRIBED') dmBcastRef.current = ch; });
+    return () => { sb.removeChannel(ch); dmBcastRef.current = null; };
+  }, [activeChannel, currentUserId, isDemo]);
+
+  // Polling fallback every 3s — works even if Supabase Realtime isn't configured
+  useEffect(() => {
+    if (!workspaceId || !activeChannel.startsWith('dm:') || isDemo) return;
+    const poll = setInterval(() => {
+      fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${encodeURIComponent(activeChannel)}`)
+        .then(r => r.json())
+        .then(j => {
+          if (!j.data?.length) return;
+          setMessages(prev => {
+            if (prev[prev.length - 1]?.id === j.data[j.data.length - 1]?.id) return prev;
+            return j.data;
+          });
+          setLastMessages(p => ({ ...p, [activeChannel]: j.data[j.data.length - 1] }));
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [workspaceId, activeChannel, isDemo]);
 
   const getDemoMessages = useCallback(() => ([
     { id: '1', message: 'Welcome to the team chat! Use this channel to share your daily updates.', createdAt: new Date(Date.now() - 7200000).toISOString(), userId: 'admin-1', userName: 'System Administrator', userRole: 'superadmin' },
@@ -212,7 +263,15 @@ function ChatContent() {
     }
     try {
       const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, channel: activeChannel }) });
-      if (res.ok) { const j = await res.json(); if (j.data) { setMessages(prev => prev.some(m => m.id === j.data.id) ? prev : [...prev, j.data]); setLastMessages(p => ({ ...p, [activeChannel]: j.data })); } }
+      if (res.ok) {
+        const j = await res.json();
+        if (j.data) {
+          setMessages(prev => prev.some(m => m.id === j.data.id) ? prev : [...prev, j.data]);
+          setLastMessages(p => ({ ...p, [activeChannel]: j.data }));
+          // Signal the other user via DM-scoped broadcast channel
+          dmBcastRef.current?.send({ type: 'broadcast', event: 'new_msg', payload: {} });
+        }
+      }
     } catch (err) { console.error(err); }
     finally { setSending(false); }
   };
@@ -242,7 +301,10 @@ function ChatContent() {
   let chatSub = groupCh?.desc || '';
   let dmPartner = null;
   if (isDm) {
-    const partnerId = activeChannel.split(':').find(p => p !== 'dm' && p !== currentUserId);
+    // Channel format: dm:agencyId:user1:user2 (4 parts) or dm:user1:user2 (3 parts, legacy)
+    const chParts = activeChannel.split(':');
+    const userParts = chParts.length === 4 ? [chParts[2], chParts[3]] : [chParts[1], chParts[2]];
+    const partnerId = userParts.find(p => p !== currentUserId);
     dmPartner = agencyMembers.find(m => m.id === partnerId);
     chatName = dmPartner?.full_name || dmPartner?.email || 'Direct Message';
     chatSub = dmPartner ? (dmPartner.role === 'superadmin' ? 'Admin' : dmPartner.role === 'manager' ? 'Manager' : 'Member') : '';
@@ -259,15 +321,19 @@ function ChatContent() {
       isGroup: true,
       lastMsg: lastMessages[ch.id],
     })),
-    ...otherMembers.map(m => ({
-      id: getDmId(m.id),
-      name: m.full_name || m.email,
-      avatar: m.avatar_url,
-      role: m.role,
-      isGroup: false,
-      lastMsg: lastMessages[getDmId(m.id)],
-    })),
-  ].filter(c => !panelSearch || c.name.toLowerCase().includes(panelSearch.toLowerCase()));
+    // Only include DM contacts once agencyId is resolved — prevents empty/wrong channel names
+    ...(agencyId ? otherMembers.map(m => {
+      const dmId = getDmId(m.id);
+      return {
+        id: dmId,
+        name: m.full_name || m.email,
+        avatar: m.avatar_url,
+        role: m.role,
+        isGroup: false,
+        lastMsg: lastMessages[dmId],
+      };
+    }) : []),
+  ].filter(c => c.id && (!panelSearch || c.name.toLowerCase().includes(panelSearch.toLowerCase())));
 
   const formatPanelTime = (dateStr) => {
     if (!dateStr) return '';

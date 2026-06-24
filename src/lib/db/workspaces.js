@@ -9,13 +9,15 @@ export async function listWorkspaces(activeAgencyId = null) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };
 
-  const { data: profile, error: profileErr } = await supabase
+  // Use admin client so RLS issues never block this lookup
+  const { data: profile } = await admin
     .from('profiles')
     .select('role, agency_id')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (profileErr) return { data: null, error: profileErr };
+  // No profile yet (new user, trigger hasn't fired) → return empty gracefully
+  if (!profile) return { data: [], error: null };
 
   let targetAgencyId = activeAgencyId;
 
