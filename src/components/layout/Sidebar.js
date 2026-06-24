@@ -5,17 +5,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import logoImg from '../../../public/logo3.png';
 import {
-  Search,
-  Settings,
   Plus,
-  Trash2,
-  History,
-  BookMarked,
-  Sun,
-  Moon,
-  LogOut,
   SquarePen,
-  MoreHorizontal,
   NotepadText,
   ShieldCheck,
   MessageSquare,
@@ -23,11 +14,9 @@ import {
   Building2,
   Check,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
-import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
 
 function ImpactLogo({ size = 28 }) {
@@ -59,9 +48,6 @@ export default function Sidebar() {
     setCurrentPage,
     sidebarOpen,
     toggleSidebar,
-    toggleSearch,
-    theme,
-    toggleTheme,
     addPage,
     restorePage,
     permanentlyDeletePage,
@@ -69,14 +55,11 @@ export default function Sidebar() {
     agencies,
     activeAgencyId,
     switchAgency,
-    isDemo,
   } = useWorkspaceStore();
 
   const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
   const agencyPickerRef = useRef(null);
   const [trashOpen, setTrashOpen] = useState(false);
-  const [recentOpen, setRecentOpen] = useState(false);
-  const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [copyModal, setCopyModal] = useState({ open: false, page: null });
   const [allWorkspaces, setAllWorkspaces] = useState([]);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
@@ -151,10 +134,6 @@ export default function Sidebar() {
 
   const favoritePages = pages.filter((p) => p.isFavorite && !p.isArchived);
   const archivedPages = pages.filter((p) => p.isArchived);
-  const recentPages = [...pages]
-    .filter((p) => !p.isArchived)
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
-    .slice(0, 6);
 
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);
@@ -174,15 +153,6 @@ export default function Sidebar() {
     router.push('/settings');
   };
 
-
-  const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
-  const isDark = theme === 'dark';
-
   return (
     <>
       <aside
@@ -196,7 +166,7 @@ export default function Sidebar() {
       >
         {/* ── Header ── */}
         <div style={{
-          padding: '18px 14px 14px',
+          padding: '23px 14px',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
@@ -219,14 +189,11 @@ export default function Sidebar() {
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="display" style={{
-                  color: '#fff', fontWeight: 700, fontSize: 12.5,
+                  color: '#fff', fontWeight: 700, fontSize: 15,
                   letterSpacing: '-.01em', lineHeight: 1,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {workspace?.name || 'Workspace'}
-                </div>
-                <div style={{ color: '#3D5A8A', fontSize: 9.5, marginTop: 3, letterSpacing: '.06em', fontWeight: 600, textTransform: 'uppercase' }}>
-                  Impact Workspace
+                  {(workspace?.name || '').replace(/\s*workspace\s*$/i, '') || 'My Space'}
                 </div>
               </div>
             </>
@@ -250,26 +217,6 @@ export default function Sidebar() {
                   <span>Admin Panel</span>
                 </button>
               )}
-
-              <button className="ig-nav" onClick={toggleSearch}>
-                <Search size={15} />
-                <span>Search</span>
-                <span style={{
-                  marginLeft: 'auto', fontSize: 10, color: '#3D5A8A',
-                  background: 'rgba(255,255,255,0.06)', padding: '2px 6px',
-                  borderRadius: 5, fontFamily: 'var(--font-mono)',
-                }}>⌘K</span>
-              </button>
-
-              <button className="ig-nav" onClick={() => setRecentOpen(true)}>
-                <History size={15} />
-                <span>Recent</span>
-              </button>
-
-              <button className="ig-nav" onClick={() => setBookmarksOpen(true)}>
-                <BookMarked size={15} />
-                <span>Bookmarks</span>
-              </button>
 
               <button
                 className="ig-nav"
@@ -338,33 +285,6 @@ export default function Sidebar() {
                 </button>
               )}
 
-              {/* Dark mode toggle */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '7px 12px', borderRadius: 8,
-                transition: '.15s', cursor: 'default',
-              }}>
-                {isDark ? <Moon size={15} color="#3D5A8A" /> : <Sun size={15} color="#3D5A8A" />}
-                <span style={{ flex: 1, fontSize: 12, color: '#3D5A8A', fontWeight: 500 }}>
-                  Dark mode
-                </span>
-                <button
-                  onClick={toggleTheme}
-                  style={{
-                    width: 30, height: 17, borderRadius: 99, border: 'none', cursor: 'pointer',
-                    background: isDark ? '#306CEC' : 'rgba(255,255,255,0.15)',
-                    position: 'relative', flexShrink: 0, transition: 'background .2s', padding: 0,
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 2,
-                    left: isDark ? 15 : 2,
-                    width: 13, height: 13, borderRadius: 99, background: '#fff',
-                    transition: 'left .2s', display: 'block',
-                  }} />
-                </button>
-              </div>
-
               {/* Agency Switcher — only shown when user belongs to multiple agencies */}
               {agencies.length > 1 && (
                 <div style={{ position: 'relative' }}>
@@ -426,26 +346,6 @@ export default function Sidebar() {
                 </div>
               )}
 
-              {/* More: Trash + Settings in a dropdown */}
-              <Dropdown
-                trigger={
-                  <button className="ig-nav">
-                    <MoreHorizontal size={15} />
-                    <span>More</span>
-                  </button>
-                }
-                align="left"
-              >
-                {userProfile?.role !== 'member' && (
-                  <DropdownItem icon={<Trash2 size={14} />} onClick={() => setTrashOpen(true)}>Trash</DropdownItem>
-                )}
-                <DropdownItem icon={<Settings size={14} />} onClick={handleSettingsClick}>Settings</DropdownItem>
-              </Dropdown>
-
-              <button className="ig-nav" onClick={handleLogout}>
-                <LogOut size={15} />
-                <span>Log out</span>
-              </button>
             </div>
           </>
         )}
@@ -536,60 +436,6 @@ export default function Sidebar() {
               {copying ? 'Copying…' : `Copy to ${selectedWorkspaces.length || ''} workspace${selectedWorkspaces.length !== 1 ? 's' : ''}`}
             </button>
           </div>
-        </div>
-      </Modal>
-
-      {/* Recent Modal */}
-      <Modal isOpen={recentOpen} onClose={() => setRecentOpen(false)} title="Recently Updated" maxWidth="420px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {recentPages.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>No recent pages</div>
-          ) : recentPages.map((page) => (
-            <button
-              key={page.id}
-              onClick={() => { setRecentOpen(false); handleOpenPage(page); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 14px', borderRadius: 10, border: 'none',
-                background: 'transparent', cursor: 'pointer', width: '100%', textAlign: 'left',
-                transition: '.15s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: 18, flexShrink: 0 }}>{page.icon || '📄'}</span>
-              <span style={{ fontSize: 13, color: '#E2EEFF', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {page.title || 'Untitled'}
-              </span>
-            </button>
-          ))}
-        </div>
-      </Modal>
-
-      {/* Bookmarks Modal */}
-      <Modal isOpen={bookmarksOpen} onClose={() => setBookmarksOpen(false)} title="Bookmarks" maxWidth="420px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {favoritePages.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>No bookmarks yet. Star a page to add it here.</div>
-          ) : favoritePages.map((page) => (
-            <button
-              key={page.id}
-              onClick={() => { setBookmarksOpen(false); handleOpenPage(page); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 14px', borderRadius: 10, border: 'none',
-                background: 'transparent', cursor: 'pointer', width: '100%', textAlign: 'left',
-                transition: '.15s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: 18, flexShrink: 0 }}>{page.icon || '📄'}</span>
-              <span style={{ fontSize: 13, color: '#E2EEFF', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {page.title || 'Untitled'}
-              </span>
-            </button>
-          ))}
         </div>
       </Modal>
 
