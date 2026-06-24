@@ -77,10 +77,6 @@ export default function Sidebar() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
-  const [chatExpanded, setChatExpanded] = useState(false);
-  const [currentChannel, setCurrentChannel] = useState(null);
-  const [dmExpanded, setDmExpanded] = useState(false);
-  const [dmUsers, setDmUsers] = useState([]);
   const [copyModal, setCopyModal] = useState({ open: false, page: null });
   const [allWorkspaces, setAllWorkspaces] = useState([]);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
@@ -98,55 +94,6 @@ export default function Sidebar() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [agencySwitcherOpen]);
-
-  // Auto-expand chat and track active channel when on /chat
-  useEffect(() => {
-    if (pathname === '/chat') {
-      setChatExpanded(true);
-      const params = new URLSearchParams(window.location.search);
-      const chan = params.get('channel') || 'daily_tasks';
-      setCurrentChannel(chan);
-      if (chan.startsWith('dm:')) {
-        setDmExpanded(true);
-      }
-    } else {
-      setCurrentChannel(null);
-    }
-  }, [pathname]);
-
-  // Fetch direct message users (other approved members in the agency)
-  useEffect(() => {
-    const mockDms = [
-      { id: 'admin-1', full_name: 'System Administrator', role: 'superadmin', email: 'admin@example.com' },
-      { id: 'manager-1', full_name: 'John Doe', role: 'manager', email: 'john@example.com' },
-      { id: 'member-1', full_name: 'Alice Smith', role: 'member', email: 'alice@example.com' },
-    ];
-
-    if (isDemo) {
-      setDmUsers(mockDms.filter(u => u.id !== (userProfile?.id || 'demo-current-user')));
-      return;
-    }
-    if (!activeAgencyId || !userProfile) return;
-
-    async function loadDmUsers() {
-      const sb = createClient();
-      const { data, error } = await sb
-        .from('profiles')
-        .select('id, full_name, email, role, avatar_url')
-        .eq('agency_id', activeAgencyId)
-        .eq('approved', true);
-      if (!error && data) {
-        setDmUsers(data.filter((u) => u.id !== userProfile.id));
-      }
-    }
-    loadDmUsers();
-  }, [activeAgencyId, userProfile, isDemo]);
-
-  const getDmChannelId = (uid) => {
-    const currentId = userProfile?.id || 'demo-current-user';
-    const sorted = [currentId, uid].sort();
-    return `dm:${sorted[0]}:${sorted[1]}`;
-  };
 
   // Fetch target workspaces when copy modal opens
   useEffect(() => {
@@ -326,102 +273,13 @@ export default function Sidebar() {
 
               <button
                 className="ig-nav"
-                onClick={() => setChatExpanded((v) => !v)}
-                style={{
-                  marginTop: '2px',
-                  ...(pathname === '/chat' ? { background: 'rgba(48,108,236,0.10)', color: '#E2EEFF' } : {}),
-                }}
+                onClick={() => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`)}
+                style={pathname === '/chat' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
               >
                 <MessageSquare size={15} />
                 <span>Chat Room</span>
-                <ChevronRight size={12} style={{ marginLeft: 'auto', transition: 'transform .2s', transform: chatExpanded ? 'rotate(90deg)' : 'none', color: '#3D5A8A' }} />
               </button>
-              {chatExpanded && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 12 }}>
-                  {[
-                    { id: 'daily_tasks',  label: 'Daily Tasks',  icon: '📋' },
-                    { id: 'weekly_tasks', label: 'Weekly Tasks', icon: '📅' },
-                    { id: 'random',       label: 'Random',       icon: '💬' },
-                  ].map((ch) => {
-                    const isActive = pathname === '/chat' && currentChannel === ch.id;
-                    return (
-                      <button
-                        key={ch.id}
-                        className="ig-nav"
-                        onClick={() => {
-                          setCurrentChannel(ch.id);
-                          router.push(`/chat?workspaceId=${workspace?.id}&channel=${ch.id}`);
-                        }}
-                        style={{
-                          fontSize: 12, padding: '5px 10px',
-                          ...(isActive ? { background: 'rgba(48,108,236,0.18)', color: '#7EB3FF', fontWeight: 600 } : {}),
-                        }}
-                      >
-                        <span style={{ fontSize: 14 }}>{ch.icon}</span>
-                        <span>{ch.label}</span>
-                        {isActive && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 99, background: '#306CEC', flexShrink: 0 }} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
 
-              {/* Collapsible Direct Messages */}
-              <button
-                className="ig-nav"
-                onClick={() => setDmExpanded((v) => !v)}
-                style={{
-                  marginTop: '4px',
-                  ...(pathname === '/chat' && currentChannel?.startsWith('dm:') ? { background: 'rgba(48,108,236,0.10)', color: '#E2EEFF' } : {}),
-                }}
-              >
-                <MessageSquare size={15} />
-                <span>Direct Messages</span>
-                <ChevronRight size={12} style={{ marginLeft: 'auto', transition: 'transform .2s', transform: dmExpanded ? 'rotate(90deg)' : 'none', color: '#3D5A8A' }} />
-              </button>
-              {dmExpanded && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 12 }}>
-                  {dmUsers.length === 0 ? (
-                    <span style={{ fontSize: 11, color: '#3D5A8A', padding: '5px 12px', fontStyle: 'italic' }}>No members available</span>
-                  ) : (
-                    dmUsers.map((u) => {
-                      const dmChanId = getDmChannelId(u.id);
-                      const isActive = pathname === '/chat' && currentChannel === dmChanId;
-                      return (
-                        <button
-                          key={u.id}
-                          className="ig-nav"
-                          onClick={() => {
-                            setCurrentChannel(dmChanId);
-                            router.push(`/chat?workspaceId=${workspace?.id}&channel=${dmChanId}`);
-                          }}
-                          style={{
-                            fontSize: 12, padding: '5px 10px',
-                            ...(isActive ? { background: 'rgba(48,108,236,0.18)', color: '#7EB3FF', fontWeight: 600 } : {}),
-                          }}
-                        >
-                          <div style={{
-                            width: 16, height: 16, borderRadius: '50%',
-                            background: 'rgba(48,108,236,0.22)', border: '1px solid rgba(48,108,236,0.30)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 8, fontWeight: 700, color: '#7EB3FF', flexShrink: 0, overflow: 'hidden'
-                          }}>
-                            {u.avatar_url ? (
-                              <img src={u.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              (u.full_name || u.email || '?').charAt(0).toUpperCase()
-                            )}
-                          </div>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {u.full_name || u.email}
-                          </span>
-                          {isActive && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 99, background: '#306CEC', flexShrink: 0 }} />}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
             </nav>
 
             {/* ── Favorites section (pinned in sidebar) ── */}

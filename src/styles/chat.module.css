@@ -181,16 +181,23 @@
   padding: 12px 16px 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  background-image:
-    linear-gradient(rgba(48, 108, 236, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(48, 108, 236, 0.06) 1px, transparent 1px);
-  background-size: 40px 40px;
+  gap: 1px;
 }
 
 .messagesList::-webkit-scrollbar { width: 3px; }
 .messagesList::-webkit-scrollbar-track { background: transparent; }
 .messagesList::-webkit-scrollbar-thumb { background: rgba(48, 108, 236, 0.25); border-radius: 3px; }
+
+/* ── Message row ── */
+.msgRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  transition: background .1s;
+}
+.msgRow:hover { background: rgba(48, 108, 236, 0.05); }
 
 /* ── Date separator ── */
 .dateSeparator {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, useRef, forwardRef } from 'react';
-import { Plus, Trash2, BarChart2, Type, Hash, DollarSign, Percent, Calendar, ChevronDown, Sigma, List, X, Pencil } from 'lucide-react';
+import { useEditorStore } from '@/lib/store/useEditorStore';
+import { Plus, Trash2, BarChart2, Type, Hash, DollarSign, Percent, Calendar, ChevronDown, Sigma, List, X, Pencil, Undo2, Redo2 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend
@@ -43,6 +44,14 @@ const OPERATIONS = [
   { value: '/', label: 'Divide (A ÷ B)' },
 ];
 
+const AGG_FUNCTIONS = [
+  { value: 'sum',     label: 'Sum (total)' },
+  { value: 'avg',     label: 'Average' },
+  { value: 'min',     label: 'Min' },
+  { value: 'max',     label: 'Max' },
+  { value: 'product', label: 'Product (×)' },
+];
+
 const CURRENCIES = [
   { code: 'KES', symbol: 'KSh',  label: 'Kenyan Shilling',   locale: 'en-KE' },
   { code: 'USD', symbol: '$',    label: 'US Dollar',          locale: 'en-US' },
@@ -63,17 +72,44 @@ function getCurrencySymbol(code) {
   return CURRENCIES.find((c) => c.code === code)?.symbol || code;
 }
 
-function evalFormula(config, rowValues) {
-  if (!config || config.colA === undefined || config.colB === undefined) return null;
-  const a = parseFloat(String(rowValues[config.colA] ?? '').replace(/[^0-9.-]/g, '')) || 0;
-  const b = parseFloat(String(rowValues[config.colB] ?? '').replace(/[^0-9.-]/g, '')) || 0;
-  switch (config.op) {
-    case '+': return a + b;
-    case '-': return a - b;
-    case '*': return a * b;
-    case '/': return b !== 0 ? a / b : null;
+function applyOp(op, left, right) {
+  switch (op) {
+    case '+': return left + right;
+    case '-': return left - right;
+    case '*': return left * right;
+    case '/': return right !== 0 ? left / right : null;
     default:  return null;
   }
+}
+
+function evalFormula(config, rowValues) {
+  if (!config) return null;
+  const parse = (i) => parseFloat(String(rowValues[i] ?? '').replace(/[^0-9.-]/g, '')) || 0;
+
+  // Aggregate function mode: sum/avg/min/max/product across selected columns
+  if (config.fn && Array.isArray(config.cols) && config.cols.length > 0) {
+    const vals = config.cols.map(parse);
+    switch (config.fn) {
+      case 'sum':     return vals.reduce((a, b) => a + b, 0);
+      case 'avg':     return vals.reduce((a, b) => a + b, 0) / vals.length;
+      case 'min':     return Math.min(...vals);
+      case 'max':     return Math.max(...vals);
+      case 'product': return vals.reduce((a, b) => a * b, 1);
+      default:        return null;
+    }
+  }
+
+  // Expression mode: colA op colB [op2 colC]
+  if (config.colA === undefined || config.colB === undefined) return null;
+  const a = parse(config.colA);
+  const b = parse(config.colB);
+  const ab = applyOp(config.op, a, b);
+  if (ab === null) return null;
+  if (config.colC !== undefined && config.op2) {
+    const c = parse(config.colC);
+    return applyOp(config.op2, ab, c);
+  }
+  return ab;
 }
 
 function getAutoCalcValue(headerName, colIndex, row, columnTypes) {
@@ -105,11 +141,21 @@ function formatResult(value, colType, currencyCode = 'KES') {
 }
 
 function getFormulaResultType(cfg, columnTypes) {
-  if (!cfg || cfg.colA === undefined) return 'number';
+  if (!cfg) return 'number';
+  // Aggregate mode
+  if (cfg.fn && Array.isArray(cfg.cols) && cfg.cols.length > 0) {
+    const types = cfg.cols.map(i => columnTypes[i] || 'number');
+    if (types.some(t => t === 'currency')) return 'currency';
+    if (types.every(t => t === 'percent')) return 'percent';
+    return 'number';
+  }
+  // Expression mode
+  if (cfg.colA === undefined) return 'number';
   const typeA = columnTypes[cfg.colA] || 'number';
   const typeB = cfg.colB !== undefined ? (columnTypes[cfg.colB] || 'number') : 'number';
-  if (typeA === 'currency' || typeB === 'currency') return 'currency';
-  if (typeA === 'percent' && typeB === 'percent') return 'percent';
+  const typeC = cfg.colC !== undefined ? (columnTypes[cfg.colC] || 'number') : null;
+  if (typeA === 'currency' || typeB === 'currency' || typeC === 'currency') return 'currency';
+  if (typeA === 'percent' && typeB === 'percent' && (typeC === null || typeC === 'percent')) return 'percent';
   return 'number';
 }
 
@@ -362,43 +408,30 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     return types;
   }, [properties.columnTypes, rows]);
 
-  // ── Undo / Redo history ──
-  const blockRef   = useRef(block);
-  blockRef.current = block;
-  const undoStack  = useRef([]); // array of { content, properties } snapshots
-  const redoStack  = useRef([]);
-
-  const captureHistory = useCallback(() => {
-    undoStack.current = [...undoStack.current.slice(-49), {
-      content:    blockRef.current.content,
-      properties: blockRef.current.properties,
-    }];
-    redoStack.current = [];
-  }, []);
+  // ── Undo / Redo — delegated to the editor store's global history ──
+  const { undo: storeUndo, redo: storeRedo } = useEditorStore();
+  const handleUndo = storeUndo;
+  const handleRedo = storeRedo;
 
   // ── Per-sheet update helpers ──
   const updateRows = useCallback((newRows) => {
-    captureHistory();
     const newSheets = sheets.map((s, i) => i === safeIdx ? { ...s, rows: newRows } : s);
     onUpdate({ content: { sheets: newSheets, activeSheetIndex: safeIdx } });
-  }, [sheets, safeIdx, onUpdate, captureHistory]);
+  }, [sheets, safeIdx, onUpdate]);
 
   const updateConfig = useCallback((patch) => {
-    captureHistory();
     const newConfig = sheetsConfig.map((c, i) => i === safeIdx ? { ...c, ...patch } : c);
     onUpdate({ properties: { sheetsConfig: newConfig } });
-  }, [sheetsConfig, safeIdx, onUpdate, captureHistory]);
+  }, [sheetsConfig, safeIdx, onUpdate]);
 
   const updateBoth = useCallback((newRows, patch) => {
-    captureHistory();
     const newSheets = sheets.map((s, i) => i === safeIdx ? { ...s, rows: newRows } : s);
     const newConfig = sheetsConfig.map((c, i) => i === safeIdx ? { ...c, ...patch } : c);
     onUpdate({ content: { sheets: newSheets, activeSheetIndex: safeIdx }, properties: { sheetsConfig: newConfig } });
-  }, [sheets, sheetsConfig, safeIdx, onUpdate, captureHistory]);
+  }, [sheets, sheetsConfig, safeIdx, onUpdate]);
 
   // ── Sheet operations ──
   const addSheet = useCallback(() => {
-    captureHistory();
     const headerRow = [...(rows[0] || ['Header 1'])];
     const colCount  = headerRow.length;
     const newSheet  = {
@@ -414,21 +447,19 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       properties: { sheetsConfig: newSheetsConfig },
     });
     setActiveSheetIdx(newSheets.length - 1);
-  }, [sheets, sheetsConfig, rows, columnTypes, onUpdate, captureHistory]);
+  }, [sheets, sheetsConfig, rows, columnTypes, onUpdate]);
 
   const commitRenameSheet = useCallback((idx) => {
     const trimmed = editingSheetName.trim();
     if (trimmed) {
-      captureHistory();
       const newSheets = sheets.map((s, i) => i === idx ? { ...s, name: trimmed } : s);
       onUpdate({ content: { sheets: newSheets, activeSheetIndex: safeIdx } });
     }
     setEditingSheetIdx(null);
-  }, [sheets, editingSheetName, safeIdx, onUpdate, captureHistory]);
+  }, [sheets, editingSheetName, safeIdx, onUpdate]);
 
   const deleteSheet = useCallback((idx) => {
     if (sheets.length <= 1) return;
-    captureHistory();
     const newSheets = sheets.filter((_, i) => i !== idx);
     const newSheetsConfig = sheetsConfig.filter((_, i) => i !== idx);
     const newActiveIdx = safeIdx >= newSheets.length ? newSheets.length - 1 : safeIdx > idx ? safeIdx - 1 : safeIdx;
@@ -437,7 +468,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       properties: { sheetsConfig: newSheetsConfig },
     });
     setActiveSheetIdx(newActiveIdx);
-  }, [sheets, sheetsConfig, safeIdx, onUpdate, captureHistory]);
+  }, [sheets, sheetsConfig, safeIdx, onUpdate]);
 
   // ── Row selection + move ──
   const [selectedRowIdx, setSelectedRowIdx] = useState(null); // 1-based (rows[0] is header)
@@ -587,39 +618,18 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
 
     // Undo: Ctrl/Cmd + Z
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      // If editing a non-empty cell, let the browser undo letter-by-letter
+      if (inEditable && document.activeElement?.textContent?.length > 0) return;
       e.preventDefault();
-      if (inEditable) {
-        // Cell is mid-edit and hasn't been saved yet.
-        // Discard the unsaved typing — restore to what's in the block state.
-        const el = document.activeElement;
-        const cellId = el?.getAttribute('data-cell-id');
-        if (cellId) {
-          const [riStr, ciStr] = cellId.split('-');
-          const ri = parseInt(riStr, 10);
-          const ci = parseInt(ciStr, 10);
-          const savedVal = formatValue(rows[ri + 1]?.[ci] ?? '', columnTypes[ci] || 'text', currencyCode);
-          el.innerHTML = savedVal;
-          el.blur();
-          setFocusedCell({ row: ri, col: ci });
-          tableWrapperRef.current?.focus();
-        }
-        return;
-      }
-      // Cell is not being edited — restore from undo stack.
-      if (undoStack.current.length === 0) return;
-      const prev = undoStack.current.pop();
-      redoStack.current.push({ content: blockRef.current.content, properties: blockRef.current.properties });
-      onUpdate(prev);
+      handleUndo();
       return;
     }
 
     // Redo: Ctrl/Cmd + Shift + Z  or  Ctrl/Cmd + Y
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+      if (inEditable && document.activeElement?.textContent?.length > 0) return;
       e.preventDefault();
-      if (redoStack.current.length === 0) return;
-      const next = redoStack.current.pop();
-      undoStack.current.push({ content: blockRef.current.content, properties: blockRef.current.properties });
-      onUpdate(next);
+      handleRedo();
       return;
     }
 
@@ -695,7 +705,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     }
   }, [focusedCell, rows, selectedRowIdx, moveRow, activeFormulaBuilderCol, showCurrencyPicker,
       activeDropdownCol, optionsEditorCol, sheets, columnTypes, currencyCode, readOnly, updateCell, focusCellEditor,
-      onUpdate, undoStack, redoStack, blockRef, rows]);
+      handleUndo, handleRedo, rows]);
 
   const updateColumnOptions = useCallback((colIndex, opts) => {
     updateConfig({ columnOptions: { ...columnOptions, [colIndex]: opts } });
@@ -1098,28 +1108,86 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                         {/* Formula builder — floating popup, no height impact on header */}
                         {colType === 'formula' && activeFormulaBuilderCol === ci && (() => {
                           const cfg = columnFormulas[ci] || {};
-                          const colOpts = (rows[0] || []).map((h, i) => i !== ci ? <option key={i} value={i}>{h || `Col ${i + 1}`}</option> : null);
+                          const isAggMode = !!cfg.fn;
+                          const headers = rows[0] || [];
+                          const colOpts = headers.map((h, i) => i !== ci ? <option key={i} value={i}>{h || `Col ${i + 1}`}</option> : null);
                           const ss = { width: '100%', fontSize: 12, background: '#0d1b38', border: '1px solid rgba(48,108,236,0.30)', borderRadius: 7, color: '#E2EEFF', padding: '6px 9px', outline: 'none', cursor: 'pointer' };
+                          const tabBtn = (active) => ({ fontSize: 11, fontWeight: 700, flex: 1, padding: '5px 0', borderRadius: 6, border: 'none', cursor: 'pointer', background: active ? 'rgba(48,108,236,0.35)' : 'rgba(255,255,255,0.04)', color: active ? '#7EB3FF' : '#6C82A3', transition: 'all .15s' });
+                          const selectedCols = Array.isArray(cfg.cols) ? cfg.cols : [];
+                          const toggleCol = (i) => {
+                            const next = selectedCols.includes(i) ? selectedCols.filter(c => c !== i) : [...selectedCols, i];
+                            updateFormula(ci, { ...cfg, cols: next });
+                          };
                           return (
                             <div
-                              style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 700, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 12, padding: '12px', minWidth: 220, boxShadow: '0 8px 32px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 8 }}
+                              style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 700, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 12, padding: '12px', minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 8 }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Formula</div>
                                 <button onClick={(e) => { e.stopPropagation(); setActiveFormulaBuilderCol(null); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#6C82A3', flexShrink: 0 }} title="Close"><X size={12} /></button>
                               </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <select style={ss} value={cfg.colA ?? ''} onChange={e => updateFormula(ci, { ...cfg, colA: parseInt(e.target.value) })}>
-                                  <option value="">Column A…</option>{colOpts}
-                                </select>
-                                <select style={ss} value={cfg.op || '-'} onChange={e => updateFormula(ci, { ...cfg, op: e.target.value })}>
-                                  {OPERATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                                <select style={ss} value={cfg.colB ?? ''} onChange={e => updateFormula(ci, { ...cfg, colB: parseInt(e.target.value) })}>
-                                  <option value="">Column B…</option>{colOpts}
-                                </select>
+
+                              {/* Mode tabs */}
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button style={tabBtn(!isAggMode)} onClick={(e) => { e.stopPropagation(); updateFormula(ci, { op: cfg.op || '-' }); }}>A op B</button>
+                                <button style={tabBtn(isAggMode)} onClick={(e) => { e.stopPropagation(); updateFormula(ci, { fn: cfg.fn || 'sum', cols: cfg.cols || [] }); }}>Function</button>
                               </div>
+
+                              {isAggMode ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <select style={ss} value={cfg.fn || 'sum'} onChange={e => updateFormula(ci, { ...cfg, fn: e.target.value })}>
+                                    {AGG_FUNCTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                                  </select>
+                                  <div style={{ fontSize: 11, color: '#6C82A3', marginTop: 2 }}>Select columns to include:</div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                                    {headers.map((h, i) => {
+                                      if (i === ci) return null;
+                                      const checked = selectedCols.includes(i);
+                                      return (
+                                        <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: checked ? 'rgba(48,108,236,0.15)' : 'transparent' }} onClick={(e) => { e.stopPropagation(); toggleCol(i); }}>
+                                          <div style={{ width: 14, height: 14, borderRadius: 4, border: `1.5px solid ${checked ? '#306CEC' : '#3D5A8A'}`, background: checked ? '#306CEC' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            {checked && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                          </div>
+                                          <span style={{ fontSize: 12, color: checked ? '#E2EEFF' : '#8A9DC0' }}>{h || `Col ${i + 1}`}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                  {selectedCols.length > 0 && (
+                                    <div style={{ fontSize: 11, color: '#4ade80', background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: 6, padding: '4px 8px' }}>
+                                      {(cfg.fn || 'sum').toUpperCase()}({selectedCols.map(i => headers[i] || `Col ${i + 1}`).join(', ')})
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <select style={ss} value={cfg.colA ?? ''} onChange={e => updateFormula(ci, { ...cfg, colA: parseInt(e.target.value) })}>
+                                    <option value="">Column A…</option>{colOpts}
+                                  </select>
+                                  <select style={ss} value={cfg.op || '-'} onChange={e => updateFormula(ci, { ...cfg, op: e.target.value })}>
+                                    {OPERATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                  <select style={ss} value={cfg.colB ?? ''} onChange={e => updateFormula(ci, { ...cfg, colB: parseInt(e.target.value) })}>
+                                    <option value="">Column B…</option>{colOpts}
+                                  </select>
+                                  <select style={ss} value={cfg.op2 || ''} onChange={e => {
+                                    const val = e.target.value;
+                                    const next = { ...cfg, op2: val };
+                                    if (!val) { delete next.op2; delete next.colC; }
+                                    updateFormula(ci, next);
+                                  }}>
+                                    <option value="">+ Add operand…</option>
+                                    {OPERATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                  {cfg.op2 && (
+                                    <select style={ss} value={cfg.colC ?? ''} onChange={e => updateFormula(ci, { ...cfg, colC: parseInt(e.target.value) })}>
+                                      <option value="">Column C…</option>{colOpts}
+                                    </select>
+                                  )}
+                                </div>
+                              )}
+
                               <button
                                 onClick={(e) => { e.stopPropagation(); setActiveFormulaBuilderCol(null); }}
                                 style={{ fontSize: 12, fontWeight: 700, background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.35)', borderRadius: 8, color: '#4ade80', padding: '7px 0', cursor: 'pointer', width: '100%' }}
@@ -1169,7 +1237,14 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                 const colType = columnTypes[ci] || 'text';
                 const isFocused = focusedCell?.row === ri && focusedCell?.col === ci;
                 const focusedStyle = isFocused ? { outline: '2px solid rgba(48,108,236,0.75)', outlineOffset: -1, position: 'relative', zIndex: 1 } : undefined;
-                const handleCellClick = () => { setFocusedCell({ row: ri, col: ci }); tableWrapperRef.current?.focus(); };
+                const handleCellClick = () => {
+                  setFocusedCell({ row: ri, col: ci });
+                  // For editable text cells, let the click naturally focus the contenteditable
+                  // so the blinking cursor appears immediately. For read-only / special cells,
+                  // return focus to the wrapper for keyboard navigation.
+                  const isEditable = !readOnly && ['text', 'number', 'currency', 'percent'].includes(colType);
+                  if (!isEditable) tableWrapperRef.current?.focus();
+                };
 
                 if (colType === 'formula') {
                   const formula = columnFormulas[ci] || '';
@@ -1210,16 +1285,39 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                     <EditableCell
                       cellId={`${ri}-${ci}`}
                       value={formatValue(cell, colType, currencyCode)}
-                      onBlur={(newVal) => { updateCell(ri + 1, ci, formatValue(newVal, colType, currencyCode)); tableWrapperRef.current?.focus(); }}
+                      onBlur={(newVal) => { updateCell(ri + 1, ci, formatValue(newVal, colType, currencyCode)); }}
                       onNavigate={(dir) => {
                         const colCount = rows[0]?.length || 0;
                         const dataRows = rows.length - 1;
-                        if      (dir === 'down')  setFocusedCell({ row: Math.min(ri + 1, dataRows - 1), col: ci });
-                        else if (dir === 'up')    setFocusedCell({ row: Math.max(ri - 1, 0), col: ci });
-                        else if (dir === 'right') setFocusedCell({ row: ri, col: Math.min(ci + 1, colCount - 1) });
-                        else if (dir === 'left')  setFocusedCell({ row: ri, col: Math.max(ci - 1, 0) });
-                        else                      setFocusedCell({ row: ri, col: ci });
-                        tableWrapperRef.current?.focus();
+                        // Enter on the last row → add a new row and focus it
+                        if (dir === 'down' && ri + 1 >= dataRows && !readOnly) {
+                          addRow();
+                          const newRowIdx = dataRows;
+                          setFocusedCell({ row: newRowIdx, col: ci });
+                          setTimeout(() => {
+                            const el = tableWrapperRef.current?.querySelector(`[data-cell-id="${newRowIdx}-${ci}"]`);
+                            if (el) { el.focus(); try { const r=document.createRange(),s=window.getSelection(); r.selectNodeContents(el); r.collapse(false); s.removeAllRanges(); s.addRange(r); } catch(_){} }
+                            else tableWrapperRef.current?.focus();
+                          }, 0);
+                          return;
+                        }
+                        let nextRow = ri, nextCol = ci;
+                        if      (dir === 'down')  nextRow = Math.min(ri + 1, dataRows - 1);
+                        else if (dir === 'up')    nextRow = Math.max(ri - 1, 0);
+                        else if (dir === 'right') nextCol = Math.min(ci + 1, colCount - 1);
+                        else if (dir === 'left')  nextCol = Math.max(ci - 1, 0);
+                        setFocusedCell({ row: nextRow, col: nextCol });
+                        if (dir !== 'escape') {
+                          const nextEl = tableWrapperRef.current?.querySelector(`[data-cell-id="${nextRow}-${nextCol}"]`);
+                          if (nextEl) {
+                            nextEl.focus();
+                            try { const r=document.createRange(),s=window.getSelection(); r.selectNodeContents(nextEl); r.collapse(false); s.removeAllRanges(); s.addRange(r); } catch(_){}
+                          } else {
+                            tableWrapperRef.current?.focus();
+                          }
+                        } else {
+                          tableWrapperRef.current?.focus();
+                        }
                       }}
                       className={`${styles.cellText} ${alignClass}`}
                       readOnly={readOnly}
@@ -1276,6 +1374,8 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       <div className={styles.tableControls}>
         {!readOnly && (
           <>
+            <button className={styles.tableControlBtn} onClick={handleUndo} title="Undo (Ctrl+Z)" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Undo2 size={12} /></button>
+            <button className={styles.tableControlBtn} onClick={handleRedo} title="Redo (Ctrl+Y)" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Redo2 size={12} /></button>
             <button className={styles.tableControlBtn} onClick={addRow}><Plus size={12} /> Row</button>
             <button className={styles.tableControlBtn} onClick={addColumn}><Plus size={12} /> Column</button>
             {rows.length > 2 && <button className={styles.tableControlBtn} onClick={() => removeRow(rows.length - 1)}><Trash2 size={12} /> Row</button>}

@@ -86,6 +86,41 @@ export const useEditorStore = create((set, get) => ({
   toolbarVisible: false,
   toolbarPosition: { top: 0, left: 0 },
 
+  // ── Global undo/redo (tracks table block changes) ──
+  _historyStack: [],   // [{ blockId, content, properties }]
+  _futureStack: [],
+  _skipHistory: false,
+
+  undo: () => {
+    const { _historyStack, blocks } = get();
+    if (_historyStack.length === 0) return;
+    const entry = _historyStack[_historyStack.length - 1];
+    const current = blocks.find(b => b.id === entry.blockId);
+    if (!current) { set(s => ({ _historyStack: s._historyStack.slice(0, -1) })); return; }
+    set(s => ({
+      _historyStack: s._historyStack.slice(0, -1),
+      _futureStack: [...s._futureStack, { blockId: entry.blockId, content: current.content, properties: current.properties }],
+      _skipHistory: true,
+    }));
+    get().updateBlock(entry.blockId, { content: entry.content, properties: entry.properties });
+    set({ _skipHistory: false });
+  },
+
+  redo: () => {
+    const { _futureStack, blocks } = get();
+    if (_futureStack.length === 0) return;
+    const entry = _futureStack[_futureStack.length - 1];
+    const current = blocks.find(b => b.id === entry.blockId);
+    if (!current) { set(s => ({ _futureStack: s._futureStack.slice(0, -1) })); return; }
+    set(s => ({
+      _futureStack: s._futureStack.slice(0, -1),
+      _historyStack: [...s._historyStack, { blockId: entry.blockId, content: current.content, properties: current.properties }],
+      _skipHistory: true,
+    }));
+    get().updateBlock(entry.blockId, { content: entry.content, properties: entry.properties });
+    set({ _skipHistory: false });
+  },
+
   // ── Actions ──────────────────────────────────
 
   setBlocks: (blocks) => set((state) => setBlocksState(state, blocks)),
@@ -226,6 +261,17 @@ export const useEditorStore = create((set, get) => ({
   updateBlock: (blockId, updates) => {
     const pageId = get().blocks.find((b) => b.id === blockId)?.pageId || useWorkspaceStore.getState().currentPage?.id;
     if (!pageId) return;
+
+    // Capture undo history for table blocks (text blocks use browser-native undo)
+    if (!get()._skipHistory && (updates.content !== undefined || updates.properties !== undefined)) {
+      const current = get().blocks.find(b => b.id === blockId);
+      if (current?.type === 'table') {
+        set(s => ({
+          _historyStack: [...s._historyStack.slice(-49), { blockId, content: current.content, properties: current.properties }],
+          _futureStack: [],
+        }));
+      }
+    }
 
     set((state) => {
       const newBlocks = state.blocks.map((b) =>

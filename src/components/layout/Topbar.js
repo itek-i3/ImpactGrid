@@ -8,6 +8,7 @@ import {
   LogOut, Settings, User,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { useEditorStore } from '@/lib/store/useEditorStore';
 import { useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
 
@@ -19,6 +20,7 @@ export default function Topbar() {
     toggleSearch, workspace, userProfile,
   } = useWorkspaceStore();
   const toast = useToast();
+  const { undo, redo, _historyStack, _futureStack } = useEditorStore();
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
@@ -108,17 +110,19 @@ export default function Topbar() {
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             className="ig-kbtn"
-            title="Undo"
-            onClick={() => document.execCommand('undo')}
-            style={{ ...btnStyle, width: 32, height: 32 }}
+            title="Undo (Ctrl+Z)"
+            onClick={undo}
+            disabled={_historyStack.length === 0}
+            style={{ ...btnStyle, width: 32, height: 32, opacity: _historyStack.length === 0 ? 0.35 : 1 }}
           >
             <Undo2 size={15} />
           </button>
           <button
             className="ig-kbtn"
-            title="Redo"
-            onClick={() => document.execCommand('redo')}
-            style={{ ...btnStyle, width: 32, height: 32 }}
+            title="Redo (Ctrl+Y)"
+            onClick={redo}
+            disabled={_futureStack.length === 0}
+            style={{ ...btnStyle, width: 32, height: 32, opacity: _futureStack.length === 0 ? 0.35 : 1 }}
           >
             <Redo2 size={15} />
           </button>
