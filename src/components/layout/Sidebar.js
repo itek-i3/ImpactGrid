@@ -13,10 +13,17 @@ import {
   ChevronRight,
   Building2,
   Check,
+  Trash2,
+  RotateCcw,
+  Search,
+  X,
+  Timer,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { useSessionStore } from '@/lib/store/useSessionStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
+import SessionModal from './SessionModal';
 import styles from '@/styles/layout.module.css';
 
 function ImpactLogo({ size = 28 }) {
@@ -51,15 +58,20 @@ export default function Sidebar() {
     addPage,
     restorePage,
     permanentlyDeletePage,
+    emptyTrash,
     userProfile,
     agencies,
     activeAgencyId,
     switchAgency,
   } = useWorkspaceStore();
 
+  const { session: activeSession, teamSessions, sessionModalOpen, openSessionModal, closeSessionModal } = useSessionStore();
+  const liveTeamCount = teamSessions.filter((s) => s.status === 'active' || s.status === 'paused').length;
+
   const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
   const agencyPickerRef = useRef(null);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [trashSearch, setTrashSearch] = useState('');
   const [copyModal, setCopyModal] = useState({ open: false, page: null });
   const [allWorkspaces, setAllWorkspaces] = useState([]);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
@@ -227,6 +239,28 @@ export default function Sidebar() {
                 <span>Chat Room</span>
               </button>
 
+              <button
+                className="ig-nav"
+                onClick={openSessionModal}
+              >
+                <Timer size={15} />
+                <span>Sessions</span>
+                {activeSession?.status === 'active' && (
+                  <span className="animate-pulse" style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block', flexShrink: 0 }} />
+                )}
+                {activeSession?.status === 'paused' && (
+                  <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', flexShrink: 0 }} />
+                )}
+                {activeSession?.status === 'expired' && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#f87171', background: 'rgba(239,68,68,0.15)', borderRadius: 99, padding: '1px 6px' }}>!</span>
+                )}
+                {!activeSession && liveTeamCount > 0 && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', borderRadius: 99, padding: '1px 6px' }}>
+                    {liveTeamCount}
+                  </span>
+                )}
+              </button>
+
             </nav>
 
             {/* ── Favorites section (pinned in sidebar) ── */}
@@ -346,6 +380,30 @@ export default function Sidebar() {
                 </div>
               )}
 
+              <button
+                className="ig-nav"
+                onClick={() => { setTrashSearch(''); setTrashOpen(true); }}
+                style={{ position: 'relative' }}
+              >
+                <Trash2 size={15} />
+                <span>Trash</span>
+                {archivedPages.length > 0 && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    background: 'rgba(239,68,68,0.18)',
+                    color: '#f87171',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    borderRadius: 99,
+                    padding: '1px 6px',
+                    minWidth: 18,
+                    textAlign: 'center',
+                  }}>
+                    {archivedPages.length}
+                  </span>
+                )}
+              </button>
+
             </div>
           </>
         )}
@@ -355,6 +413,9 @@ export default function Sidebar() {
       {sidebarOpen && (
         <div className={styles.sidebarOverlay} onClick={toggleSidebar} />
       )}
+
+      {/* Sessions Modal */}
+      <SessionModal isOpen={sessionModalOpen} onClose={closeSessionModal} />
 
       {/* Copy to workspace Modal */}
       <Modal
@@ -440,46 +501,110 @@ export default function Sidebar() {
       </Modal>
 
       {/* Trash Modal */}
-      <Modal isOpen={trashOpen} onClose={() => setTrashOpen(false)} title="Trash" maxWidth="480px">
-        <div style={{ maxHeight: '350px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          {archivedPages.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-              No items in Trash
-            </div>
-          ) : (
-            archivedPages.map((page) => (
-              <div
-                key={page.id}
+      <Modal isOpen={trashOpen} onClose={() => setTrashOpen(false)} title="Trash" maxWidth="500px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          {/* Search bar */}
+          {archivedPages.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
+              <input
+                value={trashSearch}
+                onChange={(e) => setTrashSearch(e.target.value)}
+                placeholder="Search deleted pages…"
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 'var(--space-2) var(--space-3)',
-                  background: 'var(--color-bg-secondary)',
-                  border: '1px solid var(--color-border)',
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '7px 28px 7px 30px',
                   borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  background: 'var(--color-bg-secondary)',
+                  color: 'var(--color-text-primary)',
+                  fontSize: 'var(--text-sm)',
+                  outline: 'none',
                 }}
+              />
+              {trashSearch && (
+                <button onClick={() => setTrashSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', padding: 2, display: 'flex' }}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Page list */}
+          <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(() => {
+              const filtered = archivedPages.filter((p) =>
+                !trashSearch || (p.title || 'Untitled').toLowerCase().includes(trashSearch.toLowerCase())
+              );
+              if (archivedPages.length === 0) {
+                return (
+                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                    <Trash2 size={28} style={{ margin: '0 auto 10px', opacity: 0.3, display: 'block' }} />
+                    Trash is empty
+                  </div>
+                );
+              }
+              if (filtered.length === 0) {
+                return (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                    No pages match &ldquo;{trashSearch}&rdquo;
+                  </div>
+                );
+              }
+              return filtered.map((page) => (
+                <div
+                  key={page.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{page.icon || '📄'}</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {page.title || 'Untitled'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => restorePage(page.id)}
+                      title="Restore page"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', fontSize: 11, background: 'rgba(48,108,236,0.12)', color: '#7EB3FF', border: '1px solid rgba(48,108,236,0.25)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 500 }}
+                    >
+                      <RotateCcw size={11} />
+                      Restore
+                    </button>
+                    <button
+                      onClick={() => permanentlyDeletePage(page.id)}
+                      title="Delete permanently"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', fontSize: 11, background: 'rgba(239,68,68,0.10)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 500 }}
+                    >
+                      <X size={11} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+
+          {/* Empty Trash footer */}
+          {archivedPages.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4, borderTop: '1px solid var(--color-border)' }}>
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                {archivedPages.length} item{archivedPages.length !== 1 ? 's' : ''} in trash
+              </span>
+              <button
+                onClick={() => { emptyTrash(); }}
+                style={{ padding: '5px 12px', fontSize: 11, background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 600 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
-                  <span style={{ fontSize: 'var(--text-lg)' }}>{page.icon || '📄'}</span>
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {page.title || 'Untitled'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                  <button
-                    onClick={() => restorePage(page.id)}
-                    style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--color-bg-active)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
-                  >
-                    Restore
-                  </button>
-                  <button
-                    onClick={() => permanentlyDeletePage(page.id)}
-                    style={{ padding: '4px 8px', fontSize: '11px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
+                Empty Trash
+              </button>
+            </div>
           )}
         </div>
       </Modal>

@@ -8,6 +8,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import SearchModal from '@/components/layout/SearchModal';
 import FloatingChat from '@/components/layout/FloatingChat';
+import SessionWidget from '@/components/layout/SessionWidget';
 import BlockEditor from '@/components/editor/BlockEditor';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
@@ -272,6 +273,7 @@ function WorkspaceContent() {
 
       <SearchModal />
       <FloatingChat />
+      <SessionWidget />
     </div>
   );
 }
