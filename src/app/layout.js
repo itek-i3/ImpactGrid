@@ -1,5 +1,6 @@
 import { Inter, League_Spartan, DM_Sans, Plus_Jakarta_Sans, Schibsted_Grotesk, JetBrains_Mono } from 'next/font/google';
 import ThemeInitializer from '@/components/layout/ThemeInitializer';
+import SessionProvider from '@/components/layout/SessionProvider';
 import '@/styles/globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${inter.variable} ${leagueSpartan.variable} ${dmSans.variable} ${plusJakarta.variable} ${schibsted.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body>
         <ThemeInitializer />
+        <SessionProvider />
         <div className="app-container">
           {children}
         </div>

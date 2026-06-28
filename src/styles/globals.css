@@ -172,29 +172,29 @@
 
 /* ── Light Mode Override ── */
 [data-theme="light"] {
-  --color-bg-primary: #EEF2FB;
-  --color-bg-secondary: #0E1A3A;
-  --color-bg-tertiary: #f0f3fa;
-  --color-bg-elevated: #FFFFFF;
-  --color-bg-hover: rgba(20, 33, 61, 0.04);
-  --color-bg-active: rgba(48, 108, 236, 0.10);
-  --color-bg-selected: rgba(48, 108, 236, 0.10);
+  --color-bg-primary:   #F5F7FF;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary:  #EDF0FA;
+  --color-bg-elevated:  #FFFFFF;
+  --color-bg-hover:     rgba(20, 33, 61, 0.05);
+  --color-bg-active:    rgba(48, 108, 236, 0.09);
+  --color-bg-selected:  rgba(48, 108, 236, 0.09);
 
-  --color-surface: rgba(255, 255, 255, 0.9);
-  --color-surface-glass: rgba(255, 255, 255, 0.7);
-  --color-surface-overlay: rgba(238, 242, 251, 0.92);
+  --color-surface:         rgba(255, 255, 255, 0.95);
+  --color-surface-glass:   rgba(255, 255, 255, 0.80);
+  --color-surface-overlay: rgba(245, 247, 255, 0.96);
 
-  --color-border: rgba(20, 33, 61, 0.10);
-  --color-border-hover: rgba(20, 33, 61, 0.18);
-  --color-border-active: rgba(48, 108, 236, 0.5);
-  --color-border-subtle: rgba(20, 33, 61, 0.05);
+  --color-border:        rgba(20, 33, 61, 0.10);
+  --color-border-hover:  rgba(20, 33, 61, 0.20);
+  --color-border-active: rgba(48, 108, 236, 0.50);
+  --color-border-subtle: rgba(20, 33, 61, 0.06);
 
-  --color-text-primary: #14213D;
-  --color-text-secondary: #5B6B86;
-  --color-text-tertiary: #93A0B8;
-  --color-text-muted: #B8C4D4;
-  --color-text-inverse: #EEF2FB;
-  --color-text-link: #306CEC;
+  --color-text-primary:   #0F1C38;
+  --color-text-secondary: #3D5070;
+  --color-text-tertiary:  #7A8EB0;
+  --color-text-muted:     #A8B8D0;
+  --color-text-inverse:   #F5F7FF;
+  --color-text-link:      #1A56D6;
 
   --color-accent-primary: #306CEC;
   --color-accent-primary-hover: #1E4FB8;
@@ -230,12 +230,12 @@
   --color-callout-red: rgba(224, 72, 90, 0.08);
   --color-callout-gray: rgba(20, 33, 61, 0.04);
 
-  --color-sidebar-bg: #0E1A3A;
-  --color-sidebar-border: rgba(255, 255, 255, 0.08);
-  --color-sidebar-text: #8FA0C4;
-  --color-sidebar-text-active: #E2EEFF;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --color-sidebar-active: rgba(48, 108, 236, 0.25);
+  --color-sidebar-bg: #F0F2FA;
+  --color-sidebar-border: rgba(20, 33, 61, 0.08);
+  --color-sidebar-text: #5B6B86;
+  --color-sidebar-text-active: #0F1C38;
+  --color-sidebar-hover: rgba(20, 33, 61, 0.06);
+  --color-sidebar-active: rgba(48, 108, 236, 0.12);
 }
 
 /* ── Base Styles ───────────────────────────────────────────────── */
@@ -263,6 +263,31 @@ body {
   overflow-x: hidden;
 }
 
+/* ── Text size scale ───────────────────────────────────────────── */
+[data-textsize="small"] {
+  --text-xs:   0.5625rem;
+  --text-sm:   0.6875rem;
+  --text-base: 0.8125rem;
+  --text-md:   0.875rem;
+  --text-lg:   1rem;
+  --text-xl:   1.125rem;
+  font-size: 13px;
+}
+[data-textsize="large"] {
+  --text-xs:   0.75rem;
+  --text-sm:   0.9375rem;
+  --text-base: 1.0625rem;
+  --text-md:   1.125rem;
+  --text-lg:   1.25rem;
+  --text-xl:   1.5rem;
+  font-size: 17px;
+}
+
+/* ── Compact layout ────────────────────────────────────────────── */
+[data-compact="true"] .ig-nav { padding: 5px 10px; font-size: 11.5px; }
+[data-compact="true"] body { line-height: 1.4; }
+[data-compact="true"] [data-compact-target] { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+
 /* ── Agency Design System Utilities ───────────────────────────── */
 .display { font-family: var(--font-display); }
 .mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -278,6 +303,8 @@ body {
   text-align: left;
 }
 .ig-nav:hover { background: rgba(48,108,236,0.12); color: #7EB3FF; }
+[data-theme="light"] .ig-nav { color: #5B6B86; }
+[data-theme="light"] .ig-nav:hover { background: rgba(20,33,61,0.06); color: #306CEC; }
 .ig-nav.active {
   background: linear-gradient(135deg, #1E4FB8, #306CEC);
   color: #fff; font-weight: 600;
@@ -309,8 +336,8 @@ body {
 }
 [data-theme="light"] .ig-card {
   background: #FFFFFF;
-  border-color: rgba(20,33,61,0.10);
-  box-shadow: 0 2px 12px rgba(20,33,61,0.06), 0 1px 3px rgba(20,33,61,0.04);
+  border-color: rgba(20,33,61,0.08);
+  box-shadow: 0 1px 6px rgba(20,33,61,0.07), 0 4px 20px rgba(20,33,61,0.05);
 }
 [data-theme="light"] .ig-card::before { display: none; }
 

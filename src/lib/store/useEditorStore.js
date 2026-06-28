@@ -125,6 +125,11 @@ export const useEditorStore = create((set, get) => ({
 
   setBlocks: (blocks) => set((state) => setBlocksState(state, blocks)),
 
+  seedBlocksForPage: (pageId, blocks) =>
+    set((state) => ({
+      blocksByPage: { ...(state.blocksByPage || {}), [pageId]: blocks },
+    })),
+
   setActiveBlock: (blockId) => set({ activeBlockId: blockId }),
 
   setEditing: (isEditing) => set({ isEditing }),
@@ -486,7 +491,14 @@ export const useEditorStore = create((set, get) => ({
       }
 
       const res = await fetch(`/os/api/pages/${pageId}/blocks`);
-      if (!res.ok) throw new Error('Failed to fetch blocks');
+      if (!res.ok) {
+        // Page may not exist in DB (e.g. locally-injected page) — use cache if available
+        const cached = get().blocksByPage?.[pageId];
+        if (cached && cached.length > 0) {
+          set({ blocks: cached, activeBlockId: cached[0]?.id || null });
+        }
+        return;
+      }
       const dataJson = await res.json();
       const data = dataJson.data || [];
 
@@ -505,6 +517,17 @@ export const useEditorStore = create((set, get) => ({
       let blocks = data.map(mapBlockFromDb);
 
       if (blocks.length === 0) {
+        // Check local cache before seeding an empty paragraph
+        const cached = get().blocksByPage?.[pageId];
+        if (cached && cached.length > 0) {
+          set((state) => ({
+            blocks: cached,
+            activeBlockId: cached[0]?.id || null,
+            blocksByPage: { ...(state.blocksByPage || {}), [pageId]: cached },
+          }));
+          return;
+        }
+
         const seededBlocks = [
           { id: crypto.randomUUID(), type: 'paragraph', content: { text: '' }, properties: {}, parentBlockId: null, sortOrder: 0, pageId }
         ];
@@ -534,6 +557,11 @@ export const useEditorStore = create((set, get) => ({
       }));
     } catch (e) {
       console.error('Failed to initialize blocks:', e);
+      // Fallback to local cache on unexpected errors
+      const cached = get().blocksByPage?.[pageId];
+      if (cached && cached.length > 0) {
+        set({ blocks: cached, activeBlockId: cached[0]?.id || null });
+      }
     } finally {
       set({ isSaving: false });
     }

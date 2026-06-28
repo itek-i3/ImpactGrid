@@ -75,6 +75,21 @@ export const useWorkspaceStore = create((set, get) => ({
 
   setWorkspace: (workspace) => set({ workspace }),
   setWorkspaces: (workspaces) => set({ workspaces }),
+
+  updateWorkspaceSettings: async (id, updates) => {
+    const res = await fetch(`/os/api/workspaces/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Failed to save'); }
+    const { data } = await res.json();
+    set((state) => ({
+      workspace: state.workspace?.id === id ? { ...state.workspace, ...data } : state.workspace,
+      workspaces: state.workspaces.map((w) => w.id === id ? { ...w, ...data } : w),
+    }));
+    return data;
+  },
   setPages: (pages) => set({ pages }),
 
   setCurrentPage: (page) => set({ currentPage: page }),
@@ -396,6 +411,20 @@ export const useWorkspaceStore = create((set, get) => ({
     } catch (e) {
       console.error('Failed to permanently delete page in database:', e);
     }
+  },
+
+  emptyTrash: async () => {
+    const archivedIds = get().pages.filter((p) => p.isArchived).map((p) => p.id);
+    set((state) => ({
+      pages: state.pages.filter((p) => !p.isArchived),
+      currentPage: archivedIds.includes(state.currentPage?.id) ? null : state.currentPage,
+    }));
+
+    if (isDemoMode()) return;
+
+    await Promise.allSettled(
+      archivedIds.map((id) => fetch(`/os/api/pages/${id}`, { method: 'DELETE' }))
+    );
   },
 
   reorderPage: async (pageId, newSortOrder) => {

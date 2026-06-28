@@ -17,7 +17,7 @@ export default function Topbar() {
   const {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage,
-    toggleSearch, workspace, userProfile,
+    toggleSearch, workspace, userProfile, theme,
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
@@ -89,13 +89,14 @@ export default function Topbar() {
   };
 
   const isReadOnly = userProfile?.role === 'member';
+  const isLight = theme === 'light';
 
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 14,
       padding: '20px 48px',
-      borderBottom: '1px solid rgba(48,108,236,0.18)',
-      background: 'rgba(2,4,10,0.80)',
+      borderBottom: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(48,108,236,0.18)',
+      background: isLight ? 'rgba(255,255,255,0.97)' : 'rgba(2,4,10,0.80)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       flexShrink: 0, position: 'sticky', top: 0, zIndex: 200,
@@ -138,8 +139,10 @@ export default function Topbar() {
         )}
         <h1 className="display" style={{
           fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.01em',
-          background: 'linear-gradient(135deg,#FFFFFF,#7EB3FF)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+          ...(isLight
+            ? { color: '#0F1C38' }
+            : { background: 'linear-gradient(135deg,#FFFFFF,#7EB3FF)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }
+          ),
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {currentPage ? (currentPage.icon ? `${currentPage.icon} ` : '') + (currentPage.title || 'Untitled') : workspace?.name || 'Workspace'}
@@ -153,9 +156,9 @@ export default function Topbar() {
           readOnly
           placeholder="Search pages…"
           onClick={toggleSearch}
-          style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: '#E2EEFF', width: '100%', cursor: 'pointer' }}
+          style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: isLight ? '#0F1C38' : '#E2EEFF', width: '100%', cursor: 'pointer' }}
         />
-        <span style={{ fontSize: 11, color: '#3D5A8A', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
+        <span style={{ fontSize: 11, color: isLight ? '#7A8EB0' : '#3D5A8A', background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
       </div>
 
       {/* Favorite */}
@@ -346,7 +349,7 @@ export default function Topbar() {
               <div style={{ padding: '6px 0' }}>
                 {[
                   { icon: <User size={14} />, label: 'My Profile', onClick: () => { router.push('/settings'); setShowProfileMenu(false); } },
-                  { icon: <Settings size={14} />, label: 'Settings', onClick: () => { router.push('/settings'); setShowProfileMenu(false); } },
+                  { icon: <Settings size={14} />, label: 'Settings', onClick: () => { router.push('/customize'); setShowProfileMenu(false); } },
                 ].map((item) => (
                   <button key={item.label} type="button" onClick={item.onClick} style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 10,

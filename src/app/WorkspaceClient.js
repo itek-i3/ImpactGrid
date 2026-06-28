@@ -8,8 +8,8 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import SearchModal from '@/components/layout/SearchModal';
 import FloatingChat from '@/components/layout/FloatingChat';
-import SessionWidget from '@/components/layout/SessionWidget';
 import BlockEditor from '@/components/editor/BlockEditor';
+import HomeDashboard from '@/components/layout/HomeDashboard';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -101,30 +101,33 @@ function WorkspaceContent() {
   ];
 
   const isReadOnly = userProfile?.role === 'member';
+  const isLight = theme === 'light';
 
   return (
-    <div className={styles.workspaceShell} style={{ background: 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
+    <div className={styles.workspaceShell} style={{ background: isLight ? '#FFFFFF' : 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
       <Sidebar />
 
-      <div className={styles.mainContent} style={{ position: 'relative', background: '#000' }}>
-        {/* Blue ambient glow — top right */}
-        <div style={{
-          position: 'absolute', width: 700, height: 700, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(48,108,236,0.18) 0%, transparent 60%)',
-          top: -250, right: -150, pointerEvents: 'none', zIndex: 0,
-        }} />
-        {/* Blue ambient glow — bottom left */}
-        <div style={{
-          position: 'absolute', width: 500, height: 500, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(30,79,184,0.12) 0%, transparent 65%)',
-          bottom: -100, left: -100, pointerEvents: 'none', zIndex: 0,
-        }} />
+      <div className={styles.mainContent} style={{ position: 'relative', background: isLight ? '#FFFFFF' : '#000' }}>
+        {!isLight && (
+          <>
+            <div style={{
+              position: 'absolute', width: 700, height: 700, borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(48,108,236,0.18) 0%, transparent 60%)',
+              top: -250, right: -150, pointerEvents: 'none', zIndex: 0,
+            }} />
+            <div style={{
+              position: 'absolute', width: 500, height: 500, borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(30,79,184,0.12) 0%, transparent 65%)',
+              bottom: -100, left: -100, pointerEvents: 'none', zIndex: 0,
+            }} />
+          </>
+        )}
 
         <Topbar />
 
         <div className={styles.pageContent} style={{
           position: 'relative', zIndex: 1,
-          backgroundImage: `
+          backgroundImage: isLight ? 'none' : `
             linear-gradient(rgba(48,108,236,0.06) 1px, transparent 1px),
             linear-gradient(90deg, rgba(48,108,236,0.06) 1px, transparent 1px)
           `,
@@ -219,61 +222,13 @@ function WorkspaceContent() {
               <BlockEditor pageId={currentPage.id} readOnly={isReadOnly} />
             </div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                minHeight: 'calc(100dvh - var(--topbar-height))',
-                gap: 'var(--space-4)',
-                color: 'var(--color-text-muted)',
-              }}
-            >
-              <div
-                style={{
-                  width: '80px',
-                  height: '80px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'var(--color-accent-primary-subtle)',
-                  borderRadius: 'var(--radius-2xl)',
-                  fontSize: '2.5rem',
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                📄
-              </div>
-              <h2
-                style={{
-                  fontSize: 'var(--text-xl)',
-                  fontWeight: 'var(--font-semibold)',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                Select a page to get started
-              </h2>
-              <p
-                style={{
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--color-text-tertiary)',
-                  maxWidth: '400px',
-                  textAlign: 'center',
-                }}
-              >
-                Choose a page from the sidebar, or create a new one to start
-                writing.
-              </p>
-            </div>
+            <HomeDashboard />
           )}
         </div>
       </div>
 
       <SearchModal />
       <FloatingChat />
-      <SessionWidget />
     </div>
   );
 }

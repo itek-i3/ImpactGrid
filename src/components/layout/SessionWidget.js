@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Pause, Play, Timer, CheckCircle, X } from 'lucide-react';
+import { Pause, Play } from 'lucide-react';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 
 function fmt(totalSeconds) {
@@ -20,6 +20,7 @@ export default function SessionWidget() {
 
   useEffect(() => {
     clearInterval(intervalRef.current);
+
     if (!session || session.status !== 'active') {
       if (session?.status === 'paused' && session.endTime && session.pausedAt) {
         setTimeLeft(Math.max(0, (session.endTime - session.pausedAt) / 1000));
@@ -38,7 +39,7 @@ export default function SessionWidget() {
       }
     };
     tick();
-    intervalRef.current = setInterval(tick, 500);
+    intervalRef.current = setInterval(tick, 1000);
     return () => clearInterval(intervalRef.current);
   }, [session?.status, session?.endTime, session?.pausedAt, expireSession]);
 
@@ -48,10 +49,10 @@ export default function SessionWidget() {
   const isPaused  = session.status === 'paused';
   const isExpired = session.status === 'expired' || session.status === 'logging';
 
-  const dotColor   = isExpired ? '#f87171' : isPaused ? '#f59e0b' : '#4ade80';
+  const dotColor    = isExpired ? '#f87171' : isPaused ? '#f59e0b' : '#4ade80';
   const borderColor = isExpired ? 'rgba(239,68,68,0.35)' : isPaused ? 'rgba(245,158,11,0.35)' : 'rgba(48,108,236,0.40)';
-  const progress   = isExpired ? 1 : Math.min(1, 1 - timeLeft / (session.durationSeconds || 1));
-  const circ       = 2 * Math.PI * 16;
+  const progress    = isExpired ? 1 : Math.min(1, 1 - timeLeft / (session.durationSeconds || 1));
+  const circ        = 2 * Math.PI * 16;
 
   return (
     <div
@@ -68,14 +69,14 @@ export default function SessionWidget() {
         WebkitBackdropFilter: 'blur(16px)',
         border: `1.5px solid ${borderColor}`,
         borderRadius: 40,
-        padding: '5px 10px 5px 6px',
+        padding: '5px 12px 5px 6px',
         boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
         cursor: 'pointer',
         userSelect: 'none',
       }}
       onClick={openSessionModal}
     >
-      {/* Mini circular progress */}
+      {/* Circular progress ring */}
       <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
         <svg width={32} height={32} style={{ position: 'absolute', transform: 'rotate(-90deg)' }}>
           <circle cx={16} cy={16} r={16} fill="none" stroke="rgba(48,108,236,0.10)" strokeWidth={3} />
@@ -89,11 +90,14 @@ export default function SessionWidget() {
           />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className={isActive ? 'animate-pulse' : ''} style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
+          <span
+            className={isActive ? 'animate-pulse' : ''}
+            style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, display: 'inline-block' }}
+          />
         </div>
       </div>
 
-      {/* Time */}
+      {/* Countdown */}
       <span style={{
         fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px',
         color: isExpired ? '#f87171' : isPaused ? '#f59e0b' : '#fff',
@@ -102,17 +106,7 @@ export default function SessionWidget() {
         {isExpired ? "Time's up" : fmt(timeLeft)}
       </span>
 
-      {/* Task label */}
-      {session.taskDescription && (
-        <span style={{
-          fontSize: 11, color: 'var(--color-text-muted)',
-          maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {session.taskDescription}
-        </span>
-      )}
-
-      {/* Pause / Resume button */}
+      {/* Pause / Resume */}
       {(isActive || isPaused) && (
         <button
           onClick={(e) => { e.stopPropagation(); isPaused ? resumeSession() : pauseSession(); }}

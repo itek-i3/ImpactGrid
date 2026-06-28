@@ -129,18 +129,6 @@ export default function SearchModal() {
           )}
         </div>
 
-        {/* Footer */}
-        <div className={styles.searchFooter}>
-          <span className={styles.searchKbd}>
-            <kbd>↑↓</kbd> Navigate
-          </span>
-          <span className={styles.searchKbd}>
-            <kbd>↵</kbd> Open
-          </span>
-          <span className={styles.searchKbd}>
-            <kbd>Esc</kbd> Close
-          </span>
-        </div>
       </div>
     </div>
   );

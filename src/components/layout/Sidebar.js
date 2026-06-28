@@ -18,12 +18,12 @@ import {
   Search,
   X,
   Timer,
+  Home,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
-import SessionModal from './SessionModal';
 import styles from '@/styles/layout.module.css';
 
 function ImpactLogo({ size = 28 }) {
@@ -216,6 +216,16 @@ export default function Sidebar() {
           <>
             {/* ── Quick Actions ── */}
             <nav style={{ padding: '8px 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {/* Home — always first */}
+              <button
+                className="ig-nav"
+                onClick={() => setCurrentPage(null)}
+                style={!currentPage ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+              >
+                <Home size={15} />
+                <span>Home</span>
+              </button>
+
               {userProfile?.role === 'superadmin' && (
                 <button
                   className="ig-nav"
@@ -413,9 +423,6 @@ export default function Sidebar() {
       {sidebarOpen && (
         <div className={styles.sidebarOverlay} onClick={toggleSidebar} />
       )}
-
-      {/* Sessions Modal */}
-      <SessionModal isOpen={sessionModalOpen} onClose={closeSessionModal} />
 
       {/* Copy to workspace Modal */}
       <Modal

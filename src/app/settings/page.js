@@ -3,10 +3,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import {
   ArrowLeft, Pencil, Camera, Eye, EyeOff, Check, X,
-  User, Mail, Phone, Lock, Building2,
+  User, Mail, Phone, Lock, Building2, LayoutDashboard,
 } from 'lucide-react';
+
+const WORKSPACE_EMOJIS = [
+  '🚀','⚡','🎯','💡','🌍','🏆','🔥','💎',
+  '🎨','📊','📈','🛠️','🌐','🏢','💼','📋',
+  '🌟','✨','🎪','🎭','🌈','🦋','🏔️','🌊',
+  '🧠','💪','🤝','🌱','🔮','🎵','📱','🖥️',
+];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -31,6 +39,21 @@ export default function SettingsPage() {
   const [agencyMembers, setAgencyMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [updatingMember, setUpdatingMember] = useState(null);
+
+  // Workspace settings
+  const { workspace, updateWorkspaceSettings } = useWorkspaceStore();
+  const [wsName, setWsName] = useState('');
+  const [wsIcon, setWsIcon] = useState('🚀');
+  const [wsEditing, setWsEditing] = useState(false);
+  const [wsSaving, setWsSaving] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  useEffect(() => {
+    if (workspace) {
+      setWsName(workspace.name || '');
+      setWsIcon(workspace.icon || '🚀');
+    }
+  }, [workspace]);
 
   useEffect(() => {
     const sb = createClient();
@@ -169,6 +192,27 @@ export default function SettingsPage() {
       flash('Member removed from agency');
     }
     setUpdatingMember(null);
+  };
+
+  const saveWorkspace = async () => {
+    if (!wsName.trim()) { flash('Workspace name is required', false); return; }
+    if (!workspace?.id) return;
+    setWsSaving(true);
+    try {
+      await updateWorkspaceSettings(workspace.id, { name: wsName.trim(), icon: wsIcon });
+      setWsEditing(false);
+      flash('Workspace updated');
+    } catch (e) {
+      flash(e.message || 'Failed to save', false);
+    }
+    setWsSaving(false);
+  };
+
+  const cancelWsEdit = () => {
+    setWsName(workspace?.name || '');
+    setWsIcon(workspace?.icon || '🚀');
+    setWsEditing(false);
+    setShowEmojiPicker(false);
   };
 
   if (!profile) return (
@@ -376,6 +420,121 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+
+          {/* Workspace Settings card */}
+          {workspace && (
+            <div style={{
+              marginTop: 32, background: '#000', border: '1px solid rgba(48,108,236,0.22)',
+              borderRadius: 20, padding: '36px 40px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <LayoutDashboard size={20} style={{ color: '#5B9BFF' }} /> Workspace Settings
+                  </h3>
+                  <p style={{ color: '#3D5A8A', margin: '6px 0 0', fontSize: 13 }}>
+                    {['manager', 'superadmin'].includes(profile?.role)
+                      ? 'Customize how your workspace looks to the team.'
+                      : 'Your current workspace details.'}
+                  </p>
+                </div>
+                {['manager', 'superadmin'].includes(profile?.role) && !wsEditing && (
+                  <button onClick={() => setWsEditing(true)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px',
+                    background: 'rgba(48,108,236,0.14)', border: '1.5px solid rgba(48,108,236,0.55)',
+                    borderRadius: 50, color: '#7EB3FF', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
+                  }}>
+                    <Pencil size={13} /> Edit
+                  </button>
+                )}
+                {wsEditing && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={cancelWsEdit} style={{
+                      display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px',
+                      background: 'none', border: '1.5px solid rgba(255,255,255,0.12)',
+                      borderRadius: 50, color: '#6B8BB5', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+                    }}>
+                      <X size={13} /> Cancel
+                    </button>
+                    <button onClick={saveWorkspace} disabled={wsSaving} style={{
+                      display: 'flex', alignItems: 'center', gap: 5, padding: '6px 18px',
+                      background: '#306CEC', border: 'none',
+                      borderRadius: 50, color: '#fff', cursor: 'pointer', fontSize: 13,
+                      fontFamily: 'inherit', fontWeight: 700,
+                    }}>
+                      <Check size={13} /> {wsSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+                {/* Icon */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div
+                    onClick={() => wsEditing && setShowEmojiPicker((v) => !v)}
+                    style={{
+                      width: 80, height: 80, borderRadius: 20,
+                      background: 'rgba(48,108,236,0.14)',
+                      border: `2px solid ${wsEditing ? 'rgba(48,108,236,0.55)' : 'rgba(48,108,236,0.22)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 38, cursor: wsEditing ? 'pointer' : 'default',
+                      transition: 'border-color .15s',
+                    }}
+                    title={wsEditing ? 'Click to change icon' : ''}
+                  >
+                    {wsIcon}
+                  </div>
+                  {wsEditing && (
+                    <div style={{
+                      position: 'absolute', fontSize: 10, color: '#5B9BFF', textAlign: 'center',
+                      width: '100%', marginTop: 4,
+                    }}>tap to change</div>
+                  )}
+                  {showEmojiPicker && wsEditing && (
+                    <div style={{
+                      position: 'absolute', top: '110%', left: 0, zIndex: 100,
+                      background: '#0A1628', border: '1.5px solid rgba(48,108,236,0.35)',
+                      borderRadius: 16, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                      display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, width: 288,
+                    }}>
+                      {WORKSPACE_EMOJIS.map((e) => (
+                        <button key={e} onClick={() => { setWsIcon(e); setShowEmojiPicker(false); }} style={{
+                          width: 30, height: 30, borderRadius: 8, border: 'none',
+                          background: wsIcon === e ? 'rgba(48,108,236,0.30)' : 'none',
+                          fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Name */}
+                <div style={{ flex: 1 }}>
+                  <div style={lbl}>Workspace Name</div>
+                  {wsEditing ? (
+                    <div className="ig-field-wrap" style={pillWrapSt}>
+                      <input
+                        className="ig-input"
+                        value={wsName}
+                        onChange={(e) => setWsName(e.target.value)}
+                        placeholder="Workspace name"
+                        style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '0 16px' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E2EEFF', marginTop: 6 }}>{workspace.name}</div>
+                  )}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={lbl}>Workspace ID</div>
+                    <div style={{ fontSize: 12, color: '#3D5A8A', fontFamily: 'monospace', marginTop: 4 }}>{workspace.id}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Agency Members card */}
           {profile && ['manager', 'superadmin'].includes(profile.role) && profile.agency_id && (
