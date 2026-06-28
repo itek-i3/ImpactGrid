@@ -15,7 +15,7 @@ export async function GET(request, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return badRequest('Unauthorized');
 
-  const admin = createAdminClient();
+  const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
   // Resolve this workspace's agency — used for DM isolation
   const { data: wsRow } = await admin
@@ -111,7 +111,8 @@ export async function POST(request, { params }) {
     const u2 = parts[3];
 
     // Reject if the channel's agency doesn't match this workspace's agency
-    const { data: wsCheck } = await createAdminClient()
+    const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+    const { data: wsCheck } = await admin
       .from('workspaces')
       .select('agency_id')
       .eq('id', workspaceId)

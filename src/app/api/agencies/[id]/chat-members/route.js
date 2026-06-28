@@ -9,7 +9,7 @@ export async function GET(_, { params }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return forbidden('Not authenticated');
 
-  const admin = createAdminClient();
+  const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
   // Verify the requester belongs to this agency
   const { data: membership } = await admin

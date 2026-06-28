@@ -25,8 +25,8 @@ export async function listUserAgencies() {
 }
 
 export async function addAgencyMember(agencyId, userId, role = 'member') {
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { data, error } = await client
     .from('agency_members')
     .upsert({ agency_id: agencyId, user_id: userId, role }, { onConflict: 'user_id,agency_id' })
     .select()
@@ -35,8 +35,8 @@ export async function addAgencyMember(agencyId, userId, role = 'member') {
 }
 
 export async function removeAgencyMember(agencyId, userId) {
-  const admin = createAdminClient();
-  const { error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { error } = await client
     .from('agency_members')
     .delete()
     .eq('agency_id', agencyId)
@@ -45,8 +45,8 @@ export async function removeAgencyMember(agencyId, userId) {
 }
 
 export async function listAgencyMembers(agencyId) {
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { data, error } = await client
     .from('agency_members')
     .select('role, joined_at, user:user_id(id, email, raw_user_meta_data)')
     .eq('agency_id', agencyId)

@@ -14,7 +14,7 @@ function ChatContent() {
   const searchParams = useSearchParams();
   const targetWorkspaceId = searchParams.get('workspaceId');
 
-  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId } = useWorkspaceStore();
+  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId, setActiveChatChannel } = useWorkspaceStore();
 
   const urlChannel = searchParams.get('channel') || 'daily_tasks';
   const [activeChannel, setActiveChannel] = useState(urlChannel);
@@ -112,32 +112,13 @@ function ChatContent() {
     }
   }, []);
 
-  // Global subscription — notifies for ALL channels, not just the active one
+  // Sync the active channel with the global store so SessionProvider knows when to silence notifications
   useEffect(() => {
-    if (!workspaceId || !currentUserId || isDemo) return;
-    const sb = createClient();
-    const notifCh = sb.channel(`notif:${workspaceId}:${currentUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, (payload) => {
-        const row = payload.new;
-        if (row.user_id === currentUserId) return;
-        if (row.channel === activeChannel && document.visibilityState === 'visible') return;
-        if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return;
-        const sender = agencyMembers.find(m => m.id === row.user_id);
-        const senderName = sender?.full_name || sender?.email || 'Someone';
-        const isDmCh = row.channel?.startsWith('dm:');
-        const chObj = GROUP_CHANNELS.find(c => c.id === row.channel);
-        const title = isDmCh ? senderName : `${senderName} · #${chObj?.name || row.channel}`;
-        const notif = new Notification(title, {
-          body: row.message,
-          icon: '/favicon.ico',
-          tag: row.channel,
-          renotify: true,
-        });
-        notif.onclick = () => { window.focus(); setActiveChannel(row.channel); notif.close(); };
-      })
-      .subscribe();
-    return () => sb.removeChannel(notifCh);
-  }, [workspaceId, currentUserId, isDemo, agencyMembers, activeChannel]);
+    setActiveChatChannel(activeChannel);
+    return () => {
+      setActiveChatChannel(null);
+    };
+  }, [activeChannel, setActiveChatChannel]);
 
   // Keep workspaceIdRef current so broadcast handler never captures a stale value
   useEffect(() => { workspaceIdRef.current = workspaceId; }, [workspaceId]);

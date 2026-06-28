@@ -3,8 +3,8 @@ import { clientForUser } from './clientForUser';
 
 export async function listPages(workspaceId, { archived = false } = {}) {
   // Use admin client so RLS doesn't block pages from workspaces in secondary agencies
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { data, error } = await client
     .from('pages')
     .select('id, title, icon, cover_url, parent_id, is_database, database_type, is_archived, is_favorite, is_public, sort_order, created_at, updated_at')
     .eq('workspace_id', workspaceId)

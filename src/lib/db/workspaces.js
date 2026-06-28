@@ -4,7 +4,7 @@ export async function listWorkspaces(activeAgencyId = null) {
   // Use session client for auth checks, admin client for workspace query
   // (admin client bypasses RLS so members can access agencies they've been added to)
   const supabase = await createClient();
-  const admin = createAdminClient();
+  const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { data: null, error: { message: 'Unauthorized', status: 401 } };

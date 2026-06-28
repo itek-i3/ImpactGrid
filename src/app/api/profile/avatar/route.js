@@ -15,7 +15,7 @@ export async function POST(request) {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
-  const admin = createAdminClient();
+  const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
   // Ensure bucket exists
   const { data: buckets } = await admin.storage.listBuckets();

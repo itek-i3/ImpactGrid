@@ -16,7 +16,7 @@ export async function GET() {
     if (error) return error;
 
     const supabase = await createClient();
-    const admin = createAdminClient();
+    const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')

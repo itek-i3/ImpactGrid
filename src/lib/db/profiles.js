@@ -17,7 +17,7 @@ export async function getUserProfile() {
 
   if (profile.role === 'superadmin') {
     // Superadmins can switch to any agency — load them all
-    const admin = createAdminClient();
+    const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
     const { data: allAgencies } = await admin
       .from('agencies')
       .select('id, slug, name, logo_url')

@@ -3,8 +3,8 @@ import { clientForUser } from './clientForUser';
 
 export async function listBlocks(pageId) {
   // Use admin client so RLS doesn't block blocks on pages in secondary agencies
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+  const { data, error } = await client
     .from('blocks')
     .select('*')
     .eq('page_id', pageId)

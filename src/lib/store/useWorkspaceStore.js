@@ -25,6 +25,9 @@ export const useWorkspaceStore = create((set, get) => ({
   isDemo: true,
   userProfile: null,
 
+  // Active Chat Channel (for global notification filtering)
+  activeChatChannel: null,
+
   // Multi-agency
   agencies: [],
   activeAgencyId: null,
@@ -73,6 +76,7 @@ export const useWorkspaceStore = create((set, get) => ({
     await get().loadWorkspace(null, agencyId);
   },
 
+  setActiveChatChannel: (activeChatChannel) => set({ activeChatChannel }),
   setWorkspace: (workspace) => set({ workspace }),
   setWorkspaces: (workspaces) => set({ workspaces }),
 
