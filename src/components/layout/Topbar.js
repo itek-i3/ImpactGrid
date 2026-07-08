@@ -18,6 +18,7 @@ export default function Topbar() {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage,
     toggleSearch, workspace, userProfile, theme,
+    unreadChatCount, clearAllChatNotifications,
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
@@ -27,7 +28,7 @@ export default function Topbar() {
   const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [profileMenuPos, setProfileMenuPos] = useState({ top: 0, right: 0 });
-  const [origin, setOrigin] = useState('');
+  const [now, setNow] = useState(() => Date.now());
   const profileBtnRef = useRef(null);
   const profileMenuRef = useRef(null);
 
@@ -45,7 +46,10 @@ export default function Topbar() {
     }).catch(() => {});
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
-  useEffect(() => { setOrigin(window.location.origin); }, []);
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
   useEffect(() => {
     if (!showPublishMenu) return;
     const h = () => setShowPublishMenu(false);
@@ -70,10 +74,11 @@ export default function Topbar() {
     router.push('/login');
   };
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const saveLabel = (() => {
     if (isSaving) return 'Saving…';
     if (!lastSaved) return '';
-    const diff = Math.floor((Date.now() - new Date(lastSaved)) / 1000);
+    const diff = Math.floor((now - new Date(lastSaved)) / 1000);
     if (diff < 5) return 'Saved';
     if (diff < 60) return `Saved ${diff}s ago`;
     return `Saved ${Math.floor(diff / 60)}m ago`;
@@ -248,9 +253,25 @@ export default function Topbar() {
 
 
       {/* Bell */}
-      <button className="ig-kbtn" style={{ ...btnStyle, position: 'relative' }}>
+      <button
+        className="ig-kbtn"
+        onClick={() => {
+          clearAllChatNotifications();
+          router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`);
+        }}
+        style={{ ...btnStyle, position: 'relative' }}
+        title={unreadChatCount > 0 ? `${unreadChatCount} unread chat notification${unreadChatCount > 1 ? 's' : ''}` : 'Open chat'}
+      >
         <Bell size={17} />
-        <span style={{ position: 'absolute', top: 9, right: 10, width: 7, height: 7, borderRadius: 99, background: '#E0485A', border: '2px solid #02040A' }} />
+        {unreadChatCount > 0 && (
+          <span style={{
+            position: 'absolute', top: 6, right: 7, minWidth: 16, height: 16,
+            padding: '0 4px', borderRadius: 999, background: '#E0485A', border: '2px solid #02040A',
+            color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {unreadChatCount > 9 ? '9+' : unreadChatCount}
+          </span>
+        )}
       </button>
 
       {/* New page */}

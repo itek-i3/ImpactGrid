@@ -35,7 +35,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Page tree
   pages: [],
   currentPage: null,
-  currentView: null, // null | 'acquisition' — in-shell tabs that aren't pages
+  currentView: null, // null | 'acquisition' | 'meetings' — in-shell tabs that aren't pages
   expandedPages: new Set(),
 
   // UI state
@@ -44,6 +44,8 @@ export const useWorkspaceStore = create((set, get) => ({
   searchOpen: false,
   isLoading: false,
   theme: 'dark',
+  unreadChatCount: 0,
+  unreadChatChannels: [],
 
   // ── Actions ──────────────────────────────────
 
@@ -132,6 +134,27 @@ export const useWorkspaceStore = create((set, get) => ({
   },
 
   setLoading: (isLoading) => set({ isLoading }),
+
+  addChatNotification: (channel) =>
+    set((state) => {
+      if (!channel || state.unreadChatChannels.includes(channel)) return state;
+      return {
+        unreadChatCount: state.unreadChatCount + 1,
+        unreadChatChannels: [...state.unreadChatChannels, channel],
+      };
+    }),
+
+  clearChatNotifications: (channel) =>
+    set((state) => {
+      if (!channel) return state;
+      const nextChannels = state.unreadChatChannels.filter((c) => c !== channel);
+      return {
+        unreadChatCount: nextChannels.length,
+        unreadChatChannels: nextChannels,
+      };
+    }),
+
+  clearAllChatNotifications: () => set({ unreadChatCount: 0, unreadChatChannels: [] }),
 
   togglePageExpanded: (pageId) =>
     set((state) => {

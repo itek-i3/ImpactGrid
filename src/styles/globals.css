@@ -38,7 +38,7 @@
   --color-text-primary: #E2EEFF;
   --color-text-secondary: #7EB3FF;
   --color-text-tertiary: #3D5A8A;
-  --color-text-muted: #243553;
+  --color-text-muted: #5A76A6; /* was #243553 — too dark to read on the navy bg */
   --color-text-inverse: #02040A;
   --color-text-link: #5B9BFF;
 

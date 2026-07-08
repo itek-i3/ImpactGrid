@@ -7,15 +7,20 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check, Pencil, Trash2, X } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X } from 'lucide-react';
 import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
+import { writeReceipt } from '@/lib/chat/receipts';
 import styles from '@/styles/layout.module.css';
+
+// A user is "online" if their last heartbeat landed within this window.
+// Clients beat every 25s, so 60s tolerates a missed beat / slow network.
+const ONLINE_WINDOW_MS = 60 * 1000;
 
 function ChatContent() {
   const searchParams = useSearchParams();
   const targetWorkspaceId = searchParams.get('workspaceId');
 
-  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId, setActiveChatChannel } = useWorkspaceStore();
+  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId, setActiveChatChannel, clearChatNotifications } = useWorkspaceStore();
 
   const urlChannel = searchParams.get('channel') || 'daily_tasks';
   const [activeChannel, setActiveChannel] = useState(urlChannel);
@@ -41,11 +46,29 @@ function ChatContent() {
   const [editText, setEditText] = useState('');
   const [hoverMsgId, setHoverMsgId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // Read receipts for the active DM: the *other* participant's last read/delivered times.
+  const [partnerReceipt, setPartnerReceipt] = useState({ lastReadAt: null, lastDeliveredAt: null });
+  // Online presence: last_seen_at map (for "last seen"), the set of online user
+  // ids, and the timestamp both were computed at (kept in state so render stays
+  // pure — no Date.now() during render).
+  const [presence, setPresence] = useState({});
+  const [onlineIds, setOnlineIds] = useState(() => new Set());
+  const [presenceAt, setPresenceAt] = useState(0);
+  // Clear the partner's ticks the moment we switch conversations (adjust during
+  // render, same documented pattern as prevUrlChannel above).
+  const [receiptChannel, setReceiptChannel] = useState(activeChannel);
+  if (receiptChannel !== activeChannel) {
+    setReceiptChannel(activeChannel);
+    setPartnerReceipt({ lastReadAt: null, lastDeliveredAt: null });
+  }
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const emojiRef = useRef(null);
   const dmBcastRef = useRef(null);
   const workspaceIdRef = useRef(null);
+  // Always holds the latest partner-receipt refresher so the broadcast handler
+  // (subscribed once per channel) can call it without stale-closure issues.
+  const refreshReceiptRef = useRef(() => {});
 
   const GROUP_CHANNELS = [
     { id: 'daily_tasks',  name: 'Daily Tasks',  icon: '📋', desc: 'Daily team updates',   managerOnly: false },
@@ -58,6 +81,11 @@ function ChatContent() {
   const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
   const isDm = activeChannel.startsWith('dm:');
   const dmMeta = isDm ? parseDmChannel(activeChannel) : null;
+  const dmPartnerId = isDm ? (dmMeta?.participants?.find(p => p !== currentUserId) || null) : null;
+
+  // Pure online check — `onlineIds` is precomputed off-render (in the presence
+  // poll) so render never calls Date.now(). Demo mode fakes everyone online.
+  const isUserOnline = (uid) => Boolean(uid) && (isDemo || onlineIds.has(uid));
   const canPost = isDm
     ? Boolean(dmMeta?.participants?.includes(currentUserId))
     : !GROUP_CHANNELS.find(c => c.id === activeChannel)?.postManagerOnly || ['manager', 'superadmin'].includes(userProfile?.role);
@@ -133,10 +161,13 @@ function ChatContent() {
   // Sync the active channel with the global store so SessionProvider knows when to silence notifications
   useEffect(() => {
     setActiveChatChannel(activeChannel);
+    if (activeChannel) {
+      clearChatNotifications(activeChannel);
+    }
     return () => {
       setActiveChatChannel(null);
     };
-  }, [activeChannel, setActiveChatChannel]);
+  }, [activeChannel, setActiveChatChannel, clearChatNotifications]);
 
   // Keep workspaceIdRef current so broadcast handler never captures a stale value
   useEffect(() => { workspaceIdRef.current = workspaceId; }, [workspaceId]);
@@ -159,6 +190,8 @@ function ChatContent() {
           })
           .catch(() => {});
       })
+      // Partner reported reading — repaint our ticks immediately.
+      .on('broadcast', { event: 'read' }, () => { refreshReceiptRef.current(); })
       .subscribe((status) => { if (status === 'SUBSCRIBED') dmBcastRef.current = ch; });
     return () => { sb.removeChannel(ch); dmBcastRef.current = null; };
   }, [activeChannel, currentUserId, isDemo]);
@@ -271,6 +304,96 @@ function ChatContent() {
     run();
   }, [messages, loadReactions]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // ── Presence: heartbeat our own last_seen + poll everyone else's ──────────
+  // DB-backed so it works even when Supabase Realtime isn't configured (the rest
+  // of the chat already relies on a polling fallback for the same reason).
+  useEffect(() => {
+    if (!workspaceId || isDemo || !currentUserId) return;
+    let cancelled = false;
+    const beat = () => { fetch(`/os/api/workspaces/${workspaceId}/presence`, { method: 'POST' }).catch(() => {}); };
+    const pull = () => {
+      fetch(`/os/api/workspaces/${workspaceId}/presence`)
+        .then(r => r.json())
+        .then(j => {
+          if (cancelled || !Array.isArray(j.data)) return;
+          const now = Date.now();
+          const map = {};
+          const online = new Set();
+          j.data.forEach(p => {
+            map[p.id] = p.lastSeenAt;
+            if (p.lastSeenAt && now - new Date(p.lastSeenAt).getTime() < ONLINE_WINDOW_MS) online.add(p.id);
+          });
+          setPresence(map);
+          setOnlineIds(online);
+          setPresenceAt(now);
+        })
+        .catch(() => {});
+    };
+    beat(); pull();
+    const beatId = setInterval(beat, 25000);
+    const pullId = setInterval(pull, 15000);
+    const onActive = () => { if (document.visibilityState === 'visible') { beat(); pull(); } };
+    document.addEventListener('visibilitychange', onActive);
+    window.addEventListener('focus', onActive);
+    return () => {
+      cancelled = true;
+      clearInterval(beatId); clearInterval(pullId);
+      document.removeEventListener('visibilitychange', onActive);
+      window.removeEventListener('focus', onActive);
+    };
+  }, [workspaceId, isDemo, currentUserId]);
+
+  // ── Read receipts (DMs only) ──────────────────────────────────────────────
+  // Acknowledge incoming DM messages: "read" when the tab is visible, else just
+  // "delivered". Runs whenever the message list changes.
+  useEffect(() => {
+    if (isDemo || !activeChannel.startsWith('dm:') || !messages.length) return;
+    if (!messages.some(m => m.userId !== currentUserId)) return;
+    const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    writeReceipt(activeChannel, currentUserId, { read: visible })
+      .then(() => { if (visible) dmBcastRef.current?.send({ type: 'broadcast', event: 'read', payload: {} }); })
+      .catch(() => {});
+  }, [messages, isDemo, activeChannel, currentUserId]);
+
+  // Returning to the tab while a DM is open counts as reading it.
+  useEffect(() => {
+    if (isDemo || !activeChannel.startsWith('dm:')) return;
+    const onActive = () => {
+      if (document.visibilityState !== 'visible') return;
+      writeReceipt(activeChannel, currentUserId, { read: true })
+        .then(() => dmBcastRef.current?.send({ type: 'broadcast', event: 'read', payload: {} }))
+        .catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onActive);
+    window.addEventListener('focus', onActive);
+    return () => {
+      document.removeEventListener('visibilitychange', onActive);
+      window.removeEventListener('focus', onActive);
+    };
+  }, [isDemo, activeChannel, currentUserId]);
+
+  // Poll the *partner's* receipt so our outgoing ticks turn grey→blue within a
+  // few seconds; also expose the fetch via a ref for the realtime "read" event.
+  useEffect(() => {
+    if (isDemo || !activeChannel.startsWith('dm:')) return;
+    const partnerId = parseDmChannel(activeChannel).participants.find(p => p !== currentUserId);
+    if (!partnerId) return;
+    let cancelled = false;
+    const pull = async () => {
+      const { data } = await createClient()
+        .from('chat_reads')
+        .select('last_read_at, last_delivered_at')
+        .eq('channel', activeChannel)
+        .eq('user_id', partnerId)
+        .maybeSingle();
+      if (!cancelled) setPartnerReceipt({ lastReadAt: data?.last_read_at || null, lastDeliveredAt: data?.last_delivered_at || null });
+    };
+    refreshReceiptRef.current = pull;
+    pull();
+    const id = setInterval(pull, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isDemo, activeChannel, currentUserId]);
 
   const handleSend = async (e) => {
     e?.preventDefault();
@@ -397,6 +520,7 @@ function ChatContent() {
         avatar: m.avatar_url,
         role: m.role,
         isGroup: false,
+        online: isUserOnline(m.id),
         lastMsg: lastMessages[dmId],
       };
     }) : []),
@@ -413,6 +537,31 @@ function ChatContent() {
   const formatMsgTime = (dateStr) => {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const relativeTime = (dateStr) => {
+    if (!dateStr || !presenceAt) return '';
+    const diff = presenceAt - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  // WhatsApp-style delivery ticks for our own messages.
+  //   sent (single ✓) → delivered (grey ✓✓) → read (blue ✓✓)
+  // Ticks only apply to DMs (a single recipient); group channels show one ✓.
+  const renderOwnTicks = (msg) => {
+    if (!isDm) return <Check size={12} style={{ color: 'rgba(255,255,255,0.55)' }} />;
+    if (isDemo) return <CheckCheck size={14} style={{ color: '#7DD3FC' }} />;
+    const t = new Date(msg.createdAt).getTime();
+    const readAt = partnerReceipt.lastReadAt ? new Date(partnerReceipt.lastReadAt).getTime() : 0;
+    const delAt = partnerReceipt.lastDeliveredAt ? new Date(partnerReceipt.lastDeliveredAt).getTime() : 0;
+    if (readAt >= t) return <CheckCheck size={14} style={{ color: '#7DD3FC' }} title="Read" />;
+    if (delAt >= t) return <CheckCheck size={14} style={{ color: 'rgba(255,255,255,0.72)' }} title="Delivered" />;
+    return <Check size={12} style={{ color: 'rgba(255,255,255,0.55)' }} title="Sent" />;
   };
 
   const formatDate = (dateStr) => {
@@ -514,8 +663,13 @@ function ChatContent() {
                     }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none'; }}>
-                      <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: `${rc}22`, border: `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: rc, overflow: 'hidden' }}>
-                        {conv.avatar ? <img src={conv.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${rc}22`, border: `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: rc, overflow: 'hidden' }}>
+                          {conv.avatar ? <img src={conv.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
+                        </div>
+                        {conv.online && (
+                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid #000' }} />
+                        )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
@@ -538,8 +692,13 @@ function ChatContent() {
               {/* Chat header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, flexShrink: 0, background: '#000', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
                 {isDm && dmPartner ? (
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: `${roleColor[dmPartner.role] || '#5B9BFF'}22`, border: `2px solid ${roleColor[dmPartner.role] || '#5B9BFF'}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: roleColor[dmPartner.role] || '#5B9BFF', overflow: 'hidden' }}>
-                    {dmPartner.avatar_url ? <img src={dmPartner.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : chatName.charAt(0).toUpperCase()}
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: `${roleColor[dmPartner.role] || '#5B9BFF'}22`, border: `2px solid ${roleColor[dmPartner.role] || '#5B9BFF'}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: roleColor[dmPartner.role] || '#5B9BFF', overflow: 'hidden' }}>
+                      {dmPartner.avatar_url ? <img src={dmPartner.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : chatName.charAt(0).toUpperCase()}
+                    </div>
+                    {isUserOnline(dmPartnerId) && (
+                      <span style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%', background: '#22C55E', border: '2px solid #000' }} />
+                    )}
                   </div>
                 ) : (
                   <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(48,108,236,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
@@ -548,7 +707,19 @@ function ChatContent() {
                 )}
                 <div>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: '#E2EEFF', lineHeight: 1.2 }}>{chatName}</div>
-                  {chatSub && <div style={{ fontSize: 11.5, color: '#3D5A8A', marginTop: 1 }}>{chatSub}</div>}
+                  {isDm ? (
+                    isUserOnline(dmPartnerId) ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#22C55E', marginTop: 1 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E' }} /> Online
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: '#3D5A8A', marginTop: 1 }}>
+                        {presence[dmPartnerId] ? `Last seen ${relativeTime(presence[dmPartnerId])}` : chatSub}
+                      </div>
+                    )
+                  ) : (
+                    chatSub && <div style={{ fontSize: 11.5, color: '#3D5A8A', marginTop: 1 }}>{chatSub}</div>
+                  )}
                 </div>
               </div>
 
@@ -668,7 +839,7 @@ function ChatContent() {
                                   <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
                                     {formatMsgTime(msg.createdAt)}
                                   </span>
-                                  {isOwn && <Check size={11} style={{ color: 'rgba(255,255,255,0.55)' }} />}
+                                  {isOwn && renderOwnTicks(msg)}
                                 </div>
                               </div>
                             )}

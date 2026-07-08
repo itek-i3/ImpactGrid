@@ -20,6 +20,7 @@ import {
   Timer,
   Home,
   Target,
+  CalendarDays,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -250,6 +251,15 @@ export default function Sidebar() {
               >
                 <MessageSquare size={15} />
                 <span>Chat Room</span>
+              </button>
+
+              <button
+                className="ig-nav"
+                onClick={() => { setCurrentView('meetings'); if (pathname !== '/') router.push('/'); }}
+                style={currentView === 'meetings' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+              >
+                <CalendarDays size={15} />
+                <span>Meetings</span>
               </button>
 
               {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (

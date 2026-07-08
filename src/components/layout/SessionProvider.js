@@ -9,6 +9,8 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { applyAllPrefs } from '@/app/customize/page';
 import { createClient } from '@/lib/supabase/client';
 import { playMessageSound, playSessionCompleteSound } from '@/lib/utils/soundEffects';
+import { isDmParticipant } from '@/lib/chat/dmChannels';
+import { writeReceipt } from '@/lib/chat/receipts';
 
 const LS_KEY = 'impactgrid-session';
 
@@ -42,6 +44,7 @@ export default function SessionProvider() {
   const workspace = useWorkspaceStore((s) => s.workspace);
   const isDemo = useWorkspaceStore((s) => s.isDemo);
   const activeChatChannel = useWorkspaceStore((s) => s.activeChatChannel);
+  const addChatNotification = useWorkspaceStore((s) => s.addChatNotification);
 
   const workspaceId = workspace?.id;
 
@@ -99,16 +102,19 @@ export default function SessionProvider() {
 
   // ── 2. Load Workspace Members (to resolve display names) ────────────────────
   useEffect(() => {
-    if (!workspaceId || isDemo) {
-      setMembers([]);
-      return;
-    }
+    if (!workspaceId || isDemo) return;
+
+    let active = true;
     fetch(`/os/api/workspaces/${workspaceId}/chat-members`)
       .then((res) => res.json())
       .then((j) => {
-        if (j.data) setMembers(j.data);
+        if (active && j.data) setMembers(j.data);
       })
       .catch(() => {});
+
+    return () => {
+      active = false;
+    };
   }, [workspaceId, isDemo]);
 
   // ── 3. Global Realtime Direct Messages Subscription ──────────────────────────
@@ -123,9 +129,19 @@ export default function SessionProvider() {
         // Ignore our own messages
         if (row.user_id === userId) return;
 
+        // DMs should only notify the actual participants.
+        if (row.channel?.startsWith('dm:') && !isDmParticipant(row.channel, userId)) return;
+
+        // The message reached this recipient's app → mark it delivered so the
+        // sender sees two grey ticks even if this DM isn't currently open. If
+        // they're actively viewing it, ChatClient will upgrade this to "read".
+        if (row.channel?.startsWith('dm:')) writeReceipt(row.channel, userId, { read: false });
+
         // Skip notifying if the user is actively viewing this specific channel in a visible tab
         const isViewingChannel = row.channel === activeChatChannel && document.visibilityState === 'visible';
         if (isViewingChannel) return;
+
+        addChatNotification(row.channel);
 
         // Deduplicate notifications/sounds across multiple open tabs
         const msgKey = `msg-notif-${row.id}`;
@@ -185,7 +201,7 @@ export default function SessionProvider() {
     return () => {
       sb.removeChannel(notifCh);
     };
-  }, [workspaceId, userId, isDemo, members, activeChatChannel, router]);
+  }, [workspaceId, userId, isDemo, members, activeChatChannel, router, addChatNotification]);
 
   return (
     <>

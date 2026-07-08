@@ -15,7 +15,7 @@ import Modal from '@/components/ui/Modal';
 
 const CRITERIA = [
   { id: 0,  title: 'Industry Focus',           short: 'Industry',    Icon: Factory,     inputType: 'industry-select',   desc: 'Operates within a target industry — services, FMCG, real estate, or agriculture' },
-  { id: 1,  title: 'Years in Operation',        short: 'Operating age', Icon: Calendar,  inputType: 'months-input',      desc: 'Minimum 12 months of stable, documented operating history' },
+  { id: 1,  title: 'Years in Operation',        short: 'Operating age', Icon: Calendar,  inputType: 'months-input',      desc: 'At least 2 years of stable, documented operating history' },
   { id: 2,  title: 'Revenue & Profitability',   short: 'Revenue',     Icon: DollarSign,  inputType: 'financial-inputs',   desc: 'Enter revenue and total operating spend to calculate net profit and net margin' },
   { id: 3,  title: 'Cash Flow Quality',         short: 'Cash flow',   Icon: Droplets,    inputType: 'toggle',            desc: 'Recurring revenue, operating cash flow, seasonality, and customer concentration' },
   { id: 4,  title: 'Legal & Tax Compliance',    short: 'Compliance',  Icon: Scale,       inputType: 'legal-checks',      desc: 'Registration, tax compliance, licenses/permits, and no active disputes' },
@@ -38,6 +38,10 @@ const TARGET_INDUSTRIES = [
   { value: 'agriculture',  label: 'Agriculture' },
   { value: 'other',        label: 'Other (not in target list)' },
 ];
+
+// High-level business sectors for the header "Sector" dropdown
+// (mirrors the Industry Focus criterion's target sectors).
+const SECTORS = ['Agriculture', 'Real Estate', 'FMCG', 'Services'];
 
 const MOTIVATION_OPTIONS = [
   { value: 'retirement',  label: 'Retirement / Health',  score: 100 },
@@ -400,6 +404,7 @@ export default function AcquisitionPanel() {
   const [notesOpen,       setNotesOpen]       = useState({});
   const [industryValue,   setIndustryValue]   = useState('');
   const [monthsInOp,      setMonthsInOp]      = useState('');
+  const [opUnit,          setOpUnit]          = useState('months'); // how the operating-age input is entered: 'months' | 'years'
   const [legalChecks,     setLegalChecks]     = useState({ registration: false, taxCompliance: false, licensesPermits: false, noDisputes: false });
   const [customLegalItems, setCustomLegalItems] = useState([]); // [{ id, label, checked }]
   const [newLegalLabel,   setNewLegalLabel]   = useState('');
@@ -624,7 +629,7 @@ export default function AcquisitionPanel() {
     setBusinessName(''); setBusinessSector(''); setEvalDate(today);
     setScores(initScores);
     setNotes(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
-    setNotesOpen({}); setIndustryValue(''); setMonthsInOp('');
+    setNotesOpen({}); setIndustryValue(''); setMonthsInOp(''); setOpUnit('months');
     setLegalChecks({ registration: false, taxCompliance: false, licensesPermits: false, noDisputes: false });
     setCustomLegalItems([]); setNewLegalLabel('');
     setOwnerMotivation('');
@@ -838,22 +843,44 @@ export default function AcquisitionPanel() {
     }
 
     if (c.inputType === 'months-input') {
-      const mo = parseInt(monthsInOp, 10) || 0;
+      // monthsInOp is always stored in MONTHS (canonical); the picker just lets the
+      // user type in months or years. Requirement: at least 2 years (24 months).
+      const mo = parseInt(monthsInOp, 10);
+      const hasVal = monthsInOp !== '' && !isNaN(mo);
+      const fieldValue = !hasVal ? '' : (opUnit === 'years' ? Math.round((mo / 12) * 10) / 10 : mo);
+      const onFieldChange = (raw) => {
+        if (raw === '') { setMonthsInOp(''); return; }
+        const num = parseFloat(raw);
+        if (isNaN(num) || num < 0) return;
+        setMonthsInOp(String(opUnit === 'years' ? Math.round(num * 12) : Math.round(num)));
+      };
+      const meetsRequirement = hasVal && mo >= 24;
       return (
         <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-          <div style={{ position:'relative', width:120 }}>
-            <input className="acqp-input" type="number" min="0" placeholder="e.g. 30" value={monthsInOp} onChange={e => setMonthsInOp(e.target.value)} style={{ paddingRight:40 }}/>
-            <span style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'var(--color-text-tertiary)', pointerEvents:'none', fontWeight:600 }}>mo</span>
+          <input
+            className="acqp-input" type="number" min="0" step={opUnit === 'years' ? '0.5' : '1'}
+            placeholder={opUnit === 'years' ? 'e.g. 2.5' : 'e.g. 30'}
+            value={fieldValue} onChange={e => onFieldChange(e.target.value)}
+            style={{ width:110 }}
+          />
+          <div style={{ position:'relative', width:104 }}>
+            <select className="acqp-select" value={opUnit} onChange={e => setOpUnit(e.target.value)}>
+              <option value="months">Months</option>
+              <option value="years">Years</option>
+            </select>
+            <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
           </div>
-          {monthsInOp !== '' && !isNaN(mo) && (
-            <span style={{ fontSize:12, color:'var(--color-text-secondary)', fontVariantNumeric:'tabular-nums' }}>{Math.floor(mo/12)}y {mo%12}m</span>
+          {hasVal && (
+            <span style={{ fontSize:12, color:'var(--color-text-secondary)', fontVariantNumeric:'tabular-nums' }}>
+              = {Math.floor(mo / 12)}y {mo % 12}m
+            </span>
           )}
-          <div style={{ display:'flex', gap:6 }}>
-            {[{ v:12, l:'12 mo' }, { v:24, l:'24 mo' }].map(({ v, l }) => {
-              const met = mo >= v;
-              return <span key={v} style={{ fontSize:11, padding:'3px 10px', borderRadius:99, background: met ? `${SUCCESS}1F` : 'var(--color-bg-tertiary)', color: met ? SUCCESS : 'var(--color-text-tertiary)', border:`1px solid ${met ? `${SUCCESS}44` : 'var(--color-border)'}`, fontWeight:600 }}>{l}</span>;
-            })}
-          </div>
+          <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, fontWeight:600,
+            background: meetsRequirement ? `${SUCCESS}1F` : 'var(--color-bg-tertiary)',
+            color: meetsRequirement ? SUCCESS : 'var(--color-text-tertiary)',
+            border:`1px solid ${meetsRequirement ? `${SUCCESS}44` : 'var(--color-border)'}` }}>
+            {meetsRequirement ? '✓ Meets 2-year minimum' : 'Needs at least 2 years'}
+          </span>
         </div>
       );
     }
@@ -1069,7 +1096,7 @@ export default function AcquisitionPanel() {
           font-size:13px; color:var(--color-text-primary); font-family:inherit; outline:none; transition:.12s;
           font-variant-numeric:tabular-nums;
         }
-        .acqp-input::placeholder { color:var(--color-text-muted); }
+        .acqp-input::placeholder { color:var(--color-text-tertiary); }
         .acqp-input:focus { border-color:var(--color-border-active); box-shadow:0 0 0 3px rgba(48,108,236,.15); }
         .acqp-select {
           width:100%; background:var(--color-bg-tertiary); border:1px solid var(--color-border);
@@ -1438,7 +1465,17 @@ export default function AcquisitionPanel() {
                 </div>
                 <div>
                   <label className="acqp-lbl">Sector</label>
-                  <input className="acqp-input" value={businessSector} onChange={e => setBusinessSector(e.target.value)} placeholder="e.g. Laundromat"/>
+                  <div style={{ position:'relative' }}>
+                    <select className="acqp-select" value={businessSector} onChange={e => setBusinessSector(e.target.value)}>
+                      <option value="">Select sector…</option>
+                      {/* Keep any previously-saved sector that isn't in the list */}
+                      {businessSector && !SECTORS.includes(businessSector) && (
+                        <option value={businessSector}>{businessSector}</option>
+                      )}
+                      {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                  </div>
                 </div>
                 <div>
                   <label className="acqp-lbl">Date</label>

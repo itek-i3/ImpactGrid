@@ -11,6 +11,7 @@ import FloatingChat from '@/components/layout/FloatingChat';
 import BlockEditor from '@/components/editor/BlockEditor';
 import HomeDashboard from '@/components/layout/HomeDashboard';
 import AcquisitionPanel from '@/components/layout/AcquisitionPanel';
+import MeetingsPanel from '@/components/layout/MeetingsPanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -62,6 +63,15 @@ function WorkspaceContent() {
       initBlocks(currentPage.id);
     }
   }, [currentPage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Returning from the Google OAuth flow (?meet=connected|error) lands on home —
+  // reopen the Meetings tab and tidy the URL.
+  useEffect(() => {
+    const meet = new URLSearchParams(window.location.search).get('meet');
+    if (!meet) return;
+    useWorkspaceStore.getState().setCurrentView('meetings');
+    window.history.replaceState({}, '', '/os/');
+  }, []);
 
   useEffect(() => {
     if (!showIconPicker) return;
@@ -137,6 +147,8 @@ function WorkspaceContent() {
         }}>
           {currentView === 'acquisition' ? (
             <AcquisitionPanel />
+          ) : currentView === 'meetings' ? (
+            <MeetingsPanel />
           ) : currentPage ? (
             <div className={styles.pageContainer}>
               <div className={styles.pageHeader}>

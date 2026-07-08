@@ -46,8 +46,8 @@ export async function GET(request, { params }) {
   // DMs: filter only by channel (agency already encoded in channel name + validated above)
   // Group channels: filter by workspace_id as usual
   let query = channel.startsWith('dm:')
-    ? admin.from('chat_messages').select(selectCols).eq('channel', channel)
-    : admin.from('chat_messages').select(selectCols).eq('workspace_id', workspaceId).eq('channel', channel);
+    ? supabase.from('chat_messages').select(selectCols).eq('channel', channel)
+    : supabase.from('chat_messages').select(selectCols).eq('workspace_id', workspaceId).eq('channel', channel);
 
   if (messageId) {
     query = query.eq('id', messageId);
