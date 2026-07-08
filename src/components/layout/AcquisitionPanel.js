@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Target, Save, Copy, History, ChevronDown, Check, X, RefreshCw,
   Factory, Calendar, DollarSign, Droplets, Scale, TrendingUp,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { createClient } from '@/lib/supabase/client';
 import Modal from '@/components/ui/Modal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
@@ -466,6 +467,28 @@ export default function AcquisitionPanel() {
     load();
     return () => { cancelled = true; };
   }, [activeAgencyId]);
+
+  // Re-pull the shared list (used by realtime when a teammate makes a change)
+  const refetchEvals = useCallback(async () => {
+    if (!activeAgencyId) return;
+    try {
+      const res = await fetch(`${API}?agencyId=${activeAgencyId}`);
+      if (res.ok) setSavedEvals((await res.json()).data || []);
+    } catch {}
+  }, [activeAgencyId]);
+
+  // Live sync: refresh when any teammate inserts/updates/deletes for this agency
+  useEffect(() => {
+    if (!activeAgencyId) return;
+    const sb = createClient();
+    const ch = sb
+      .channel(`acq:${activeAgencyId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'acquisition_evaluations', filter: `agency_id=eq.${activeAgencyId}` },
+        () => { refetchEvals(); })
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [activeAgencyId, refetchEvals]);
 
   const derivedScores = useMemo(() =>
     Object.fromEntries(CRITERIA.map(c => [c.id, deriveCriterionScore(c.id, { scores, industryValue, monthsInOp, legalChecks, customLegalItems, ownerMotivation, customMotivations, revenueMetrics, investmentMetrics })])),

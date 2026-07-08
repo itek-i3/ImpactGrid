@@ -84,3 +84,22 @@ DROP POLICY IF EXISTS acq_evals_delete ON acquisition_evaluations;
 CREATE POLICY acq_evals_delete ON acquisition_evaluations FOR DELETE USING (
   get_my_role() = 'superadmin' OR is_agency_member(agency_id)
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. Realtime
+--    Broadcast inserts/updates/deletes so a teammate's changes appear live.
+--    REPLICA IDENTITY FULL so DELETE events still carry agency_id for filtering.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE acquisition_evaluations REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public'
+      AND tablename = 'acquisition_evaluations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE acquisition_evaluations;
+  END IF;
+END;
+$$;
