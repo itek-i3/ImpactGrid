@@ -7,7 +7,8 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, Pencil, Trash2, X } from 'lucide-react';
+import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 import styles from '@/styles/layout.module.css';
 
 function ChatContent() {
@@ -18,6 +19,14 @@ function ChatContent() {
 
   const urlChannel = searchParams.get('channel') || 'daily_tasks';
   const [activeChannel, setActiveChannel] = useState(urlChannel);
+  // Follow the URL's channel param when it changes, while still allowing manual
+  // channel switches — adjust during render (React's documented pattern) instead
+  // of in an effect.
+  const [prevUrlChannel, setPrevUrlChannel] = useState(urlChannel);
+  if (urlChannel !== prevUrlChannel) {
+    setPrevUrlChannel(urlChannel);
+    setActiveChannel(urlChannel);
+  }
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
@@ -28,6 +37,10 @@ function ChatContent() {
   const [reactPos, setReactPos] = useState({ top: 0, left: 0 });
   const [panelSearch, setPanelSearch] = useState('');
   const [lastMessages, setLastMessages] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [hoverMsgId, setHoverMsgId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const emojiRef = useRef(null);
@@ -40,10 +53,14 @@ function ChatContent() {
     { id: 'random',       name: 'Random',        icon: '💬', desc: 'Off-topic chat',        managerOnly: false },
   ];
 
+  const workspaceId = workspace?.id;
+  const agencyId = workspace?.agency_id || activeAgencyId || null;
+  const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
   const isDm = activeChannel.startsWith('dm:');
+  const dmMeta = isDm ? parseDmChannel(activeChannel) : null;
   const canPost = isDm
-    || !GROUP_CHANNELS.find(c => c.id === activeChannel)?.postManagerOnly
-    || ['manager', 'superadmin'].includes(userProfile?.role);
+    ? Boolean(dmMeta?.participants?.includes(currentUserId))
+    : !GROUP_CHANNELS.find(c => c.id === activeChannel)?.postManagerOnly || ['manager', 'superadmin'].includes(userProfile?.role);
 
   useEffect(() => {
     async function init() {
@@ -54,28 +71,29 @@ function ChatContent() {
     init();
   }, [targetWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setActiveChannel(urlChannel); }, [urlChannel]);
 
   useEffect(() => {
-    const mockMembers = [
-      { id: 'admin-1', full_name: 'System Administrator', role: 'superadmin', email: 'admin@example.com' },
-      { id: 'manager-1', full_name: 'John Doe', role: 'manager', email: 'john@example.com' },
-      { id: 'member-1', full_name: 'Alice Smith', role: 'member', email: 'alice@example.com' },
-    ];
-    if (isDemo) { setAgencyMembers(mockMembers); return; }
-    const wsId = workspace?.id;
-    if (!wsId || !userProfile) return;
-    setAgencyMembers([]);
+    let cancelled = false;
     async function loadMembers() {
+      const mockMembers = [
+        { id: 'admin-1', full_name: 'System Administrator', role: 'superadmin', email: 'admin@example.com' },
+        { id: 'manager-1', full_name: 'John Doe', role: 'manager', email: 'john@example.com' },
+        { id: 'member-1', full_name: 'Alice Smith', role: 'member', email: 'alice@example.com' },
+      ];
+      if (isDemo) { if (!cancelled) setAgencyMembers(mockMembers); return; }
+      const wsId = workspace?.id;
+      if (!wsId || !userProfile) return;
+      if (!cancelled) setAgencyMembers([]);
       try {
         const res = await fetch(`/os/api/workspaces/${wsId}/chat-members`);
         if (res.ok) {
           const j = await res.json();
-          if (j.data?.length) setAgencyMembers(j.data);
+          if (j.data?.length && !cancelled) setAgencyMembers(j.data);
         }
       } catch (_) {}
     }
     loadMembers();
+    return () => { cancelled = true; };
   }, [workspace?.id, userProfile, isDemo]);
 
   useEffect(() => {
@@ -92,21 +110,21 @@ function ChatContent() {
     return () => document.removeEventListener('mousedown', h);
   }, [reactOpen]);
 
-  const workspaceId = workspace?.id;
   // workspace.agency_id is ground truth; activeAgencyId is the early fallback set by fetchUserProfile
-  const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
   // DM channel encodes agency so messages never bleed between agencies.
   // Returns null when agencyId isn't resolved yet — callers must guard against null.
-  const getDmId = (otherId) =>
-    agencyId ? `dm:${agencyId}:${[currentUserId, otherId].sort().join(':')}` : null;
+  const getDmId = (otherId) => {
+    if (!agencyId || !currentUserId || !otherId) return null;
+    return buildDmChannel(agencyId, currentUserId, otherId);
+  };
   const otherMembers = agencyMembers.filter(m => m.id !== currentUserId);
-  const [notifPermission, setNotifPermission] = useState('default');
+  const [notifPermission, setNotifPermission] = useState(
+    () => (typeof window !== 'undefined' && 'Notification' in window) ? Notification.permission : 'default'
+  );
 
-  // Request notification permission
+  // Request notification permission if not yet decided
   useEffect(() => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
-    setNotifPermission(Notification.permission);
     if (Notification.permission === 'default') {
       Notification.requestPermission().then(p => setNotifPermission(p));
     }
@@ -172,49 +190,70 @@ function ChatContent() {
 
   useEffect(() => {
     if (!workspaceId) return;
-    setMessages([]);
-    if (isDemo) {
-      const stored = localStorage.getItem(`demo-chat-${workspaceId}-${activeChannel}`);
-      const msgs = stored ? JSON.parse(stored) : (activeChannel === 'daily_tasks' ? getDemoMessages() : []);
-      setMessages(msgs);
-      if (!stored) localStorage.setItem(`demo-chat-${workspaceId}-${activeChannel}`, JSON.stringify(msgs));
-      if (msgs.length > 0) setLastMessages(p => ({ ...p, [activeChannel]: msgs[msgs.length - 1] }));
-      return;
-    }
-    async function fetchMsgs() {
+    let cancelled = false;
+
+    async function loadMsgs() {
+      if (!cancelled) setMessages([]);
+      if (isDemo) {
+        const stored = localStorage.getItem(`demo-chat-${workspaceId}-${activeChannel}`);
+        const msgs = stored ? JSON.parse(stored) : (activeChannel === 'daily_tasks' ? getDemoMessages() : []);
+        if (cancelled) return;
+        setMessages(msgs);
+        if (!stored) localStorage.setItem(`demo-chat-${workspaceId}-${activeChannel}`, JSON.stringify(msgs));
+        if (msgs.length > 0) setLastMessages(p => ({ ...p, [activeChannel]: msgs[msgs.length - 1] }));
+        return;
+      }
+
+      if (isDm && currentUserId && !isDmParticipant(activeChannel, currentUserId)) {
+        if (!cancelled) setMessages([]);
+        return;
+      }
       try {
         const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${activeChannel}`);
         if (res.ok) {
           const j = await res.json();
-          if (j.data) {
+          if (j.data && !cancelled) {
             setMessages(j.data);
             if (j.data.length > 0) setLastMessages(p => ({ ...p, [activeChannel]: j.data[j.data.length - 1] }));
           }
         }
       } catch (err) { console.error(err); }
     }
-    fetchMsgs();
+    loadMsgs();
+
+    if (isDemo) return () => { cancelled = true; };
+
     const sb = createClient();
     const ch = sb.channel(`chat:${workspaceId}:${activeChannel}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, async (payload) => {
-        if (payload.new.channel !== activeChannel) return;
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, async (payload) => {
+        // Deletes: drop the message locally (id is present even in the old row)
+        if (payload.eventType === 'DELETE') {
+          const delId = payload.old?.id;
+          if (delId) setMessages(prev => prev.filter(m => m.id !== delId));
+          return;
+        }
+        const row = payload.new;
+        if (!row || row.channel !== activeChannel) return;
         try {
-          const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${activeChannel}&messageId=${payload.new.id}`);
+          const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${activeChannel}&messageId=${row.id}`);
           if (res.ok) {
-            const j = await res.json();
-            const msg = j.data?.[0];
-            if (msg) {
+            const msg = (await res.json()).data?.[0];
+            if (!msg) return;
+            if (payload.eventType === 'UPDATE') {
+              setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
+            } else {
               setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
-              setLastMessages(p => ({ ...p, [activeChannel]: msg }));
             }
+            setLastMessages(p => ({ ...p, [activeChannel]: msg }));
           }
         } catch (_) {}
       }).subscribe();
-    return () => sb.removeChannel(ch);
+    return () => { cancelled = true; sb.removeChannel(ch); };
   }, [workspaceId, activeChannel, isDemo, getDemoMessages]);
 
   const loadReactions = useCallback(async (msgIds) => {
-    if (!msgIds?.length || isDemo) return;
+    if (isDemo) return;
+    if (!msgIds?.length) { setReactions({}); return; }
     const { data } = await createClient().from('chat_reactions').select('message_id, user_id, emoji').in('message_id', msgIds);
     if (!data) return;
     const grouped = {};
@@ -226,7 +265,11 @@ function ChatContent() {
     setReactions(grouped);
   }, [isDemo]);
 
-  useEffect(() => { if (messages.length > 0) loadReactions(messages.map(m => m.id)); else setReactions({}); }, [messages, loadReactions]);
+  useEffect(() => {
+    const ids = messages.map(m => m.id);
+    async function run() { await loadReactions(ids); }
+    run();
+  }, [messages, loadReactions]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const handleSend = async (e) => {
@@ -257,6 +300,48 @@ function ChatContent() {
     finally { setSending(false); }
   };
 
+  // ── Edit / delete a message ──────────────────────────────────────────────
+  const canModerate = ['manager', 'superadmin'].includes(userProfile?.role);
+  const canDeleteMsg = (msg) => msg.userId === currentUserId || canModerate;
+
+  const startEdit = (msg) => { setReactOpen(null); setConfirmDeleteId(null); setEditingId(msg.id); setEditText(msg.message); };
+  const cancelEdit = () => { setEditingId(null); setEditText(''); };
+
+  const saveEdit = async (msg) => {
+    const text = editText.trim();
+    if (!text || text === msg.message) { cancelEdit(); return; }
+    cancelEdit();
+    setMessages(prev => {
+      const next = prev.map(m => m.id === msg.id ? { ...m, message: text, edited: true } : m);
+      if (isDemo) localStorage.setItem(`demo-chat-${workspaceId}-${activeChannel}`, JSON.stringify(next));
+      return next;
+    });
+    if (isDemo) return;
+    try {
+      const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${encodeURIComponent(activeChannel)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: msg.id, message: text }),
+      });
+      if (res.ok) { const j = await res.json(); if (j.data) setMessages(prev => prev.map(m => m.id === j.data.id ? j.data : m)); }
+      dmBcastRef.current?.send({ type: 'broadcast', event: 'new_msg', payload: {} });
+    } catch (_) {}
+  };
+
+  const deleteMsg = async (msg) => {
+    setConfirmDeleteId(null);
+    setReactOpen(null);
+    setMessages(prev => {
+      const next = prev.filter(m => m.id !== msg.id);
+      if (isDemo) localStorage.setItem(`demo-chat-${workspaceId}-${activeChannel}`, JSON.stringify(next));
+      return next;
+    });
+    if (isDemo) return;
+    try {
+      await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${encodeURIComponent(activeChannel)}&messageId=${msg.id}`, { method: 'DELETE' });
+      dmBcastRef.current?.send({ type: 'broadcast', event: 'new_msg', payload: {} });
+    } catch (_) {}
+  };
+
   const toggleReaction = async (messageId, emoji) => {
     if (!currentUserId || isDemo) return;
     setReactOpen(null);
@@ -275,6 +360,7 @@ function ChatContent() {
   const EMOJIS = ['😀','😂','😍','🥰','😎','🤔','😅','🙏','👍','👏','🔥','❤️','✅','🎉','💡','📌','⚡','🚀','💪','😢'];
   const QUICK_REACTIONS = ['👍','❤️','😂','😮','🔥','✅'];
   const roleColor = { superadmin: '#F5A623', manager: '#5B9BFF', member: '#4ECDC4' };
+  const ACT_BTN = { width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: '#8FB4E8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 };
 
   // Resolve selected chat info
   const groupCh = GROUP_CHANNELS.find(c => c.id === activeChannel);
@@ -518,43 +604,83 @@ function ChatContent() {
                           </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: isOwn ? 'flex-end' : 'flex-start', marginBottom: 2, marginTop: (!msg.isContinuation && (isOwn || isDm) && !msg.showDate) ? 6 : 1 }}>
+                        <div
+                          onMouseEnter={() => setHoverMsgId(msg.id)}
+                          onMouseLeave={() => { setHoverMsgId(h => (h === msg.id ? null : h)); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: isOwn ? 'flex-end' : 'flex-start', marginBottom: 2, marginTop: (!msg.isContinuation && (isOwn || isDm) && !msg.showDate) ? 6 : 1 }}
+                        >
+                          {/* Hover actions — left of own bubble */}
+                          {isOwn && editingId !== msg.id && (
+                            <div style={{ display: 'flex', gap: 3, opacity: hoverMsgId === msg.id ? 1 : 0, pointerEvents: hoverMsgId === msg.id ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
+                              <button type="button" title="Edit" onClick={() => startEdit(msg)} style={ACT_BTN}><Pencil size={12} /></button>
+                              <button type="button" title="Delete" onClick={() => setConfirmDeleteId(msg.id)} style={ACT_BTN}><Trash2 size={12} /></button>
+                            </div>
+                          )}
+
                           <div style={{ maxWidth: '75%', display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
 
-                            {/* Bubble */}
-                            <div
-                              data-react="true"
-                              onClick={(e) => {
-                                if (reactOpen === msg.id) { setReactOpen(null); return; }
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setReactPos({ top: rect.top - 50, left: isOwn ? rect.right - 230 : rect.left });
-                                setReactOpen(msg.id);
-                              }}
-                              style={{
-                                padding: '7px 11px 5px',
-                                borderRadius: isOwn
-                                  ? (msg.isContinuation ? '16px 4px 16px 16px' : '16px 4px 16px 16px')
-                                  : (msg.isContinuation ? '4px 16px 16px 16px' : '4px 16px 16px 16px'),
-                                background: isOwn
-                                  ? 'linear-gradient(135deg, #1a45a8, #2960d8)'
-                                  : 'rgba(255,255,255,0.07)',
-                                border: isOwn ? 'none' : '1px solid rgba(255,255,255,0.09)',
-                                color: isOwn ? '#fff' : '#D0E4FF',
-                                fontSize: 13.5, lineHeight: 1.5,
-                                wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                                cursor: 'pointer',
-                                boxShadow: isOwn ? '0 1px 8px rgba(48,108,236,0.30)' : '0 1px 4px rgba(0,0,0,0.30)',
-                                position: 'relative',
-                              }}
-                            >
-                              {msg.message}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
-                                <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
-                                  {formatMsgTime(msg.createdAt)}
-                                </span>
-                                {isOwn && <Check size={11} style={{ color: 'rgba(255,255,255,0.55)' }} />}
+                            {editingId === msg.id ? (
+                              /* Edit box */
+                              <div style={{ minWidth: 240, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(48,108,236,0.45)', borderRadius: 14, padding: '8px 10px' }}>
+                                <textarea
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msg); } if (e.key === 'Escape') cancelEdit(); }}
+                                  autoFocus
+                                  rows={2}
+                                  style={{ width: '100%', minWidth: 220, background: 'transparent', border: 'none', outline: 'none', color: '#E8F2FF', fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+                                />
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
+                                  <button type="button" onClick={cancelEdit} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9DB8DD', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><X size={12} /> Cancel</button>
+                                  <button type="button" onClick={() => saveEdit(msg)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}><Check size={12} /> Save</button>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              /* Bubble */
+                              <div
+                                data-react="true"
+                                onClick={(e) => {
+                                  if (reactOpen === msg.id) { setReactOpen(null); return; }
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setReactPos({ top: rect.top - 50, left: isOwn ? rect.right - 230 : rect.left });
+                                  setReactOpen(msg.id);
+                                }}
+                                style={{
+                                  padding: '7px 11px 5px',
+                                  borderRadius: isOwn
+                                    ? (msg.isContinuation ? '16px 4px 16px 16px' : '16px 4px 16px 16px')
+                                    : (msg.isContinuation ? '4px 16px 16px 16px' : '4px 16px 16px 16px'),
+                                  background: isOwn
+                                    ? 'linear-gradient(135deg, #1a45a8, #2960d8)'
+                                    : 'rgba(255,255,255,0.07)',
+                                  border: isOwn ? 'none' : '1px solid rgba(255,255,255,0.09)',
+                                  color: isOwn ? '#fff' : '#D0E4FF',
+                                  fontSize: 13.5, lineHeight: 1.5,
+                                  wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                                  cursor: 'pointer',
+                                  boxShadow: isOwn ? '0 1px 8px rgba(48,108,236,0.30)' : '0 1px 4px rgba(0,0,0,0.30)',
+                                  position: 'relative',
+                                }}
+                              >
+                                {msg.message}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
+                                  {msg.edited && <span style={{ fontSize: 9.5, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.5)' : 'rgba(160,190,240,0.42)', lineHeight: 1 }}>edited</span>}
+                                  <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
+                                    {formatMsgTime(msg.createdAt)}
+                                  </span>
+                                  {isOwn && <Check size={11} style={{ color: 'rgba(255,255,255,0.55)' }} />}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Delete confirmation */}
+                            {confirmDeleteId === msg.id && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, background: 'rgba(224,72,90,0.10)', border: '1px solid rgba(224,72,90,0.30)', borderRadius: 10, padding: '5px 8px' }}>
+                                <span style={{ fontSize: 11.5, color: '#E0485A', fontWeight: 600 }}>Delete this message?</span>
+                                <button type="button" onClick={() => deleteMsg(msg)} style={{ padding: '3px 10px', borderRadius: 7, border: 'none', background: '#E0485A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                                <button type="button" onClick={() => setConfirmDeleteId(null)} style={{ padding: '3px 8px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9DB8DD', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                              </div>
+                            )}
 
                             {/* Reactions */}
                             {reactionEntries.length > 0 && (
@@ -575,6 +701,13 @@ function ChatContent() {
                               </div>
                             )}
                           </div>
+
+                          {/* Hover action — right of another member's bubble (delete; moderators only) */}
+                          {!isOwn && editingId !== msg.id && canDeleteMsg(msg) && (
+                            <div style={{ display: 'flex', gap: 3, opacity: hoverMsgId === msg.id ? 1 : 0, pointerEvents: hoverMsgId === msg.id ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
+                              <button type="button" title="Delete" onClick={() => setConfirmDeleteId(msg.id)} style={ACT_BTN}><Trash2 size={12} /></button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

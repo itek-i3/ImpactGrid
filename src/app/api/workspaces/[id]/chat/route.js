@@ -1,5 +1,6 @@
-import { ok, created, noContent, badRequest, forbidden, fromSupabaseError } from '@/lib/api/response';
+import { ok, created, noContent, badRequest, forbidden, notFound, fromSupabaseError } from '@/lib/api/response';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 
 const VALID_CHANNELS = ['daily_tasks', 'weekly_tasks', 'random'];
 const MANAGER_ONLY_CHANNELS = ['weekly_tasks'];
@@ -26,35 +27,21 @@ export async function GET(request, { params }) {
   const wsAgencyId = wsRow?.agency_id || null;
 
   // Secure DMs
-  // Channel format: dm:agencyId:userId1:userId2 (4 parts)
   if (channel.startsWith('dm:')) {
-    const parts = channel.split(':');
-    // Reject channels that don't carry an agency prefix — they can't be isolated
-    if (parts.length !== 4) return forbidden('Malformed DM channel');
+    const dm = parseDmChannel(channel);
+    if (!dm.isDm || dm.participants.length < 2) return forbidden('Malformed DM channel');
 
-    const channelAgencyId = parts[1];
-    const u1 = parts[2];
-    const u2 = parts[3];
-
-    // Agency isolation: the channel's agency must match this workspace's agency
-    if (wsAgencyId && channelAgencyId !== wsAgencyId) {
+    const channelAgencyId = dm.agencyId;
+    if (wsAgencyId && channelAgencyId && channelAgencyId !== wsAgencyId) {
       return forbidden('DM does not belong to this agency');
     }
 
-    const isParticipant = u1 === user.id || u2 === user.id;
-    if (!isParticipant) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      if (profile?.role !== 'superadmin') {
-        return forbidden('You do not have access to this conversation');
-      }
+    if (!isDmParticipant(channel, user.id)) {
+      return forbidden('You do not have access to this conversation');
     }
   }
 
-  const selectCols = `id, message, channel, created_at, user_id, profiles:user_id (full_name, email, role)`;
+  const selectCols = `id, message, channel, created_at, edited, user_id, profiles:user_id (full_name, email, role)`;
 
   // DMs: filter only by channel (agency already encoded in channel name + validated above)
   // Group channels: filter by workspace_id as usual
@@ -77,6 +64,7 @@ export async function GET(request, { params }) {
     message: msg.message,
     channel: msg.channel,
     createdAt: msg.created_at,
+    edited: msg.edited || false,
     userId: msg.user_id,
     userName: msg.profiles?.full_name || 'Anonymous Member',
     userEmail: msg.profiles?.email || '',
@@ -103,26 +91,21 @@ export async function POST(request, { params }) {
 
   // DM channels: agency isolation + participant check
   if (channel.startsWith('dm:')) {
-    const parts = channel.split(':');
-    if (parts.length !== 4) return badRequest('Malformed DM channel');
+    const dm = parseDmChannel(channel);
+    if (!dm.isDm || dm.participants.length < 2) return badRequest('Malformed DM channel');
 
-    const channelAgencyId = parts[1];
-    const u1 = parts[2];
-    const u2 = parts[3];
-
-    // Reject if the channel's agency doesn't match this workspace's agency
+    const channelAgencyId = dm.agencyId;
     const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
     const { data: wsCheck } = await admin
       .from('workspaces')
       .select('agency_id')
       .eq('id', workspaceId)
       .single();
-    if (wsCheck?.agency_id && channelAgencyId !== wsCheck.agency_id) {
+    if (wsCheck?.agency_id && channelAgencyId && channelAgencyId !== wsCheck.agency_id) {
       return forbidden('DM does not belong to this agency');
     }
 
-    const isParticipant = u1 === user.id || u2 === user.id;
-    if (!isParticipant) {
+    if (!isDmParticipant(channel, user.id)) {
       return forbidden('You can only post in DMs you are a participant of');
     }
   } else {
@@ -153,6 +136,7 @@ export async function POST(request, { params }) {
       message,
       channel,
       created_at,
+      edited,
       user_id,
       profiles:user_id (
         full_name,
@@ -169,6 +153,45 @@ export async function POST(request, { params }) {
     message: data.message,
     channel: data.channel,
     createdAt: data.created_at,
+    edited: data.edited || false,
+    userId: data.user_id,
+    userName: data.profiles?.full_name || 'Anonymous Member',
+    userEmail: data.profiles?.email || '',
+    userRole: data.profiles?.role || 'member',
+  });
+}
+
+// Edit a single message. RLS lets only the author (or superadmin) update it.
+export async function PATCH(request) {
+  const supabase = await createClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return badRequest('Unauthorized');
+
+  const body = await request.json().catch(() => ({}));
+  const { messageId, message } = body;
+  if (!messageId) return badRequest('messageId is required');
+  if (!message || message.trim() === '') return badRequest('message is required');
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .update({ message: message.trim(), edited: true })
+    .eq('id', messageId)
+    .select(`
+      id, message, channel, created_at, edited, user_id,
+      profiles:user_id ( full_name, email, role )
+    `)
+    .maybeSingle();
+
+  if (error) return fromSupabaseError(error);
+  if (!data) return notFound('Message not found or you cannot edit it');
+
+  return ok({
+    id: data.id,
+    message: data.message,
+    channel: data.channel,
+    createdAt: data.created_at,
+    edited: data.edited || false,
     userId: data.user_id,
     userName: data.profiles?.full_name || 'Anonymous Member',
     userEmail: data.profiles?.email || '',
@@ -180,19 +203,24 @@ export async function DELETE(request, { params }) {
   const { id: workspaceId } = await params;
   const { searchParams } = new URL(request.url);
   const channel = searchParams.get('channel') || 'random';
+  const messageId = searchParams.get('messageId');
 
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return badRequest('Unauthorized');
 
+  // Single-message delete — RLS allows the author, or a manager/superadmin.
+  if (messageId) {
+    const { error } = await supabase.from('chat_messages').delete().eq('id', messageId);
+    if (error) return fromSupabaseError(error);
+    return noContent();
+  }
+
   const isValidChannel = VALID_CHANNELS.includes(channel) || channel.startsWith('dm:');
   if (!isValidChannel) return badRequest('invalid channel');
 
   if (channel.startsWith('dm:')) {
-    const parts = channel.split(':');
-    const u1 = parts.length === 4 ? parts[2] : parts[1];
-    const u2 = parts.length === 4 ? parts[3] : parts[2];
-    if (u1 !== user.id && u2 !== user.id) return forbidden('You do not have access to this conversation');
+    if (!isDmParticipant(channel, user.id)) return forbidden('You do not have access to this conversation');
   } else {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     if (!profile || profile.role === 'member') return forbidden('Only managers can clear chat');
