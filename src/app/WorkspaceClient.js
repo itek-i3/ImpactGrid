@@ -10,6 +10,7 @@ import SearchModal from '@/components/layout/SearchModal';
 import FloatingChat from '@/components/layout/FloatingChat';
 import BlockEditor from '@/components/editor/BlockEditor';
 import HomeDashboard from '@/components/layout/HomeDashboard';
+import AcquisitionPanel from '@/components/layout/AcquisitionPanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -20,6 +21,7 @@ function WorkspaceContent() {
   const {
     workspace,
     currentPage,
+    currentView,
     setCurrentPage,
     updatePage,
     initDemoWorkspace,
@@ -133,7 +135,9 @@ function WorkspaceContent() {
           `,
           backgroundSize: '40px 40px',
         }}>
-          {currentPage ? (
+          {currentView === 'acquisition' ? (
+            <AcquisitionPanel />
+          ) : currentPage ? (
             <div className={styles.pageContainer}>
               <div className={styles.pageHeader}>
                 <div className={styles.pageIconWrapper}>

@@ -35,6 +35,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Page tree
   pages: [],
   currentPage: null,
+  currentView: null, // null | 'acquisition' — in-shell tabs that aren't pages
   expandedPages: new Set(),
 
   // UI state
@@ -72,7 +73,7 @@ export const useWorkspaceStore = create((set, get) => ({
 
   switchAgency: async (agencyId) => {
     if (typeof window !== 'undefined') localStorage.setItem('activeAgencyId', agencyId);
-    set({ activeAgencyId: agencyId, workspace: null, workspaces: [], pages: [], currentPage: null });
+    set({ activeAgencyId: agencyId, workspace: null, workspaces: [], pages: [], currentPage: null, currentView: null });
     await get().loadWorkspace(null, agencyId);
   },
 
@@ -96,7 +97,11 @@ export const useWorkspaceStore = create((set, get) => ({
   },
   setPages: (pages) => set({ pages }),
 
-  setCurrentPage: (page) => set({ currentPage: page }),
+  setCurrentPage: (page) => set({ currentPage: page, currentView: null }),
+
+  // In-shell views that aren't pages (e.g. Acquisition). Clears the open page
+  // so the workspace content area renders the view instead.
+  setCurrentView: (view) => set({ currentView: view, currentPage: null }),
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),

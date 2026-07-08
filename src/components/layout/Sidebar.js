@@ -53,7 +53,9 @@ export default function Sidebar() {
     workspace,
     pages,
     currentPage,
+    currentView,
     setCurrentPage,
+    setCurrentView,
     sidebarOpen,
     toggleSidebar,
     addPage,
@@ -220,8 +222,8 @@ export default function Sidebar() {
               {/* Home — always first */}
               <button
                 className="ig-nav"
-                onClick={() => setCurrentPage(null)}
-                style={!currentPage ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                onClick={() => { setCurrentPage(null); if (pathname !== '/') router.push('/'); }}
+                style={!currentPage && !currentView ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
               >
                 <Home size={15} />
                 <span>Home</span>
@@ -253,8 +255,8 @@ export default function Sidebar() {
               {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
                 <button
                   className="ig-nav"
-                  onClick={() => router.push('/acquisition')}
-                  style={pathname.startsWith('/acquisition') ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                  onClick={() => { setCurrentView('acquisition'); if (pathname !== '/') router.push('/'); }}
+                  style={currentView === 'acquisition' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                 >
                   <Target size={15} />
                   <span>Acquisition</span>
