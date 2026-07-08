@@ -413,6 +413,7 @@ export default function AcquisitionPanel() {
   const [valuationOpen,   setValuationOpen]   = useState(false);
   const [savedEvals,      setSavedEvals]      = useState([]);
   const [viewedEvalId,    setViewedEvalId]    = useState(null); // business selected from the table to view
+  const [editingId,       setEditingId]       = useState(null); // existing eval being edited (upsert vs insert)
   const [historyOpen,     setHistoryOpen]     = useState(false);
   const [saving,          setSaving]          = useState(false);
   const [copying,         setCopying]         = useState(false);
@@ -427,15 +428,44 @@ export default function AcquisitionPanel() {
     [agencies, activeAgencyId]
   );
 
-  const storageKey = `ig-${activeAgencyId || 'guest'}-acq-evaluations`;
+  const API = '/os/api/acquisitions';
 
+  // Load the agency's shared evaluations from the database. On first run per
+  // browser, migrate any legacy localStorage evaluations up to the DB so no
+  // previously-saved data is lost.
   useEffect(() => {
-    // Load in a rAF callback so the effect body itself stays side-effect-free
-    const id = requestAnimationFrame(() => {
-      try { setSavedEvals(JSON.parse(localStorage.getItem(storageKey) || '[]')); } catch {}
-    });
-    return () => cancelAnimationFrame(id);
-  }, [storageKey]);
+    let cancelled = false;
+
+    async function load() {
+      if (!activeAgencyId) { if (!cancelled) setSavedEvals([]); return; }
+      try {
+        const res = await fetch(`${API}?agencyId=${activeAgencyId}`);
+        if (!res.ok) return;
+        let list = (await res.json()).data || [];
+
+        // One-time import of localStorage evaluations (no data lost).
+        const migFlag = `ig-${activeAgencyId}-acq-migrated`;
+        if (!localStorage.getItem(migFlag)) {
+          let local = [];
+          try { local = JSON.parse(localStorage.getItem(`ig-${activeAgencyId}-acq-evaluations`) || '[]'); } catch {}
+          if (local.length) {
+            for (const ev of local) {
+              const { id: _drop, ...rest } = ev; // let the DB assign a fresh id
+              await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agencyId: activeAgencyId, evaluation: rest }) }).catch(() => {});
+            }
+            const re = await fetch(`${API}?agencyId=${activeAgencyId}`);
+            if (re.ok) list = (await re.json()).data || [];
+          }
+          try { localStorage.setItem(migFlag, '1'); } catch {}
+        }
+
+        if (!cancelled) setSavedEvals(Array.isArray(list) ? list : []);
+      } catch {}
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [activeAgencyId]);
 
   const derivedScores = useMemo(() =>
     Object.fromEntries(CRITERIA.map(c => [c.id, deriveCriterionScore(c.id, { scores, industryValue, monthsInOp, legalChecks, customLegalItems, ownerMotivation, customMotivations, revenueMetrics, investmentMetrics })])),
@@ -562,14 +592,15 @@ export default function AcquisitionPanel() {
     setScores(prev => ({ ...prev, [id]: prev[id] === val ? null : val }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!businessName.trim()) return;
+    if (!activeAgencyId) { toast.error('No agency', 'Select an agency before saving.'); return; }
     setSaving(true);
     try {
-      const obj = {
-        id: crypto.randomUUID(),
+      const evaluation = {
+        ...(editingId ? { id: editingId } : {}), // update existing vs. create new
         businessName: businessName.trim(), sector: businessSector, date: evalDate,
-        agencyId: activeAgencyId || 'guest',
+        agencyId: activeAgencyId,
         evaluator: {
           id: userProfile?.id || null,
           name: userProfile?.full_name || userProfile?.email || 'Guest',
@@ -582,22 +613,33 @@ export default function AcquisitionPanel() {
         revenueMetrics, investmentMetrics, valuation: { ...valuation },
         total: totalScore, evaluatedCount, savedAt: new Date().toISOString(),
       };
-      const updated = [...JSON.parse(localStorage.getItem(storageKey) || '[]'), obj];
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      setSavedEvals(updated);
-      setViewedEvalId(obj.id); // show the just-saved business on the dashboard
-      toast.success('Saved', `"${businessName}" evaluation saved.`);
+      const res = await fetch(API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agencyId: activeAgencyId, evaluation }),
+      });
+      if (!res.ok) throw new Error('save failed');
+      const saved = (await res.json()).data;
+      setSavedEvals(prev => [saved, ...prev.filter(e => e.id !== saved.id)]);
+      setViewedEvalId(saved.id); // show the just-saved business on the dashboard
+      setEditingId(null);
+      toast.success('Saved', `"${businessName}" saved to the shared pipeline.`);
       setFormOpen(false);
-    } catch { toast.error('Save Failed', 'Could not write to storage.'); }
+    } catch { toast.error('Save Failed', 'Could not save to the database.'); }
     finally   { setSaving(false); }
   }
 
-  function handleDeleteEval(id) {
+  async function handleDeleteEval(id) {
+    if (!activeAgencyId) return;
+    const prev = savedEvals;
+    setSavedEvals(list => list.filter(e => e.id !== id)); // optimistic
     try {
-      const updated = savedEvals.filter(e => e.id !== id);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      setSavedEvals(updated);
-    } catch {}
+      const res = await fetch(`${API}?agencyId=${activeAgencyId}&id=${id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) throw new Error('delete failed');
+      if (viewedEvalId === id) setViewedEvalId(null);
+    } catch {
+      setSavedEvals(prev); // revert on failure
+      toast.error('Delete Failed', 'Could not delete from the database.');
+    }
   }
 
   function handleLoadEval(ev) {
@@ -615,6 +657,7 @@ export default function AcquisitionPanel() {
     setRevenueMetrics(ev.revenueMetrics || { revenue: '', totalExpenses: '' });
     setInvestmentMetrics(ev.investmentMetrics || { acquisitionCost: '', monthlyProfit: '' });
     setValuation(ev.valuation ? { ...EMPTY_VALUATION, ...ev.valuation } : EMPTY_VALUATION);
+    setEditingId(ev.id || null); // saving will update this record, not duplicate it
     setViewedEvalId(null); // editing this as a draft now
     setHistoryOpen(false);
     setFormOpen(true);
@@ -633,6 +676,7 @@ export default function AcquisitionPanel() {
     setInvestmentMetrics({ acquisitionCost: '', monthlyProfit: '' });
     setValuation(EMPTY_VALUATION);
     setViewedEvalId(null);
+    setEditingId(null);
   }
 
   function handleCopy() {
@@ -1115,7 +1159,7 @@ export default function AcquisitionPanel() {
             </button>
             <button onClick={handleCopy} className="acqp-ghost" style={ghostBtn}><Copy size={13}/> {copying ? 'Copied' : 'Copy'}</button>
             <button onClick={openValuation} className="acqp-ghost" style={ghostBtn}><Calculator size={13}/> Valuation</button>
-            <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} style={{
+            <button onClick={() => { setViewedEvalId(null); setEditingId(null); handleReset(); setFormOpen(true); }} style={{
               display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:12,
               background:'var(--color-accent-gradient)', border:'none', color:'#fff',
               cursor:'pointer', fontSize:12.5, fontWeight:700, fontFamily:'inherit',
@@ -1331,7 +1375,7 @@ export default function AcquisitionPanel() {
                 </select>
                 <ChevronDown size={12} style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
               </div>
-              <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} title="New evaluation" style={{
+              <button onClick={() => { setViewedEvalId(null); setEditingId(null); handleReset(); setFormOpen(true); }} title="New evaluation" style={{
                 width:32, height:32, borderRadius:10, border:'none',
                 background:'var(--color-accent-primary)', color:'#fff', cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'opacity .15s',
@@ -1356,7 +1400,7 @@ export default function AcquisitionPanel() {
               {tableRows.length === 0 ? (
                 <div style={{ textAlign:'center', padding:'28px 0', color:'var(--color-text-tertiary)', fontSize:12.5 }}>
                   {savedEvals.length === 0 ? (
-                    <>No evaluations yet — click <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} style={{ background:'none', border:'none', padding:0, color:'var(--color-text-link)', fontWeight:700, cursor:'pointer', fontSize:12.5, fontFamily:'inherit' }}>+ New Evaluation</button> to score your first business.</>
+                    <>No evaluations yet — click <button onClick={() => { setViewedEvalId(null); setEditingId(null); handleReset(); setFormOpen(true); }} style={{ background:'none', border:'none', padding:0, color:'var(--color-text-link)', fontWeight:700, cursor:'pointer', fontSize:12.5, fontFamily:'inherit' }}>+ New Evaluation</button> to score your first business.</>
                   ) : 'No evaluations match the current search/filter.'}
                 </div>
               ) : tableRows.map((ev, i) => {
