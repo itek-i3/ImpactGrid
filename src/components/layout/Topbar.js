@@ -18,7 +18,7 @@ export default function Topbar() {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage,
     toggleSearch, workspace, userProfile, theme,
-    unreadChatCount, clearAllChatNotifications,
+    unreadChatCount, unreadChatChannels, clearChatNotifications, clearAllChatNotifications,
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
@@ -28,9 +28,13 @@ export default function Topbar() {
   const [showPublishMenu, setShowPublishMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [profileMenuPos, setProfileMenuPos] = useState({ top: 0, right: 0 });
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [notifMenuPos, setNotifMenuPos] = useState({ top: 0, right: 0 });
   const [now, setNow] = useState(() => Date.now());
   const profileBtnRef = useRef(null);
   const profileMenuRef = useRef(null);
+  const notifBtnRef = useRef(null);
+  const notifMenuRef = useRef(null);
 
   useEffect(() => {
     let unsubscribe;
@@ -67,6 +71,27 @@ export default function Topbar() {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [showProfileMenu]);
+
+  useEffect(() => {
+    if (!showNotifMenu) return;
+    const h = (e) => {
+      if (notifMenuRef.current && !notifMenuRef.current.contains(e.target) &&
+          notifBtnRef.current && !notifBtnRef.current.contains(e.target)) {
+        setShowNotifMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [showNotifMenu]);
+
+  const GROUP_CHANNEL_LABELS = { daily_tasks: 'Daily Tasks', weekly_tasks: 'Weekly Tasks', random: 'Random' };
+  const channelLabel = (ch) => (ch?.startsWith('dm:') ? 'Direct message' : (GROUP_CHANNEL_LABELS[ch] || ch));
+  const channelEmoji = (ch) => (ch?.startsWith('dm:') ? '📩' : '💬');
+  const openChannel = (ch) => {
+    clearChatNotifications(ch);
+    setShowNotifMenu(false);
+    router.push(`/chat?${workspace?.id ? `workspaceId=${workspace.id}&` : ''}channel=${encodeURIComponent(ch)}`);
+  };
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -252,27 +277,86 @@ export default function Topbar() {
       )}
 
 
-      {/* Bell */}
-      <button
-        className="ig-kbtn"
-        onClick={() => {
-          clearAllChatNotifications();
-          router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`);
-        }}
-        style={{ ...btnStyle, position: 'relative' }}
-        title={unreadChatCount > 0 ? `${unreadChatCount} unread chat notification${unreadChatCount > 1 ? 's' : ''}` : 'Open chat'}
-      >
-        <Bell size={17} />
-        {unreadChatCount > 0 && (
-          <span style={{
-            position: 'absolute', top: 6, right: 7, minWidth: 16, height: 16,
-            padding: '0 4px', borderRadius: 999, background: '#E0485A', border: '2px solid #02040A',
-            color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      {/* Notifications bell */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          ref={notifBtnRef}
+          className="ig-kbtn"
+          onClick={() => {
+            if (!showNotifMenu && notifBtnRef.current) {
+              const rect = notifBtnRef.current.getBoundingClientRect();
+              setNotifMenuPos({ top: rect.bottom + 10, right: window.innerWidth - rect.right });
+            }
+            setShowNotifMenu((v) => !v);
+          }}
+          style={{ ...btnStyle, position: 'relative', borderColor: showNotifMenu ? '#306CEC' : 'rgba(48,108,236,0.25)' }}
+          title={unreadChatCount > 0 ? `${unreadChatCount} unread notification${unreadChatCount > 1 ? 's' : ''}` : 'Notifications'}
+        >
+          <Bell size={17} />
+          {unreadChatCount > 0 && (
+            <span style={{
+              position: 'absolute', top: 6, right: 7, minWidth: 16, height: 16,
+              padding: '0 4px', borderRadius: 999, background: '#E0485A', border: '2px solid #02040A',
+              color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {unreadChatCount > 9 ? '9+' : unreadChatCount}
+            </span>
+          )}
+        </button>
+
+        {showNotifMenu && (
+          <div ref={notifMenuRef} style={{
+            position: 'fixed', top: notifMenuPos.top, right: notifMenuPos.right,
+            background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
+            boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 300, overflow: 'hidden', zIndex: 9999,
           }}>
-            {unreadChatCount > 9 ? '9+' : unreadChatCount}
-          </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: '#E2EEFF' }}>Notifications</span>
+              {unreadChatChannels.length > 0 && (
+                <button onClick={() => clearAllChatNotifications()} style={{ background: 'none', border: 'none', color: '#7EB3FF', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Mark all read
+                </button>
+              )}
+            </div>
+
+            <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+              {unreadChatChannels.length === 0 ? (
+                <div style={{ padding: '30px 20px', textAlign: 'center', color: '#3D5A8A', fontSize: 12.5, lineHeight: 1.6 }}>
+                  <Bell size={26} style={{ opacity: 0.4, marginBottom: 8 }} /><br />
+                  You&apos;re all caught up 🎉
+                </div>
+              ) : (
+                unreadChatChannels.map((ch) => (
+                  <button key={ch} onClick={() => openChannel(ch)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 15px',
+                    border: 'none', borderBottom: '1px solid rgba(48,108,236,0.08)', background: 'none',
+                    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background .12s',
+                  }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                    <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
+                      {channelEmoji(ch)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E2EEFF' }}>New messages</div>
+                      <div style={{ fontSize: 11.5, color: '#3D5A8A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channelLabel(ch)}</div>
+                    </div>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#E0485A', flexShrink: 0 }} />
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button onClick={() => { setShowNotifMenu(false); router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`); }} style={{
+              width: '100%', padding: '11px', border: 'none', borderTop: '1px solid rgba(48,108,236,0.15)',
+              background: 'none', color: '#7EB3FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}>
+              Open chat
+            </button>
+          </div>
         )}
-      </button>
+      </div>
 
       {/* New page */}
       {!isReadOnly && (

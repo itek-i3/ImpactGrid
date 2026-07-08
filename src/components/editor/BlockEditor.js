@@ -235,29 +235,31 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       if (readOnly) return;
       const block = blocks.find((b) => b.id === blockId);
 
-      // Enter creates a new block below
-      if (e.key === 'Enter' && !e.shiftKey) {
-        // Don't intercept Enter in code blocks or toggles
+      // Enter behaviour:
+      //  • plain Enter in a normal text block → soft line break (stay in the block)
+      //  • plain Enter in a list / checkbox   → next list item (unchanged)
+      //  • Shift+Enter                        → start a NEW block below
+      if (e.key === 'Enter') {
+        // Code / table / card blocks handle Enter themselves
         if (block?.type === 'code' || block?.type === 'table' || block?.type === 'card') return;
 
+        const isListLike =
+          block?.type === 'bullet_list' || block?.type === 'numbered_list' || block?.type === 'checkbox';
+
+        // Normal text block, plain Enter → line break within the same block
+        if (!e.shiftKey && !isListLike) {
+          e.preventDefault();
+          document.execCommand('insertLineBreak');
+          return;
+        }
+
+        // Otherwise start a new block below (next list item, or a new paragraph on Shift+Enter)
         e.preventDefault();
         const newBlockId = crypto.randomUUID();
-
-        // If the current block is a list item, create another of the same type
-        const newType =
-          block?.type === 'bullet_list' || block?.type === 'numbered_list' || block?.type === 'checkbox'
-            ? block.type
-            : 'paragraph';
-
-        addBlock(
-          {
-            id: newBlockId,
-            type: newType,
-            content: { text: '' },
-          },
-          blockId
-        );
+        const newType = isListLike ? block.type : 'paragraph';
+        addBlock({ id: newBlockId, type: newType, content: { text: '' } }, blockId);
         setFocusBlockId(newBlockId);
+        return;
       }
 
       // Backspace on empty block: delete it and focus previous
