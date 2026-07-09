@@ -458,8 +458,17 @@ export default function AcquisitionPanel() {
     const raf = requestAnimationFrame(() => {
       if (cancelled) return;
       try {
-        const legacy = JSON.parse(localStorage.getItem(legacyKey) || '[]');
-        setLocalToImport(Array.isArray(legacy) ? legacy : []);
+        // Scan EVERY local "…-acq-evaluations" key (not just the current agency's),
+        // so previously-saved evaluations are found even if the agency key differs now.
+        const seen = new Set();
+        const found = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || !k.endsWith('-acq-evaluations')) continue;
+          const arr = JSON.parse(localStorage.getItem(k) || '[]');
+          if (Array.isArray(arr)) arr.forEach(ev => { if (ev?.id && !seen.has(ev.id)) { seen.add(ev.id); found.push(ev); } });
+        }
+        setLocalToImport(found);
       } catch { setLocalToImport([]); }
       try {
         setUndoStack(JSON.parse(localStorage.getItem(historyUndoKey) || '[]'));
@@ -678,7 +687,15 @@ export default function AcquisitionPanel() {
     }));
     sb.from('acquisition_evaluations').upsert(rows).then(async ({ error }) => {
       if (error) { toast.error('Import failed', 'Could not import your local evaluations.'); return; }
-      try { localStorage.removeItem(legacyKey); } catch {}
+      // Clear every local "…-acq-evaluations" key now that they live in the shared space.
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.endsWith('-acq-evaluations')) keys.push(k);
+        }
+        keys.forEach(k => localStorage.removeItem(k));
+      } catch {}
       setLocalToImport([]);
       const evs = await fetchEvals(sb); setSavedEvals(evs);
       toast.success('Imported', `${rows.length} evaluation(s) added to the shared space.`);
