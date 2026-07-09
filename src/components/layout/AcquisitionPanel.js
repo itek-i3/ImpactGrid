@@ -46,6 +46,10 @@ const TARGET_INDUSTRIES = [
 // (mirrors the Industry Focus criterion's target sectors).
 const SECTORS = ['Agriculture', 'Real Estate', 'FMCG', 'Services'];
 
+// Postgres rejects non-UUID ids / foreign keys with a 400. Old local evaluations
+// can carry demo/mock evaluator ids, so we only ever send real UUIDs to the DB.
+const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
 const MOTIVATION_OPTIONS = [
   { value: 'retirement',  label: 'Retirement / Health',  score: 100 },
   { value: 'lifestyle',   label: 'Lifestyle Change',     score: 75  },
@@ -423,7 +427,8 @@ export default function AcquisitionPanel() {
   const [editingEvalId,   setEditingEvalId]   = useState(null); // id of the evaluation being edited (null = new)
   const [undoStack,       setUndoStack]       = useState([]);   // op-log entries: { id, before, after }
   const [redoStack,       setRedoStack]       = useState([]);
-  const [localToImport,   setLocalToImport]   = useState([]);   // old browser-local evals available to import
+  const [localToImport,   setLocalToImport]   = useState([]);   // old browser-local evals waiting to auto-sync
+  const [importFailed,    setImportFailed]    = useState(false); // auto-sync errored → show a manual retry
   const [viewedEvalId,    setViewedEvalId]    = useState(null); // business selected from the table to view
   const [historyOpen,     setHistoryOpen]     = useState(false);
   const [saving,          setSaving]          = useState(false);
@@ -635,14 +640,17 @@ export default function AcquisitionPanel() {
     if (value == null) {
       setSavedEvals(prev => prev.filter(e => e.id !== id));
       sb.from('acquisition_evaluations').delete().eq('id', id)
-        .then(({ error }) => { if (error) toast.error('Sync failed', 'That change may not be saved for the team.'); });
+        .then(({ error }) => { if (error) toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); });
+    } else if (!activeAgencyId) {
+      toast.error('No agency', 'Open an agency workspace before saving.');
     } else {
       setSavedEvals(prev => (prev.some(e => e.id === id) ? prev.map(e => (e.id === id ? value : e)) : [...prev, value]));
       sb.from('acquisition_evaluations').upsert({
         id, agency_id: activeAgencyId,
-        created_by: value.evaluator?.id || userProfile?.id || null,
+        // created_by is DB attribution only; the display author lives in data.evaluator.
+        created_by: isUuid(userProfile?.id) ? userProfile.id : null,
         data: value, updated_at: new Date().toISOString(),
-      }).then(({ error }) => { if (error) toast.error('Sync failed', 'That change may not be saved for the team.'); });
+      }).then(({ error }) => { if (error) toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); });
     }
   }
 
@@ -679,14 +687,17 @@ export default function AcquisitionPanel() {
   function importLocalEvals() {
     if (!activeAgencyId || !localToImport.length) return;
     const sb = createClient();
-    const rows = localToImport.map(ev => ({
-      id: ev.id || crypto.randomUUID(),
-      agency_id: activeAgencyId,
-      created_by: ev.evaluator?.id || userProfile?.id || null,
-      data: ev, updated_at: new Date().toISOString(),
-    }));
+    const rows = localToImport.map(ev => {
+      const id = isUuid(ev.id) ? ev.id : crypto.randomUUID();
+      return {
+        id,
+        agency_id: activeAgencyId,
+        created_by: isUuid(userProfile?.id) ? userProfile.id : null,
+        data: { ...ev, id }, updated_at: new Date().toISOString(),
+      };
+    });
     sb.from('acquisition_evaluations').upsert(rows).then(async ({ error }) => {
-      if (error) { toast.error('Import failed', 'Could not import your local evaluations.'); return; }
+      if (error) { setImportFailed(true); toast.error('Sync failed', error.message || 'Could not sync your local evaluations.'); return; }
       // Clear every local "…-acq-evaluations" key now that they live in the shared space.
       try {
         const keys = [];
@@ -696,11 +707,18 @@ export default function AcquisitionPanel() {
         }
         keys.forEach(k => localStorage.removeItem(k));
       } catch {}
+      setImportFailed(false);
       setLocalToImport([]);
       const evs = await fetchEvals(sb); setSavedEvals(evs);
-      toast.success('Imported', `${rows.length} evaluation(s) added to the shared space.`);
+      toast.success('Synced', `${rows.length} local evaluation(s) added to the shared space.`);
     });
   }
+
+  // Auto-sync any browser-local evaluations into the shared space (no click needed).
+  useEffect(() => {
+    if (!activeAgencyId || !localToImport.length || importFailed) return;
+    importLocalEvals();
+  }, [activeAgencyId, localToImport, importFailed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Let the top-bar Undo/Redo buttons drive evaluation history while this panel is open.
   useEffect(() => {
@@ -1284,15 +1302,15 @@ export default function AcquisitionPanel() {
       <div style={{ background: isLight ? '#F5F6FB' : 'transparent', minHeight:'100%' }}>
       <div ref={panelRef} style={{ maxWidth:1220, margin:'0 auto', padding:'26px 36px 96px', fontFamily:'var(--font-sans)', position:'relative' }}>
 
-        {/* One-time import of old browser-local evaluations into the shared space */}
-        {localToImport.length > 0 && (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', marginBottom:16, padding:'12px 16px', borderRadius:12, background:'rgba(48,108,236,0.10)', border:'1px solid rgba(48,108,236,0.30)' }}>
+        {/* Auto-sync happens on load; this only appears if that sync failed. */}
+        {importFailed && localToImport.length > 0 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', marginBottom:16, padding:'12px 16px', borderRadius:12, background:'rgba(224,72,90,0.10)', border:'1px solid rgba(224,72,90,0.30)' }}>
             <span style={{ fontSize:12.5, color:'var(--color-text-secondary)' }}>
-              📦 You have <strong style={{ color:'var(--color-text-primary)' }}>{localToImport.length}</strong> evaluation(s) saved only on this device. Import them into the shared agency space so your whole team can see them.
+              ⚠️ Couldn&apos;t auto-sync <strong style={{ color:'var(--color-text-primary)' }}>{localToImport.length}</strong> evaluation(s) saved on this device to the shared space.
             </span>
             <div style={{ display:'flex', gap:8, flexShrink:0 }}>
               <button onClick={() => setLocalToImport([])} style={{ ...ghostBtn }}>Dismiss</button>
-              <button onClick={importLocalEvals} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:'var(--radius-lg)', background:'var(--color-accent-gradient)', border:'none', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Import to shared space</button>
+              <button onClick={() => setImportFailed(false)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:'var(--radius-lg)', background:'var(--color-accent-gradient)', border:'none', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Retry sync</button>
             </div>
           </div>
         )}
