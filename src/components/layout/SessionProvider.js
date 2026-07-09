@@ -141,7 +141,14 @@ export default function SessionProvider() {
         const isViewingChannel = row.channel === activeChatChannel && document.visibilityState === 'visible';
         if (isViewingChannel) return;
 
-        addChatNotification(row.channel);
+        // Resolve who sent it so the bell can show the sender + a preview.
+        const sender = members.find((m) => m.id === row.user_id);
+        const senderName = sender?.full_name || sender?.email || 'Someone';
+        addChatNotification(row.channel, {
+          senderName,
+          message: row.message,
+          isDm: row.channel?.startsWith('dm:'),
+        });
 
         // Deduplicate notifications/sounds across multiple open tabs
         const msgKey = `msg-notif-${row.id}`;
@@ -169,8 +176,6 @@ export default function SessionProvider() {
 
           // Show desktop notification
           if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-            const sender = members.find((m) => m.id === row.user_id);
-            const senderName = sender?.full_name || sender?.email || 'Someone';
             const isDmCh = row.channel?.startsWith('dm:');
             
             const GROUP_CHANNELS = [

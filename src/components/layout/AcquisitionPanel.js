@@ -6,9 +6,12 @@ import {
   Factory, Calendar, DollarSign, Droplets, Scale, TrendingUp,
   Users, Crosshair, UserCheck, BarChart3, ShieldAlert,
   AlertTriangle, CheckCircle2, Clock, Search, Filter, Plus, Pencil, Calculator,
+  Undo2, Redo2,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { useUndoStore } from '@/lib/store/useUndoStore';
+import { createClient } from '@/lib/supabase/client';
 import Modal from '@/components/ui/Modal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
@@ -417,6 +420,10 @@ export default function AcquisitionPanel() {
   const [valuation,       setValuation]       = useState(EMPTY_VALUATION);
   const [valuationOpen,   setValuationOpen]   = useState(false);
   const [savedEvals,      setSavedEvals]      = useState([]);
+  const [editingEvalId,   setEditingEvalId]   = useState(null); // id of the evaluation being edited (null = new)
+  const [undoStack,       setUndoStack]       = useState([]);   // op-log entries: { id, before, after }
+  const [redoStack,       setRedoStack]       = useState([]);
+  const [localToImport,   setLocalToImport]   = useState([]);   // old browser-local evals available to import
   const [viewedEvalId,    setViewedEvalId]    = useState(null); // business selected from the table to view
   const [historyOpen,     setHistoryOpen]     = useState(false);
   const [saving,          setSaving]          = useState(false);
@@ -432,15 +439,44 @@ export default function AcquisitionPanel() {
     [agencies, activeAgencyId]
   );
 
-  const storageKey = `ig-${activeAgencyId || 'guest'}-acq-evaluations`;
+  const legacyKey      = `ig-${activeAgencyId || 'guest'}-acq-evaluations`;
+  const historyUndoKey = `ig-${activeAgencyId || 'guest'}-acq-hist-undo`;
+  const historyRedoKey = `ig-${activeAgencyId || 'guest'}-acq-hist-redo`;
 
+  // Load the agency's shared evaluations from Supabase and subscribe to realtime
+  // changes so every member sees saves / edits / deletes as they happen.
   useEffect(() => {
-    // Load in a rAF callback so the effect body itself stays side-effect-free
-    const id = requestAnimationFrame(() => {
-      try { setSavedEvals(JSON.parse(localStorage.getItem(storageKey) || '[]')); } catch {}
+    let cancelled = false;
+    const sb = createClient();
+    const load = async () => {
+      const evs = await fetchEvals(sb);
+      if (!cancelled) setSavedEvals(evs);
+    };
+
+    // Synchronous localStorage reads (legacy import + saved history) in a rAF so
+    // the effect body itself stays side-effect-free.
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return;
+      try {
+        const legacy = JSON.parse(localStorage.getItem(legacyKey) || '[]');
+        setLocalToImport(Array.isArray(legacy) ? legacy : []);
+      } catch { setLocalToImport([]); }
+      try {
+        setUndoStack(JSON.parse(localStorage.getItem(historyUndoKey) || '[]'));
+        setRedoStack(JSON.parse(localStorage.getItem(historyRedoKey) || '[]'));
+      } catch { setUndoStack([]); setRedoStack([]); }
+      if (!activeAgencyId) setSavedEvals([]);
     });
-    return () => cancelAnimationFrame(id);
-  }, [storageKey]);
+
+    let ch = null;
+    if (activeAgencyId) {
+      load();
+      ch = sb.channel(`acq:${activeAgencyId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'acquisition_evaluations', filter: `agency_id=eq.${activeAgencyId}` }, () => { load(); })
+        .subscribe();
+    }
+    return () => { cancelled = true; cancelAnimationFrame(raf); if (ch) sb.removeChannel(ch); };
+  }, [activeAgencyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const derivedScores = useMemo(() =>
     Object.fromEntries(CRITERIA.map(c => [c.id, deriveCriterionScore(c.id, { scores, industryValue, monthsInOp, legalChecks, customLegalItems, ownerMotivation, customMotivations, revenueMetrics, investmentMetrics })])),
@@ -567,15 +603,112 @@ export default function AcquisitionPanel() {
     setScores(prev => ({ ...prev, [id]: prev[id] === val ? null : val }));
   }
 
+  // ── Shared evaluations (Supabase) + undo history ────────────────────────────
+  async function fetchEvals(sb) {
+    if (!activeAgencyId) return [];
+    const { data } = await sb.from('acquisition_evaluations')
+      .select('id, data').eq('agency_id', activeAgencyId)
+      .order('created_at', { ascending: true });
+    return (data || []).map(r => ({ ...(r.data || {}), id: r.id }));
+  }
+
+  function persistHistory(undo, redo) {
+    try {
+      localStorage.setItem(historyUndoKey, JSON.stringify(undo.slice(-50)));
+      localStorage.setItem(historyRedoKey, JSON.stringify(redo.slice(-50)));
+    } catch {}
+  }
+
+  // Apply a single-evaluation change to the shared space + local list.
+  //   value = object → create/replace that evaluation; value = null → delete it.
+  function applyEvalChange(id, value) {
+    const sb = createClient();
+    if (value == null) {
+      setSavedEvals(prev => prev.filter(e => e.id !== id));
+      sb.from('acquisition_evaluations').delete().eq('id', id)
+        .then(({ error }) => { if (error) toast.error('Sync failed', 'That change may not be saved for the team.'); });
+    } else {
+      setSavedEvals(prev => (prev.some(e => e.id === id) ? prev.map(e => (e.id === id ? value : e)) : [...prev, value]));
+      sb.from('acquisition_evaluations').upsert({
+        id, agency_id: activeAgencyId,
+        created_by: value.evaluator?.id || userProfile?.id || null,
+        data: value, updated_at: new Date().toISOString(),
+      }).then(({ error }) => { if (error) toast.error('Sync failed', 'That change may not be saved for the team.'); });
+    }
+  }
+
+  function pushHistory(entry) {
+    const nextUndo = [...undoStack, entry].slice(-50);
+    setUndoStack(nextUndo);
+    setRedoStack([]);
+    persistHistory(nextUndo, []);
+  }
+
+  function undoEvals() {
+    if (!undoStack.length) return;
+    const entry = undoStack[undoStack.length - 1];
+    const nextUndo = undoStack.slice(0, -1);
+    const nextRedo = [...redoStack, entry].slice(-50);
+    setUndoStack(nextUndo); setRedoStack(nextRedo);
+    persistHistory(nextUndo, nextRedo);
+    applyEvalChange(entry.id, entry.before);          // revert to how it was before the change
+    if (entry.before == null && viewedEvalId === entry.id) setViewedEvalId(null);
+  }
+
+  function redoEvals() {
+    if (!redoStack.length) return;
+    const entry = redoStack[redoStack.length - 1];
+    const nextRedo = redoStack.slice(0, -1);
+    const nextUndo = [...undoStack, entry].slice(-50);
+    setRedoStack(nextRedo); setUndoStack(nextUndo);
+    persistHistory(nextUndo, nextRedo);
+    applyEvalChange(entry.id, entry.after);           // re-apply the change
+    if (entry.after == null && viewedEvalId === entry.id) setViewedEvalId(null);
+  }
+
+  // One-off: move any old browser-local evaluations into the shared agency space.
+  function importLocalEvals() {
+    if (!activeAgencyId || !localToImport.length) return;
+    const sb = createClient();
+    const rows = localToImport.map(ev => ({
+      id: ev.id || crypto.randomUUID(),
+      agency_id: activeAgencyId,
+      created_by: ev.evaluator?.id || userProfile?.id || null,
+      data: ev, updated_at: new Date().toISOString(),
+    }));
+    sb.from('acquisition_evaluations').upsert(rows).then(async ({ error }) => {
+      if (error) { toast.error('Import failed', 'Could not import your local evaluations.'); return; }
+      try { localStorage.removeItem(legacyKey); } catch {}
+      setLocalToImport([]);
+      const evs = await fetchEvals(sb); setSavedEvals(evs);
+      toast.success('Imported', `${rows.length} evaluation(s) added to the shared space.`);
+    });
+  }
+
+  // Let the top-bar Undo/Redo buttons drive evaluation history while this panel is open.
+  useEffect(() => {
+    useUndoStore.getState().setController({
+      undo: undoEvals,
+      redo: redoEvals,
+      canUndo: undoStack.length > 0,
+      canRedo: redoStack.length > 0,
+    });
+    return () => useUndoStore.getState().clearController();
+  }, [undoStack, redoStack]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleSave() {
     if (!businessName.trim()) return;
+    if (!activeAgencyId) { toast.error('No agency', 'Open an agency workspace to save evaluations.'); return; }
     setSaving(true);
     try {
+      // Reuse the existing id when editing so the original record is replaced, not duplicated.
+      const id = editingEvalId || crypto.randomUUID();
+      const existing = editingEvalId ? savedEvals.find(e => e.id === editingEvalId) : null;
       const obj = {
-        id: crypto.randomUUID(),
+        id,
         businessName: businessName.trim(), sector: businessSector, date: evalDate,
-        agencyId: activeAgencyId || 'guest',
-        evaluator: {
+        agencyId: activeAgencyId,
+        evaluator: existing?.evaluator || {
           id: userProfile?.id || null,
           name: userProfile?.full_name || userProfile?.email || 'Guest',
           avatar: userProfile?.avatar_url || null,
@@ -585,24 +718,28 @@ export default function AcquisitionPanel() {
         legalChecks: { ...legalChecks }, customLegalItems: customLegalItems.map(i => ({ ...i })),
         ownerMotivation, customMotivations: customMotivations.map(m => ({ ...m })),
         revenueMetrics, investmentMetrics, valuation: { ...valuation },
-        total: totalScore, evaluatedCount, savedAt: new Date().toISOString(),
+        total: totalScore, evaluatedCount,
+        createdAt: existing?.createdAt || existing?.savedAt || new Date().toISOString(),
+        savedAt: new Date().toISOString(),
       };
-      const updated = [...JSON.parse(localStorage.getItem(storageKey) || '[]'), obj];
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      setSavedEvals(updated);
-      setViewedEvalId(obj.id); // show the just-saved business on the dashboard
-      toast.success('Saved', `"${businessName}" evaluation saved.`);
+      pushHistory({ id, before: existing || null, after: obj });
+      applyEvalChange(id, obj);
+      setViewedEvalId(id);       // show the just-saved business on the dashboard
+      setEditingEvalId(null);    // back to "new" mode
+      toast.success(editingEvalId ? 'Updated' : 'Saved', `"${businessName}" evaluation ${editingEvalId ? 'updated' : 'saved'} for the whole agency.`);
       setFormOpen(false);
-    } catch { toast.error('Save Failed', 'Could not write to storage.'); }
+    } catch { toast.error('Save Failed', 'Could not save the evaluation.'); }
     finally   { setSaving(false); }
   }
 
   function handleDeleteEval(id) {
-    try {
-      const updated = savedEvals.filter(e => e.id !== id);
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      setSavedEvals(updated);
-    } catch {}
+    const target = savedEvals.find(e => e.id === id);
+    if (!target) return;
+    pushHistory({ id, before: target, after: null });
+    applyEvalChange(id, null);
+    if (viewedEvalId === id) setViewedEvalId(null);
+    if (editingEvalId === id) setEditingEvalId(null);
+    toast.info?.('Deleted', `"${target.businessName}" removed — use Undo to restore.`);
   }
 
   function handleLoadEval(ev) {
@@ -620,8 +757,15 @@ export default function AcquisitionPanel() {
     setRevenueMetrics(ev.revenueMetrics || { revenue: '', totalExpenses: '' });
     setInvestmentMetrics(ev.investmentMetrics || { acquisitionCost: '', monthlyProfit: '' });
     setValuation(ev.valuation ? { ...EMPTY_VALUATION, ...ev.valuation } : EMPTY_VALUATION);
-    setViewedEvalId(null); // editing this as a draft now
+    setEditingEvalId(ev.id); // saving will REPLACE this record, not create a duplicate
+    setViewedEvalId(null);
     setHistoryOpen(false);
+    setFormOpen(true);
+  }
+
+  // Open a blank form for a brand-new evaluation.
+  function startNewEvaluation() {
+    handleReset();
     setFormOpen(true);
   }
 
@@ -638,6 +782,7 @@ export default function AcquisitionPanel() {
     setInvestmentMetrics({ acquisitionCost: '', monthlyProfit: '' });
     setValuation(EMPTY_VALUATION);
     setViewedEvalId(null);
+    setEditingEvalId(null);
   }
 
   function handleCopy() {
@@ -1122,6 +1267,19 @@ export default function AcquisitionPanel() {
       <div style={{ background: isLight ? '#F5F6FB' : 'transparent', minHeight:'100%' }}>
       <div ref={panelRef} style={{ maxWidth:1220, margin:'0 auto', padding:'26px 36px 96px', fontFamily:'var(--font-sans)', position:'relative' }}>
 
+        {/* One-time import of old browser-local evaluations into the shared space */}
+        {localToImport.length > 0 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', marginBottom:16, padding:'12px 16px', borderRadius:12, background:'rgba(48,108,236,0.10)', border:'1px solid rgba(48,108,236,0.30)' }}>
+            <span style={{ fontSize:12.5, color:'var(--color-text-secondary)' }}>
+              📦 You have <strong style={{ color:'var(--color-text-primary)' }}>{localToImport.length}</strong> evaluation(s) saved only on this device. Import them into the shared agency space so your whole team can see them.
+            </span>
+            <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+              <button onClick={() => setLocalToImport([])} style={{ ...ghostBtn }}>Dismiss</button>
+              <button onClick={importLocalEvals} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:'var(--radius-lg)', background:'var(--color-accent-gradient)', border:'none', color:'#fff', fontSize:12.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Import to shared space</button>
+            </div>
+          </div>
+        )}
+
         {/* ── Greeting header ── */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginBottom:22 }}>
           <div>
@@ -1142,7 +1300,7 @@ export default function AcquisitionPanel() {
             </button>
             <button onClick={handleCopy} className="acqp-ghost" style={ghostBtn}><Copy size={13}/> {copying ? 'Copied' : 'Copy'}</button>
             <button onClick={openValuation} className="acqp-ghost" style={ghostBtn}><Calculator size={13}/> Valuation</button>
-            <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} style={{
+            <button onClick={startNewEvaluation} style={{
               display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:12,
               background:'var(--color-accent-gradient)', border:'none', color:'#fff',
               cursor:'pointer', fontSize:12.5, fontWeight:700, fontFamily:'inherit',
@@ -1358,7 +1516,21 @@ export default function AcquisitionPanel() {
                 </select>
                 <ChevronDown size={12} style={{ position:'absolute', right:11, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
               </div>
-              <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} title="New evaluation" style={{
+              <button onClick={undoEvals} disabled={undoStack.length === 0} title="Undo last change (restore deleted / previous)" style={{
+                width:32, height:32, borderRadius:10, border:'1px solid var(--color-border)', flexShrink:0,
+                background:'var(--color-bg-tertiary)', color: undoStack.length ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                cursor: undoStack.length ? 'pointer' : 'not-allowed', display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <Undo2 size={15}/>
+              </button>
+              <button onClick={redoEvals} disabled={redoStack.length === 0} title="Redo" style={{
+                width:32, height:32, borderRadius:10, border:'1px solid var(--color-border)', flexShrink:0,
+                background:'var(--color-bg-tertiary)', color: redoStack.length ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                cursor: redoStack.length ? 'pointer' : 'not-allowed', display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <Redo2 size={15}/>
+              </button>
+              <button onClick={startNewEvaluation} title="New evaluation" style={{
                 width:32, height:32, borderRadius:10, border:'none',
                 background:'var(--color-accent-primary)', color:'#fff', cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'opacity .15s',
@@ -1383,7 +1555,7 @@ export default function AcquisitionPanel() {
               {tableRows.length === 0 ? (
                 <div style={{ textAlign:'center', padding:'28px 0', color:'var(--color-text-tertiary)', fontSize:12.5 }}>
                   {savedEvals.length === 0 ? (
-                    <>No evaluations yet — click <button onClick={() => { setViewedEvalId(null); setFormOpen(true); }} style={{ background:'none', border:'none', padding:0, color:'var(--color-text-link)', fontWeight:700, cursor:'pointer', fontSize:12.5, fontFamily:'inherit' }}>+ New Evaluation</button> to score your first business.</>
+                    <>No evaluations yet — click <button onClick={startNewEvaluation} style={{ background:'none', border:'none', padding:0, color:'var(--color-text-link)', fontWeight:700, cursor:'pointer', fontSize:12.5, fontFamily:'inherit' }}>+ New Evaluation</button> to score your first business.</>
                   ) : 'No evaluations match the current search/filter.'}
                 </div>
               ) : tableRows.map((ev, i) => {
@@ -1422,7 +1594,7 @@ export default function AcquisitionPanel() {
         <Modal
           isOpen={formOpen}
           onClose={() => setFormOpen(false)}
-          title="Business Evaluation"
+          title={editingEvalId ? 'Edit Business Evaluation' : 'Business Evaluation'}
           maxWidth="760px"
           footer={(
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', width:'100%' }}>
@@ -1444,7 +1616,7 @@ export default function AcquisitionPanel() {
                   cursor: businessName.trim() ? 'pointer' : 'not-allowed', fontSize:13, fontWeight:700, fontFamily:'inherit',
                   boxShadow: businessName.trim() ? '0 4px 14px rgba(48,108,236,0.35)' : 'none', transition:'all .15s',
                 }}>
-                  <Save size={13}/> {saving ? 'Saving…' : 'Save Evaluation'}
+                  <Save size={13}/> {saving ? 'Saving…' : (editingEvalId ? 'Update Evaluation' : 'Save Evaluation')}
                 </button>
               </div>
             </div>

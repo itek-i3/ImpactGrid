@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
+import { useUndoStore } from '@/lib/store/useUndoStore';
 import { useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
 
@@ -18,10 +19,17 @@ export default function Topbar() {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage,
     toggleSearch, workspace, userProfile, theme,
-    unreadChatCount, unreadChatChannels, clearChatNotifications, clearAllChatNotifications,
+    unreadChatCount, unreadChatChannels, chatNotifs, clearChatNotifications, clearAllChatNotifications,
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
+  // A view can register its own history (e.g. Acquisition evaluations); the
+  // top-bar Undo/Redo drives that when present, else the page editor.
+  const undoController = useUndoStore((s) => s.controller);
+  const canUndo = undoController ? undoController.canUndo : _historyStack.length > 0;
+  const canRedo = undoController ? undoController.canRedo : _futureStack.length > 0;
+  const doUndo = () => (undoController ? undoController.undo() : undo());
+  const doRedo = () => (undoController ? undoController.redo() : redo());
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
@@ -136,24 +144,24 @@ export default function Topbar() {
         <PanelLeft size={17} />
       </button>
 
-      {/* Undo / Redo */}
-      {!isReadOnly && (
+      {/* Undo / Redo — for the page editor, or whatever view registered a controller */}
+      {(!isReadOnly || undoController) && (
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             className="ig-kbtn"
             title="Undo (Ctrl+Z)"
-            onClick={undo}
-            disabled={_historyStack.length === 0}
-            style={{ ...btnStyle, width: 32, height: 32, opacity: _historyStack.length === 0 ? 0.35 : 1 }}
+            onClick={doUndo}
+            disabled={!canUndo}
+            style={{ ...btnStyle, width: 32, height: 32, opacity: canUndo ? 1 : 0.35 }}
           >
             <Undo2 size={15} />
           </button>
           <button
             className="ig-kbtn"
             title="Redo (Ctrl+Y)"
-            onClick={redo}
-            disabled={_futureStack.length === 0}
-            style={{ ...btnStyle, width: 32, height: 32, opacity: _futureStack.length === 0 ? 0.35 : 1 }}
+            onClick={doRedo}
+            disabled={!canRedo}
+            style={{ ...btnStyle, width: 32, height: 32, opacity: canRedo ? 1 : 0.35 }}
           >
             <Redo2 size={15} />
           </button>
@@ -327,24 +335,37 @@ export default function Topbar() {
                   You&apos;re all caught up 🎉
                 </div>
               ) : (
-                unreadChatChannels.map((ch) => (
-                  <button key={ch} onClick={() => openChannel(ch)} style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '11px 15px',
-                    border: 'none', borderBottom: '1px solid rgba(48,108,236,0.08)', background: 'none',
-                    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background .12s',
-                  }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
-                      {channelEmoji(ch)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E2EEFF' }}>New messages</div>
-                      <div style={{ fontSize: 11.5, color: '#3D5A8A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channelLabel(ch)}</div>
-                    </div>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#E0485A', flexShrink: 0 }} />
-                  </button>
-                ))
+                unreadChatChannels.map((ch) => {
+                  const n = chatNotifs?.[ch] || {};
+                  const who = n.senderName || 'Someone';
+                  const isDm = n.isDm ?? ch.startsWith('dm:');
+                  // For a group channel, show where; for a DM the sender IS the channel.
+                  const context = isDm ? 'Direct message' : channelLabel(ch);
+                  const preview = n.message
+                    ? n.message
+                    : `${n.count > 1 ? `${n.count} new messages` : 'New message'}`;
+                  return (
+                    <button key={ch} onClick={() => openChannel(ch)} style={{
+                      width: '100%', display: 'flex', alignItems: 'flex-start', gap: 11, padding: '11px 15px',
+                      border: 'none', borderBottom: '1px solid rgba(48,108,236,0.08)', background: 'none',
+                      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background .12s',
+                    }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(48,108,236,0.10)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff' }}>
+                        {isDm ? who.charAt(0).toUpperCase() : channelEmoji(ch)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#E2EEFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</span>
+                          {!isDm && <span style={{ fontSize: 10.5, color: '#3D5A8A', flexShrink: 0 }}>in {context}</span>}
+                          {n.count > 1 && <span style={{ fontSize: 10, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.2)', borderRadius: 99, padding: '0 6px', flexShrink: 0, marginLeft: 'auto' }}>{n.count}</span>}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#8FB4E8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{preview}</div>
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
 

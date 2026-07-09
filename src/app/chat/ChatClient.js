@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward } from 'lucide-react';
 import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
 import styles from '@/styles/layout.module.css';
@@ -46,6 +46,10 @@ function ChatContent() {
   const [editText, setEditText] = useState('');
   const [hoverMsgId, setHoverMsgId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // Forwarding: the message being forwarded + the picker's search + a transient confirmation
+  const [forwardMsg, setForwardMsg] = useState(null);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const [forwardToast, setForwardToast] = useState('');
   // Read receipts for the active DM: the *other* participant's last read/delivered times.
   const [partnerReceipt, setPartnerReceipt] = useState({ lastReadAt: null, lastDeliveredAt: null });
   // Online presence: last_seen_at map (for "last seen"), the set of online user
@@ -63,6 +67,7 @@ function ChatContent() {
   }
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const editRef = useRef(null);
   const emojiRef = useRef(null);
   const dmBcastRef = useRef(null);
   const workspaceIdRef = useRef(null);
@@ -423,6 +428,58 @@ function ChatContent() {
     finally { setSending(false); }
   };
 
+  // Grow the edit box to fit the whole message so it's all visible while editing.
+  const autosizeEdit = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  };
+  useEffect(() => {
+    if (!editingId) return;
+    const el = editRef.current;
+    if (!el) return;
+    autosizeEdit(el);
+    el.focus();
+    // Put the caret at the end so they can start editing straight away.
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  }, [editingId]);
+
+  // ── Forwarding ────────────────────────────────────────────────────────────
+  const sendToChannel = async (channel, text) => {
+    if (!text || !workspaceId || !channel) return;
+    if (isDemo) {
+      const key = `demo-chat-${workspaceId}-${channel}`;
+      const arr = (() => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } })();
+      const msg = { id: crypto.randomUUID(), message: text, channel, createdAt: new Date().toISOString(), userId: currentUserId, userName: userProfile?.full_name || 'You', userRole: userProfile?.role || 'member' };
+      const next = [...arr, msg];
+      localStorage.setItem(key, JSON.stringify(next));
+      setLastMessages(p => ({ ...p, [channel]: msg }));
+      if (channel === activeChannel) setMessages(prev => [...prev, msg]);
+      return;
+    }
+    const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, channel }) });
+    if (res.ok) {
+      const j = await res.json();
+      if (j.data) {
+        setLastMessages(p => ({ ...p, [channel]: j.data }));
+        if (channel === activeChannel) setMessages(prev => prev.some(m => m.id === j.data.id) ? prev : [...prev, j.data]);
+        // Recipient picks it up via the realtime subscription / polling — no broadcast ref needed here.
+      }
+    }
+  };
+
+  const doForward = async (targetChannel, targetName) => {
+    const m = forwardMsg;
+    setForwardMsg(null);
+    setForwardSearch('');
+    if (!m) return;
+    const text = `↪ Forwarded from ${m.userName || 'someone'}\n${m.message}`;
+    try { await sendToChannel(targetChannel, text); } catch (_) {}
+    setForwardToast(`Forwarded to ${targetName}`);
+    setTimeout(() => setForwardToast(''), 2500);
+  };
+
   // ── Edit / delete a message ──────────────────────────────────────────────
   const canModerate = ['manager', 'superadmin'].includes(userProfile?.role);
   const canDeleteMsg = (msg) => msg.userId === currentUserId || canModerate;
@@ -503,7 +560,7 @@ function ChatContent() {
   // Build conversation list for left panel
   const visibleGroupChannels = GROUP_CHANNELS;
 
-  const allConversations = [
+  const baseConversations = [
     ...visibleGroupChannels.map(ch => ({
       id: ch.id,
       name: ch.name,
@@ -524,7 +581,10 @@ function ChatContent() {
         lastMsg: lastMessages[dmId],
       };
     }) : []),
-  ].filter(c => c.id && (!panelSearch || c.name.toLowerCase().includes(panelSearch.toLowerCase())));
+  ].filter(c => c.id);
+
+  const allConversations = baseConversations.filter(c => !panelSearch || c.name.toLowerCase().includes(panelSearch.toLowerCase()));
+  const forwardTargets = baseConversations.filter(c => !forwardSearch || c.name.toLowerCase().includes(forwardSearch.toLowerCase()));
 
   const formatPanelTime = (dateStr) => {
     if (!dateStr) return '';
@@ -784,6 +844,7 @@ function ChatContent() {
                           {isOwn && editingId !== msg.id && (
                             <div style={{ display: 'flex', gap: 3, opacity: hoverMsgId === msg.id ? 1 : 0, pointerEvents: hoverMsgId === msg.id ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
                               <button type="button" title="Edit" onClick={() => startEdit(msg)} style={ACT_BTN}><Pencil size={12} /></button>
+                              <button type="button" title="Forward" onClick={() => { setReactOpen(null); setForwardSearch(''); setForwardMsg(msg); }} style={ACT_BTN}><Forward size={12} /></button>
                               <button type="button" title="Delete" onClick={() => setConfirmDeleteId(msg.id)} style={ACT_BTN}><Trash2 size={12} /></button>
                             </div>
                           )}
@@ -792,14 +853,13 @@ function ChatContent() {
 
                             {editingId === msg.id ? (
                               /* Edit box */
-                              <div style={{ minWidth: 240, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(48,108,236,0.45)', borderRadius: 14, padding: '8px 10px' }}>
+                              <div style={{ width: 380, maxWidth: '100%', minWidth: 260, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(48,108,236,0.45)', borderRadius: 14, padding: '8px 10px' }}>
                                 <textarea
+                                  ref={editRef}
                                   value={editText}
-                                  onChange={(e) => setEditText(e.target.value)}
+                                  onChange={(e) => { setEditText(e.target.value); autosizeEdit(e.target); }}
                                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msg); } if (e.key === 'Escape') cancelEdit(); }}
-                                  autoFocus
-                                  rows={2}
-                                  style={{ width: '100%', minWidth: 220, background: 'transparent', border: 'none', outline: 'none', color: '#E8F2FF', fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical' }}
+                                  style={{ width: '100%', minHeight: 40, maxHeight: 320, overflowY: 'auto', background: 'transparent', border: 'none', outline: 'none', color: '#E8F2FF', fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                                 />
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
                                   <button type="button" onClick={cancelEdit} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9DB8DD', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><X size={12} /> Cancel</button>
@@ -873,10 +933,11 @@ function ChatContent() {
                             )}
                           </div>
 
-                          {/* Hover action — right of another member's bubble (delete; moderators only) */}
-                          {!isOwn && editingId !== msg.id && canDeleteMsg(msg) && (
+                          {/* Hover action — right of another member's bubble (forward; delete for moderators) */}
+                          {!isOwn && editingId !== msg.id && (
                             <div style={{ display: 'flex', gap: 3, opacity: hoverMsgId === msg.id ? 1 : 0, pointerEvents: hoverMsgId === msg.id ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
-                              <button type="button" title="Delete" onClick={() => setConfirmDeleteId(msg.id)} style={ACT_BTN}><Trash2 size={12} /></button>
+                              <button type="button" title="Forward" onClick={() => { setReactOpen(null); setForwardSearch(''); setForwardMsg(msg); }} style={ACT_BTN}><Forward size={12} /></button>
+                              {canDeleteMsg(msg) && <button type="button" title="Delete" onClick={() => setConfirmDeleteId(msg.id)} style={ACT_BTN}><Trash2 size={12} /></button>}
                             </div>
                           )}
                         </div>
@@ -897,6 +958,61 @@ function ChatContent() {
                       {emoji}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Forward picker */}
+              {forwardMsg && (
+                <div onClick={() => { setForwardMsg(null); setForwardSearch(''); }}
+                  style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                  <div onClick={(e) => e.stopPropagation()}
+                    style={{ width: 'min(420px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'rgba(8,14,34,0.98)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: '#E2EEFF', display: 'flex', alignItems: 'center', gap: 8 }}><Forward size={16} /> Forward to…</span>
+                      <button type="button" onClick={() => { setForwardMsg(null); setForwardSearch(''); }} style={{ background: 'none', border: 'none', color: '#9DB8DD', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
+                    </div>
+
+                    {/* Message preview */}
+                    <div style={{ margin: '12px 16px 8px', padding: '9px 11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12.5, color: '#B8D0F0', maxHeight: 84, overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      <span style={{ color: '#3D5A8A', fontWeight: 600 }}>{forwardMsg.userName}: </span>{forwardMsg.message}
+                    </div>
+
+                    {/* Search */}
+                    <div style={{ margin: '4px 16px 8px', display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '7px 11px' }}>
+                      <Search size={13} style={{ color: '#3D5A8A', flexShrink: 0 }} />
+                      <input value={forwardSearch} onChange={e => setForwardSearch(e.target.value)} placeholder="Search conversations…" autoFocus
+                        style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: '#D8E8FF', fontFamily: 'inherit' }} />
+                    </div>
+
+                    {/* Conversation list */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 10px' }}>
+                      {forwardTargets.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: '#3D5A8A', fontSize: 12.5 }}>No conversations found.</div>
+                      ) : forwardTargets.map(conv => {
+                        const rc = roleColor[conv.role] || '#5B9BFF';
+                        const initial = (conv.name || '?').charAt(0).toUpperCase();
+                        return (
+                          <button key={conv.id} type="button" onClick={() => doForward(conv.id, conv.name)}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 10, textAlign: 'left', transition: 'background .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(48,108,236,0.14)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: conv.isGroup ? 'rgba(48,108,236,0.15)' : `${rc}22`, border: conv.isGroup ? 'none' : `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: conv.isGroup ? 16 : 13, fontWeight: 700, color: rc, overflow: 'hidden' }}>
+                              {conv.isGroup ? conv.icon : (conv.avatar ? <img src={conv.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial)}
+                            </div>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.name}</span>
+                            <Send size={13} style={{ color: '#3D5A8A', flexShrink: 0 }} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Forward confirmation toast */}
+              {forwardToast && (
+                <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: 'rgba(48,108,236,0.95)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 99, zIndex: 10001, boxShadow: '0 6px 24px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Check size={14} /> {forwardToast}
                 </div>
               )}
 

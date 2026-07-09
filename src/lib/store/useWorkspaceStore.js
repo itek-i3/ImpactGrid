@@ -46,6 +46,8 @@ export const useWorkspaceStore = create((set, get) => ({
   theme: 'dark',
   unreadChatCount: 0,
   unreadChatChannels: [],
+  // Per-channel notification detail: { [channel]: { senderName, message, count, at, isDm } }
+  chatNotifs: {},
 
   // ── Actions ──────────────────────────────────
 
@@ -135,12 +137,27 @@ export const useWorkspaceStore = create((set, get) => ({
 
   setLoading: (isLoading) => set({ isLoading }),
 
-  addChatNotification: (channel) =>
+  // meta: { senderName, message, isDm } — who sent it + a preview (optional)
+  addChatNotification: (channel, meta = {}) =>
     set((state) => {
-      if (!channel || state.unreadChatChannels.includes(channel)) return state;
+      if (!channel) return state;
+      const prev = state.chatNotifs[channel];
+      const nextChannels = state.unreadChatChannels.includes(channel)
+        ? state.unreadChatChannels
+        : [...state.unreadChatChannels, channel];
       return {
-        unreadChatCount: state.unreadChatCount + 1,
-        unreadChatChannels: [...state.unreadChatChannels, channel],
+        unreadChatChannels: nextChannels,
+        unreadChatCount: nextChannels.length,
+        chatNotifs: {
+          ...state.chatNotifs,
+          [channel]: {
+            senderName: meta.senderName || prev?.senderName || 'Someone',
+            message: meta.message ?? prev?.message ?? '',
+            isDm: meta.isDm ?? prev?.isDm ?? channel.startsWith('dm:'),
+            count: (prev?.count || 0) + 1,
+            at: Date.now(),
+          },
+        },
       };
     }),
 
@@ -148,13 +165,16 @@ export const useWorkspaceStore = create((set, get) => ({
     set((state) => {
       if (!channel) return state;
       const nextChannels = state.unreadChatChannels.filter((c) => c !== channel);
+      const chatNotifs = { ...state.chatNotifs };
+      delete chatNotifs[channel];
       return {
         unreadChatCount: nextChannels.length,
         unreadChatChannels: nextChannels,
+        chatNotifs,
       };
     }),
 
-  clearAllChatNotifications: () => set({ unreadChatCount: 0, unreadChatChannels: [] }),
+  clearAllChatNotifications: () => set({ unreadChatCount: 0, unreadChatChannels: [], chatNotifs: {} }),
 
   togglePageExpanded: (pageId) =>
     set((state) => {
