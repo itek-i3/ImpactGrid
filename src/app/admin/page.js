@@ -6,10 +6,12 @@ import Link from 'next/link';
 import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, Link2, ExternalLink, ChevronDown, Pencil, X, ImageOff, Upload } from 'lucide-react';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 function AdminPanelContent() {
   const router = useRouter();
   const toast = useToast();
+  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState('agencies');
   const [profile, setProfile] = useState(null);
@@ -387,7 +389,7 @@ function AdminPanelContent() {
         background: 'linear-gradient(135deg, #000000 0%, #010408 40%, #000000 100%)',
         position: 'relative',
         overflowX: 'hidden',
-        padding: '40px 24px',
+        padding: isMobile ? '24px 12px' : '40px 24px',
         color: '#E2EEFF',
       }}>
         {/* grid overlay */}
@@ -593,7 +595,7 @@ function AdminPanelContent() {
           )}
 
           {/* Agencies Grid Layout */}
-          {activeTab === 'agencies' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 32, alignItems: 'start' }}>
+          {activeTab === 'agencies' && <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 380px', gap: isMobile ? 20 : 32, alignItems: 'start' }}>
             
             {/* List Column */}
             <div style={{

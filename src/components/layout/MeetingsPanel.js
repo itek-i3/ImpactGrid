@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import {
   CalendarDays, Plus, Video, Clock, Users, Trash2, Pencil, X,
   ChevronLeft, ChevronRight, ExternalLink, Check, Link2, Repeat,
@@ -78,6 +79,7 @@ const DEMO_MEMBERS = [
 
 export default function MeetingsPanel() {
   const { workspace, activeAgencyId, userProfile, isDemo } = useWorkspaceStore();
+  const isMobile = useIsMobile();
 
   const workspaceId = workspace?.id;
   const agencyId = workspace?.agency_id || activeAgencyId || null;
@@ -370,7 +372,7 @@ export default function MeetingsPanel() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) 320px', gap: 16, alignItems: 'start' }}>
         {/* Calendar */}
         <div style={{ ...C.card, padding: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -495,7 +497,7 @@ export default function MeetingsPanel() {
             <label className="mtg-lbl">Title *</label>
             <input className="mtg-input" value={fTitle} onChange={e => setFTitle(e.target.value)} placeholder="e.g. Weekly team sync" autoFocus />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 1fr 1fr', gap: 10, marginTop: 12 }}>
               <div>
                 <label className="mtg-lbl">Date</label>
                 <input className="mtg-input" type="date" value={fDate} onChange={e => setFDate(e.target.value)} />
@@ -656,6 +658,14 @@ export default function MeetingsPanel() {
         .mtg-chip b { flex-shrink:0; color:#7EB3FF; font-weight:700; font-variant-numeric:tabular-nums; }
         .mtg-chip-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .mtg-more { font-size:9.5px; color:var(--color-text-tertiary); font-weight:700; padding-left:4px; margin-top:1px; }
+
+        @media (max-width: 768px) {
+          .mtg-cal { gap:3px; }
+          .mtg-day { min-height:58px; padding:3px; border-radius:8px; }
+          .mtg-daynum { min-width:17px; height:17px; font-size:10.5px; }
+          .mtg-chip { font-size:8px; padding:1px 3px; gap:2px; border-left-width:2px; }
+          .mtg-dow { font-size:9px; padding-bottom:5px; }
+        }
       `}</style>
     </div>
   );

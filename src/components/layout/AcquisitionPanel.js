@@ -620,9 +620,10 @@ export default function AcquisitionPanel() {
   // ── Shared evaluations (Supabase) + undo history ────────────────────────────
   async function fetchEvals(sb) {
     if (!activeAgencyId) return [];
-    const { data } = await sb.from('acquisition_evaluations')
+    const { data, error } = await sb.from('acquisition_evaluations')
       .select('id, data').eq('agency_id', activeAgencyId)
       .order('created_at', { ascending: true });
+    if (error) console.error('[acq] load failed:', error);
     return (data || []).map(r => ({ ...(r.data || {}), id: r.id }));
   }
 
@@ -640,17 +641,19 @@ export default function AcquisitionPanel() {
     if (value == null) {
       setSavedEvals(prev => prev.filter(e => e.id !== id));
       sb.from('acquisition_evaluations').delete().eq('id', id)
-        .then(({ error }) => { if (error) toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); });
+        .then(({ error }) => { if (error) { console.error('[acq] delete failed:', error); toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); } });
     } else if (!activeAgencyId) {
       toast.error('No agency', 'Open an agency workspace before saving.');
     } else {
       setSavedEvals(prev => (prev.some(e => e.id === id) ? prev.map(e => (e.id === id ? value : e)) : [...prev, value]));
-      sb.from('acquisition_evaluations').upsert({
+      const row = {
         id, agency_id: activeAgencyId,
         // created_by is DB attribution only; the display author lives in data.evaluator.
         created_by: isUuid(userProfile?.id) ? userProfile.id : null,
         data: value, updated_at: new Date().toISOString(),
-      }).then(({ error }) => { if (error) toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); });
+      };
+      sb.from('acquisition_evaluations').upsert(row)
+        .then(({ error }) => { if (error) { console.error('[acq] upsert failed:', error, 'row:', { id: row.id, agency_id: row.agency_id, created_by: row.created_by }); toast.error('Sync failed', error.message || 'That change may not be saved for the team.'); } });
     }
   }
 
@@ -697,7 +700,7 @@ export default function AcquisitionPanel() {
       };
     });
     sb.from('acquisition_evaluations').upsert(rows).then(async ({ error }) => {
-      if (error) { setImportFailed(true); toast.error('Sync failed', error.message || 'Could not sync your local evaluations.'); return; }
+      if (error) { console.error('[acq] import failed:', error, 'agency_id:', activeAgencyId, 'rows:', rows.length); setImportFailed(true); toast.error('Sync failed', error.message || 'Could not sync your local evaluations.'); return; }
       // Clear every local "…-acq-evaluations" key now that they live in the shared space.
       try {
         const keys = [];
@@ -1297,10 +1300,16 @@ export default function AcquisitionPanel() {
           .acqp-kpirow { grid-template-columns: 1fr 1fr !important; }
           .acqp-two { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 768px) {
+          .acqp-root { padding: 16px 12px 80px !important; }
+          .acqp-kpirow { grid-template-columns: 1fr 1fr !important; }
+          .acqp-header3 { grid-template-columns: 1fr !important; }
+          .acqp-2col { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <div style={{ background: isLight ? '#F5F6FB' : 'transparent', minHeight:'100%' }}>
-      <div ref={panelRef} style={{ maxWidth:1220, margin:'0 auto', padding:'26px 36px 96px', fontFamily:'var(--font-sans)', position:'relative' }}>
+      <div ref={panelRef} className="acqp-root" style={{ maxWidth:1220, margin:'0 auto', padding:'26px 36px 96px', fontFamily:'var(--font-sans)', position:'relative' }}>
 
         {/* Auto-sync happens on load; this only appears if that sync failed. */}
         {importFailed && localToImport.length > 0 && (
@@ -1665,7 +1674,7 @@ export default function AcquisitionPanel() {
               </p>
 
               {/* Business details */}
-              <div style={{ display:'grid', gridTemplateColumns:'2fr 1.3fr 1fr', gap:14, alignItems:'end' }}>
+              <div className="acqp-header3" style={{ display:'grid', gridTemplateColumns:'2fr 1.3fr 1fr', gap:14, alignItems:'end' }}>
                 <div>
                   <label className="acqp-lbl">Business Name *</label>
                   <input className="acqp-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Sunshine Laundromat"/>

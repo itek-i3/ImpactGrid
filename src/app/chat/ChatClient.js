@@ -7,9 +7,10 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward, ChevronLeft } from 'lucide-react';
 import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import styles from '@/styles/layout.module.css';
 
 // A user is "online" if their last heartbeat landed within this window.
@@ -32,6 +33,8 @@ function ChatContent() {
     setPrevUrlChannel(urlChannel);
     setActiveChannel(urlChannel);
   }
+  const isMobile = useIsMobile();
+  const [mobileChatOpen, setMobileChatOpen] = useState(false); // on phones: false = show list, true = show the conversation
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
@@ -655,8 +658,9 @@ function ChatContent() {
 
             {/* ── Left panel (WhatsApp conversation list) ── */}
             <div style={{
-              width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column',
-              background: '#000', borderRight: '1px solid rgba(48,108,236,0.15)',
+              width: isMobile ? '100%' : 220, flexShrink: 0,
+              display: (isMobile && mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column',
+              background: '#000', borderRight: isMobile ? 'none' : '1px solid rgba(48,108,236,0.15)',
               overflow: 'hidden',
             }}>
               {/* Panel header */}
@@ -682,7 +686,7 @@ function ChatContent() {
                 {allConversations.filter(c => c.isGroup).map(conv => {
                   const isActive = activeChannel === conv.id;
                   return (
-                    <button key={conv.id} onClick={() => setActiveChannel(conv.id)} style={{
+                    <button key={conv.id} onClick={() => { setActiveChannel(conv.id); setMobileChatOpen(true); }} style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                       padding: '8px 10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: isActive ? 'rgba(48,108,236,0.18)' : 'none', transition: '.12s',
@@ -716,7 +720,7 @@ function ChatContent() {
                   const rc = roleColor[conv.role] || '#5B9BFF';
                   const initial = (conv.name || '?').charAt(0).toUpperCase();
                   return (
-                    <button key={conv.id} onClick={() => setActiveChannel(conv.id)} style={{
+                    <button key={conv.id} onClick={() => { setActiveChannel(conv.id); setMobileChatOpen(true); }} style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                       padding: '8px 10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: isActive ? 'rgba(48,108,236,0.18)' : 'none', transition: '.12s',
@@ -747,10 +751,16 @@ function ChatContent() {
             </div>
 
             {/* ── Chat area ── */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: (isMobile && !mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
 
               {/* Chat header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, flexShrink: 0, background: '#000', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
+                {isMobile && (
+                  <button onClick={() => setMobileChatOpen(false)} title="Back to conversations"
+                    style={{ background: 'none', border: 'none', color: '#7EB3FF', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, marginLeft: -4, flexShrink: 0 }}>
+                    <ChevronLeft size={22} />
+                  </button>
+                )}
                 {isDm && dmPartner ? (
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <div style={{ width: 38, height: 38, borderRadius: '50%', background: `${roleColor[dmPartner.role] || '#5B9BFF'}22`, border: `2px solid ${roleColor[dmPartner.role] || '#5B9BFF'}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: roleColor[dmPartner.role] || '#5B9BFF', overflow: 'hidden' }}>

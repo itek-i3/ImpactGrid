@@ -10,6 +10,7 @@ import {
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import { useUndoStore } from '@/lib/store/useUndoStore';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
 
@@ -23,6 +24,7 @@ export default function Topbar() {
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
+  const isMobile = useIsMobile();
   // A view can register its own history (e.g. Acquisition evaluations); the
   // top-bar Undo/Redo drives that when present, else the page editor.
   const undoController = useUndoStore((s) => s.controller);
@@ -131,8 +133,8 @@ export default function Topbar() {
 
   return (
     <header style={{
-      display: 'flex', alignItems: 'center', gap: 14,
-      padding: '20px 48px',
+      display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 14,
+      padding: isMobile ? '12px 12px' : '20px 48px',
       borderBottom: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(48,108,236,0.18)',
       background: isLight ? 'rgba(255,255,255,0.97)' : 'rgba(2,4,10,0.80)',
       backdropFilter: 'blur(12px)',

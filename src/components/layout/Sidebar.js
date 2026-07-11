@@ -21,6 +21,7 @@ import {
   Home,
   Target,
   CalendarDays,
+  Wallet,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -81,6 +82,14 @@ export default function Sidebar() {
   const [selectedWorkspaces, setSelectedWorkspaces] = useState([]);
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState(null);
+
+  // On phones the sidebar is an overlay drawer — start it closed so the app opens
+  // on content, not the menu.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches) {
+      useWorkspaceStore.getState().setSidebarOpen(false);
+    }
+  }, []);
 
   // Close agency switcher on outside click — use mousedown but only if outside the picker
   useEffect(() => {
@@ -261,6 +270,17 @@ export default function Sidebar() {
                 <CalendarDays size={15} />
                 <span>Meetings</span>
               </button>
+
+              {['manager', 'superadmin'].includes(userProfile?.role) && (
+                <button
+                  className="ig-nav"
+                  onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
+                  style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                >
+                  <Wallet size={15} />
+                  <span>Daily Finance</span>
+                </button>
+              )}
 
               {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
                 <button

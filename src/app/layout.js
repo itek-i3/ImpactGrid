@@ -11,7 +11,7 @@ const schibsted = Schibsted_Grotesk({ subsets: ['latin'], variable: '--font-schi
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap', weight: ['400', '500', '600'] });
 
 export const metadata = {
-  title: 'ImpactNotion — Workspace for Impact360',
+  title: 'ImpactGrid',
   description: 'A Notion-like workspace for organizing Impact360 community operations...',
   keywords: ['workspace', 'notion', 'impact360', 'documents', 'databases'],
 };

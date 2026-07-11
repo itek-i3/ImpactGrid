@@ -162,7 +162,7 @@ function PublicPageContent() {
           <span>LIVE NOTION SITE</span>
         </div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
-          ImpactNotion Workspace
+          ImpactGrid Workspace
         </div>
       </div>
 
@@ -208,7 +208,7 @@ function PublicPageContent() {
           background: 'var(--color-bg-secondary)',
         }}
       >
-        Published with ⚡ <strong>ImpactNotion</strong>
+        Published with ⚡ <strong>ImpactGrid</strong>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import BlockEditor from '@/components/editor/BlockEditor';
 import HomeDashboard from '@/components/layout/HomeDashboard';
 import AcquisitionPanel from '@/components/layout/AcquisitionPanel';
 import MeetingsPanel from '@/components/layout/MeetingsPanel';
+import FinancePanel from '@/components/layout/FinancePanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -149,6 +150,8 @@ function WorkspaceContent() {
             <AcquisitionPanel />
           ) : currentView === 'meetings' ? (
             <MeetingsPanel />
+          ) : currentView === 'finance' ? (
+            <FinancePanel />
           ) : currentPage ? (
             <div className={styles.pageContainer}>
               <div className={styles.pageHeader}>

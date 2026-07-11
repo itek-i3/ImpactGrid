@@ -8,6 +8,7 @@ import {
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -43,6 +44,7 @@ export default function HomeDashboard() {
     userProfile, workspace, pages, activeAgencyId, isDemo,
     setCurrentPage, addPage, toggleSearch, setCurrentView,
   } = useWorkspaceStore();
+  const isMobile = useIsMobile();
 
   const [now] = useState(() => new Date());
   const nowTs = now.getTime();
@@ -138,7 +140,7 @@ export default function HomeDashboard() {
   const sectionLbl = { fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 
   return (
-    <div style={{ minHeight: 'calc(100dvh - var(--topbar-height, 54px))', padding: '40px 40px 80px', maxWidth: 1120, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+    <div style={{ minHeight: 'calc(100dvh - var(--topbar-height, 54px))', padding: isMobile ? '22px 14px 60px' : '40px 40px 80px', maxWidth: 1120, margin: '0 auto', position: 'relative', zIndex: 1 }}>
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 28 }}>
@@ -157,7 +159,7 @@ export default function HomeDashboard() {
       </div>
 
       {/* ── KPI stat row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 26 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 14, marginBottom: 26 }}>
         {stats.map(({ label, value, Icon, tint, onClick }) => (
           <button key={label} onClick={onClick || undefined}
             style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', textAlign: 'left', cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', transition: 'border-color .12s, transform .12s' }}
@@ -187,7 +189,7 @@ export default function HomeDashboard() {
       </div>
 
       {/* ── Content grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 22, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: 22, alignItems: 'start' }}>
 
         {/* Left column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0 }}>
