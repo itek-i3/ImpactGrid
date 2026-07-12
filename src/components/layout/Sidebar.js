@@ -271,15 +271,26 @@ export default function Sidebar() {
                 <span>Meetings</span>
               </button>
 
-              {['manager', 'superadmin'].includes(userProfile?.role) && (
-                <button
-                  className="ig-nav"
-                  onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
-                  style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
-                >
-                  <Wallet size={15} />
-                  <span>Daily Finance</span>
-                </button>
+              {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr')
+                && ['manager', 'superadmin'].includes(userProfile?.role) && (
+                <>
+                  <button
+                    className="ig-nav"
+                    onClick={() => { setCurrentView('businesses'); if (pathname !== '/') router.push('/'); }}
+                    style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                  >
+                    <Building2 size={15} />
+                    <span>Businesses</span>
+                  </button>
+                  <button
+                    className="ig-nav"
+                    onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
+                    style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                  >
+                    <Wallet size={15} />
+                    <span>Daily Finance</span>
+                  </button>
+                </>
               )}
 
               {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (

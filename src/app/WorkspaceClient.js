@@ -13,6 +13,7 @@ import HomeDashboard from '@/components/layout/HomeDashboard';
 import AcquisitionPanel from '@/components/layout/AcquisitionPanel';
 import MeetingsPanel from '@/components/layout/MeetingsPanel';
 import FinancePanel from '@/components/layout/FinancePanel';
+import BusinessesPanel from '@/components/layout/BusinessesPanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -152,6 +153,8 @@ function WorkspaceContent() {
             <MeetingsPanel />
           ) : currentView === 'finance' ? (
             <FinancePanel />
+          ) : currentView === 'businesses' ? (
+            <BusinessesPanel />
           ) : currentPage ? (
             <div className={styles.pageContainer}>
               <div className={styles.pageHeader}>

@@ -146,8 +146,8 @@ export default function Topbar() {
         <PanelLeft size={17} />
       </button>
 
-      {/* Undo / Redo — for the page editor, or whatever view registered a controller */}
-      {(!isReadOnly || undoController) && (
+      {/* Undo / Redo — for the page editor, or whatever view registered a controller (hidden on phones) */}
+      {(!isReadOnly || undoController) && !isMobile && (
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             className="ig-kbtn"
@@ -178,7 +178,7 @@ export default function Topbar() {
           </div>
         )}
         <h1 className="display" style={{
-          fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-.01em',
+          fontSize: isMobile ? 17 : 24, fontWeight: 800, margin: 0, letterSpacing: '-.01em',
           ...(isLight
             ? { color: '#0F1C38' }
             : { background: 'linear-gradient(135deg,#FFFFFF,#7EB3FF)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }
@@ -189,20 +189,26 @@ export default function Topbar() {
         </h1>
       </div>
 
-      {/* Search bar */}
-      <div className="ig-search" onClick={toggleSearch} style={{ cursor: 'pointer', minWidth: 230 }}>
-        <Search size={15} />
-        <input
-          readOnly
-          placeholder="Search pages…"
-          onClick={toggleSearch}
-          style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: isLight ? '#0F1C38' : '#E2EEFF', width: '100%', cursor: 'pointer' }}
-        />
-        <span style={{ fontSize: 11, color: isLight ? '#7A8EB0' : '#3D5A8A', background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
-      </div>
+      {/* Search — full bar on desktop, icon button on phones */}
+      {isMobile ? (
+        <button className="ig-kbtn" onClick={toggleSearch} title="Search" style={btnStyle}>
+          <Search size={17} />
+        </button>
+      ) : (
+        <div className="ig-search" onClick={toggleSearch} style={{ cursor: 'pointer', minWidth: 230 }}>
+          <Search size={15} />
+          <input
+            readOnly
+            placeholder="Search pages…"
+            onClick={toggleSearch}
+            style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: isLight ? '#0F1C38' : '#E2EEFF', width: '100%', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 11, color: isLight ? '#7A8EB0' : '#3D5A8A', background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
+        </div>
+      )}
 
-      {/* Favorite */}
-      {currentPage && (
+      {/* Favorite (hidden on phones to save space) */}
+      {currentPage && !isMobile && (
         <button
           className="ig-kbtn"
           title={currentPage.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
@@ -213,8 +219,8 @@ export default function Topbar() {
         </button>
       )}
 
-      {/* Share / Publish */}
-      {currentPage && !isReadOnly && (
+      {/* Share / Publish (hidden on phones) */}
+      {currentPage && !isReadOnly && !isMobile && (
         <div style={{ position: 'relative' }}>
           <button
             className="ig-kbtn"
@@ -389,9 +395,10 @@ export default function Topbar() {
             const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
             if (newId && workspace) router.push(`/${workspace.id}/${newId}`);
           }}
+          title="New page"
           style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '0 16px', height: 38, borderRadius: 11,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            padding: isMobile ? 0 : '0 16px', width: isMobile ? 38 : 'auto', height: 38, borderRadius: 11,
             background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
             color: '#fff', border: 'none', fontFamily: 'inherit',
             fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -399,7 +406,7 @@ export default function Topbar() {
             flexShrink: 0,
           }}
         >
-          <Plus size={16} /> New
+          <Plus size={16} /> {!isMobile && 'New'}
         </button>
       )}
 

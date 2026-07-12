@@ -313,6 +313,14 @@ function ChatContent() {
   }, [messages, loadReactions]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // Grow the message box with its content (and shrink back after send / clearing).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [inputText]);
+
   // ── Presence: heartbeat our own last_seen + poll everyone else's ──────────
   // DB-backed so it works even when Supabase Realtime isn't configured (the rest
   // of the chat already relies on a polling fallback for the same reason).
@@ -1048,16 +1056,15 @@ function ChatContent() {
                     )}
                   </div>
 
-                  <input
+                  <textarea
                     ref={inputRef}
-                    type="text"
+                    rows={1}
                     value={inputText}
                     onChange={e => setInputText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend(); } }}
                     placeholder={isDm ? `Message ${chatName}…` : `Message in ${chatName}…`}
                     disabled={sending}
-                    autoComplete="off"
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 22, padding: '10px 16px', fontSize: 13.5, color: '#D8E8FF', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s' }}
+                    style={{ flex: 1, resize: 'none', maxHeight: 120, overflowY: 'auto', lineHeight: 1.4, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, color: '#D8E8FF', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s' }}
                     onFocus={e => e.target.style.borderColor = 'rgba(48,108,236,0.50)'}
                     onBlur={e => e.target.style.borderColor = 'rgba(48,108,236,0.18)'}
                   />

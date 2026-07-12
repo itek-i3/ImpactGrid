@@ -527,10 +527,6 @@ export default function SettingsPage() {
                   ) : (
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#E2EEFF', marginTop: 6 }}>{workspace.name}</div>
                   )}
-                  <div style={{ marginTop: 10 }}>
-                    <div style={lbl}>Workspace ID</div>
-                    <div style={{ fontSize: 12, color: '#3D5A8A', fontFamily: 'monospace', marginTop: 4 }}>{workspace.id}</div>
-                  </div>
                 </div>
               </div>
             </div>
