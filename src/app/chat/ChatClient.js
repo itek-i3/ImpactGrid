@@ -17,6 +17,9 @@ import styles from '@/styles/layout.module.css';
 // Clients beat every 25s, so 60s tolerates a missed beat / slow network.
 const ONLINE_WINDOW_MS = 60 * 1000;
 
+// WhatsApp-style: a line that starts with "- " (or "* ") becomes a "• " bullet.
+const pointifyBullets = (text) => text.replace(/(^|\n)[-*] /g, '$1• ');
+
 function ChatContent() {
   const searchParams = useSearchParams();
   const targetWorkspaceId = searchParams.get('workspaceId');
@@ -1060,7 +1063,7 @@ function ChatContent() {
                     ref={inputRef}
                     rows={1}
                     value={inputText}
-                    onChange={e => setInputText(e.target.value)}
+                    onChange={e => setInputText(pointifyBullets(e.target.value))}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend(); } }}
                     placeholder={isDm ? `Message ${chatName}…` : `Message in ${chatName}…`}
                     disabled={sending}
