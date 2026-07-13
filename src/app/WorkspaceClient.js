@@ -33,6 +33,7 @@ function WorkspaceContent() {
     fetchUserProfile,
     loadWorkspace,
     userProfile,
+    sidebarOpen,
   } = useWorkspaceStore();
 
   const { initBlocks, addBlock, blocks } = useEditorStore();
@@ -156,7 +157,7 @@ function WorkspaceContent() {
           ) : currentView === 'businesses' ? (
             <BusinessesPanel />
           ) : currentPage ? (
-            <div className={styles.pageContainer}>
+            <div className={`${styles.pageContainer} ${!sidebarOpen ? styles.pageContainerWide : ''}`}>
               <div className={styles.pageHeader}>
                 <div className={styles.pageIconWrapper}>
                   <div style={{ position: 'relative', display: 'inline-block' }}>

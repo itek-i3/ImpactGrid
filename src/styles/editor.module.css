@@ -454,6 +454,31 @@
   overflow-x: auto;
 }
 
+/* Dedicated horizontal-scroll rail for the grid itself, so a wide table
+   scrolls inside its own container instead of blowing out the page layout.
+   (The .editMode override sets overflow:visible on .tableBlock so header
+   popups can escape — this inner wrapper keeps the grid scrollable.) */
+.tableScroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48,108,236,0.45) transparent;
+}
+.tableScroll::-webkit-scrollbar {
+  height: 9px;
+}
+.tableScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tableScroll::-webkit-scrollbar-thumb {
+  background: rgba(48,108,236,0.35);
+  border-radius: 999px;
+}
+.tableScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(48,108,236,0.6);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

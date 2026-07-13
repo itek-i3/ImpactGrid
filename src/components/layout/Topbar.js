@@ -130,6 +130,8 @@ export default function Topbar() {
 
   const isReadOnly = userProfile?.role === 'member';
   const isLight = theme === 'light';
+  // Total unread MESSAGES across conversations (WhatsApp-style), not just channels.
+  const totalUnread = Object.values(chatNotifs || {}).reduce((s, n) => s + (n?.count || 0), 0);
 
   return (
     <header style={{
@@ -306,16 +308,16 @@ export default function Topbar() {
             setShowNotifMenu((v) => !v);
           }}
           style={{ ...btnStyle, position: 'relative', borderColor: showNotifMenu ? '#306CEC' : 'rgba(48,108,236,0.25)' }}
-          title={unreadChatCount > 0 ? `${unreadChatCount} unread notification${unreadChatCount > 1 ? 's' : ''}` : 'Notifications'}
+          title={totalUnread > 0 ? `${totalUnread} unread message${totalUnread > 1 ? 's' : ''}` : 'Notifications'}
         >
           <Bell size={17} />
-          {unreadChatCount > 0 && (
+          {totalUnread > 0 && (
             <span style={{
               position: 'absolute', top: 6, right: 7, minWidth: 16, height: 16,
               padding: '0 4px', borderRadius: 999, background: '#E0485A', border: '2px solid #02040A',
               color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              {unreadChatCount > 9 ? '9+' : unreadChatCount}
+              {totalUnread > 99 ? '99+' : totalUnread}
             </span>
           )}
         </button>

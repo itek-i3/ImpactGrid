@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward, ChevronLeft } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward, ChevronLeft, AtSign } from 'lucide-react';
 import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -20,11 +20,17 @@ const ONLINE_WINDOW_MS = 60 * 1000;
 // WhatsApp-style: a line that starts with "- " (or "* ") becomes a "• " bullet.
 const pointifyBullets = (text) => text.replace(/(^|\n)[-*] /g, '$1• ');
 
+// WhatsApp-style unread-count badge shown beside a conversation.
+const UNREAD_BADGE = { flexShrink: 0, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#22C55E', color: '#052e16', fontSize: 10.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' };
+
+// "@all" — a special mention that pings everyone in the conversation.
+const ALL_MENTION = { id: '__all__', label: 'Everyone', token: 'all', role: 'Notify everyone in this chat', __all: true };
+
 function ChatContent() {
   const searchParams = useSearchParams();
   const targetWorkspaceId = searchParams.get('workspaceId');
 
-  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId, setActiveChatChannel, clearChatNotifications } = useWorkspaceStore();
+  const { workspace, fetchUserProfile, loadWorkspace, initDemoWorkspace, userProfile, isDemo, activeAgencyId, setActiveChatChannel, clearChatNotifications, chatNotifs } = useWorkspaceStore();
 
   const urlChannel = searchParams.get('channel') || 'daily_tasks';
   const [activeChannel, setActiveChannel] = useState(urlChannel);
@@ -42,6 +48,11 @@ function ChatContent() {
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  // @mentions (WhatsApp-style): a picker that pops up when you type "@".
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStart, setMentionStart] = useState(null); // index of the "@" in inputText
+  const [mentionIdx, setMentionIdx] = useState(0);
   const [agencyMembers, setAgencyMembers] = useState([]);
   const [reactions, setReactions] = useState({});
   const [reactOpen, setReactOpen] = useState(null);
@@ -419,6 +430,7 @@ function ChatContent() {
     if (!inputText.trim() || !workspaceId) return;
     const text = inputText.trim();
     setInputText('');
+    setMentionOpen(false);
     setSending(true);
     if (isDemo) {
       const msg = { id: crypto.randomUUID(), message: text, channel: activeChannel, createdAt: new Date().toISOString(), userId: currentUserId, userName: userProfile?.full_name || 'You', userRole: userProfile?.role || 'member' };
@@ -440,6 +452,95 @@ function ChatContent() {
       }
     } catch (err) { console.error(err); }
     finally { setSending(false); }
+  };
+
+  // ── @mentions ──────────────────────────────────────────────────────────────
+  // Input change: keep the text in sync AND look for an "@query" token ending at
+  // the caret so we can pop the mention picker (like WhatsApp/Slack).
+  const onInputChange = (e) => {
+    const el = e.target;
+    const value = pointifyBullets(el.value);
+    setInputText(value);
+    const caret = el.selectionStart ?? value.length;
+    const m = value.slice(0, caret).match(/(?:^|\s)@([^\s@]*)$/);
+    if (m) {
+      setMentionOpen(true);
+      setMentionQuery(m[1]);
+      setMentionStart(caret - m[1].length - 1);
+      setMentionIdx(0);
+    } else if (mentionOpen) {
+      setMentionOpen(false);
+    }
+  };
+
+  // People you can @mention (everyone in the space except yourself), plus a
+  // special "@all" that pings the whole conversation (offered first).
+  const mentionCandidates = (() => {
+    if (!mentionOpen) return [];
+    const q = mentionQuery.toLowerCase();
+    const people = otherMembers.filter((m) => {
+      const n = (m.full_name || m.email || '').toLowerCase();
+      return !q || n.includes(q) || n.split(/\s+/).some((w) => w.startsWith(q));
+    });
+    const showAll = !q || 'all'.startsWith(q) || 'everyone'.startsWith(q);
+    return [...(showAll ? [ALL_MENTION] : []), ...people].slice(0, 6);
+  })();
+
+  // Replace the "@query" token with "@Full Name " (or "@all ") and drop the caret after it.
+  const insertMention = (member) => {
+    const name = member.token || member.full_name || member.email || 'user';
+    const el = inputRef.current;
+    const caret = el ? (el.selectionStart ?? inputText.length) : inputText.length;
+    const start = mentionStart ?? caret;
+    const before = inputText.slice(0, start);
+    const after = inputText.slice(caret);
+    const insert = `@${name} `;
+    setInputText(before + insert + after);
+    setMentionOpen(false);
+    const newCaret = (before + insert).length;
+    requestAnimationFrame(() => {
+      if (el) { el.focus(); try { el.setSelectionRange(newCaret, newCaret); } catch { /* noop */ } }
+    });
+  };
+
+  // Highlight "@Name" tokens inside a rendered message. Names come from the member
+  // list (longest first so "@John Doe" wins over "@John").
+  const myName = (userProfile?.full_name || '').trim();
+  const mentionNameList = (() => {
+    const names = ['everyone', 'all']; // "@all" / "@everyone" ping the whole chat
+    agencyMembers.forEach((m) => {
+      const full = (m.full_name || '').trim();
+      if (full) { names.push(full); const first = full.split(/\s+/)[0]; if (first && first !== full) names.push(first); }
+      if (m.email) names.push(m.email);
+    });
+    return [...new Set(names)].filter(Boolean).sort((a, b) => b.length - a.length);
+  })();
+  const mentionSource = mentionNameList.length
+    ? `@(?:${mentionNameList.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`
+    : null;
+  const renderMessageText = (text, isOwn) => {
+    if (!text || !mentionSource) return text;
+    const re = new RegExp(mentionSource, 'g');
+    const out = [];
+    let last = 0, match, key = 0;
+    while ((match = re.exec(text)) !== null) {
+      if (match.index > last) out.push(text.slice(last, match.index));
+      const token = match[0];
+      const mentioned = token.slice(1);
+      const isAll = mentioned.toLowerCase() === 'all' || mentioned.toLowerCase() === 'everyone';
+      const mentionsMe = isAll || (!!myName && (mentioned === myName || mentioned === myName.split(/\s+/)[0]));
+      out.push(
+        <span key={`mn-${key++}`} style={{
+          fontWeight: 700,
+          color: mentionsMe ? '#052e16' : (isOwn ? '#EAF3FF' : '#7EB3FF'),
+          background: mentionsMe ? '#5BE59A' : (isOwn ? 'rgba(255,255,255,0.16)' : 'rgba(48,108,236,0.20)'),
+          borderRadius: 5, padding: '0 3px',
+        }}>{token}</span>
+      );
+      last = match.index + token.length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
   };
 
   // Grow the edit box to fit the whole message so it's all visible while editing.
@@ -712,8 +813,13 @@ function ChatContent() {
                           <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? '#E2EEFF' : '#B8D0F0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
                           {conv.lastMsg && <span style={{ fontSize: 9.5, color: '#2A3F60', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
                         </div>
-                        <div style={{ fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
-                          {conv.lastMsg ? `${conv.lastMsg.userName?.split(' ')[0] || ''}: ${conv.lastMsg.message}` : 'No messages yet'}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {conv.lastMsg ? `${conv.lastMsg.userName?.split(' ')[0] || ''}: ${conv.lastMsg.message}` : 'No messages yet'}
+                          </span>
+                          {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
+                            <span style={UNREAD_BADGE}>{chatNotifs[conv.id].count > 99 ? '99+' : chatNotifs[conv.id].count}</span>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -751,8 +857,13 @@ function ChatContent() {
                           <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? '#E2EEFF' : '#B8D0F0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
                           {conv.lastMsg && <span style={{ fontSize: 9.5, color: '#2A3F60', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
                         </div>
-                        <div style={{ fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
-                          {conv.lastMsg ? conv.lastMsg.message : `${chatSub || 'Say hello!'}`}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {conv.lastMsg ? conv.lastMsg.message : `${chatSub || 'Say hello!'}`}
+                          </span>
+                          {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
+                            <span style={UNREAD_BADGE}>{chatNotifs[conv.id].count > 99 ? '99+' : chatNotifs[conv.id].count}</span>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -914,7 +1025,7 @@ function ChatContent() {
                                   position: 'relative',
                                 }}
                               >
-                                {msg.message}
+                                {renderMessageText(msg.message, isOwn)}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
                                   {msg.edited && <span style={{ fontSize: 9.5, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.5)' : 'rgba(160,190,240,0.42)', lineHeight: 1 }}>edited</span>}
                                   <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
@@ -1059,18 +1170,53 @@ function ChatContent() {
                     )}
                   </div>
 
-                  <textarea
-                    ref={inputRef}
-                    rows={1}
-                    value={inputText}
-                    onChange={e => setInputText(pointifyBullets(e.target.value))}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend(); } }}
-                    placeholder={isDm ? `Message ${chatName}…` : `Message in ${chatName}…`}
-                    disabled={sending}
-                    style={{ flex: 1, resize: 'none', maxHeight: 120, overflowY: 'auto', lineHeight: 1.4, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, color: '#D8E8FF', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s' }}
-                    onFocus={e => e.target.style.borderColor = 'rgba(48,108,236,0.50)'}
-                    onBlur={e => e.target.style.borderColor = 'rgba(48,108,236,0.18)'}
-                  />
+                  <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                    {mentionOpen && mentionCandidates.length > 0 && (
+                      <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, background: 'rgba(8,14,30,0.98)', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14, boxShadow: '0 10px 36px rgba(0,0,0,0.7)', padding: 6, zIndex: 60, maxHeight: 244, overflowY: 'auto' }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 8px 6px' }}>Mention someone</div>
+                        {mentionCandidates.map((m, i) => {
+                          const active = i === (mentionIdx % mentionCandidates.length);
+                          const nm = m.__all ? m.label : (m.full_name || m.email || 'Unknown');
+                          const initial = nm.charAt(0).toUpperCase();
+                          return (
+                            <button key={m.id} type="button"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => insertMention(m)}
+                              onMouseEnter={() => setMentionIdx(i)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: active ? 'rgba(48,108,236,0.20)' : 'transparent', border: 'none', borderRadius: 10, padding: '7px 8px', cursor: 'pointer', transition: 'background .1s' }}>
+                              <span style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, background: m.__all ? 'linear-gradient(135deg,#16A36B,#22C55E)' : 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {m.__all ? <AtSign size={15} /> : initial}
+                              </span>
+                              <span style={{ minWidth: 0, flex: 1 }}>
+                                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#E2EEFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.__all ? 'Everyone' : nm}<span style={{ color: '#6C82A3', fontWeight: 500 }}>{m.__all ? '  @all' : ''}</span></span>
+                                {m.role && <span style={{ display: 'block', fontSize: 10.5, color: '#6C82A3', textTransform: m.__all ? 'none' : 'capitalize' }}>{m.role}</span>}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <textarea
+                      ref={inputRef}
+                      rows={1}
+                      value={inputText}
+                      onChange={onInputChange}
+                      onKeyDown={e => {
+                        if (mentionOpen && mentionCandidates.length > 0) {
+                          if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => (i + 1) % mentionCandidates.length); return; }
+                          if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
+                          if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(mentionCandidates[mentionIdx % mentionCandidates.length]); return; }
+                          if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); return; }
+                        }
+                        if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend(); }
+                      }}
+                      placeholder={isDm ? `Message ${chatName}…` : `Message in ${chatName}…`}
+                      disabled={sending}
+                      style={{ width: '100%', resize: 'none', maxHeight: 120, overflowY: 'auto', lineHeight: 1.4, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, color: '#D8E8FF', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s', boxSizing: 'border-box' }}
+                      onFocus={e => e.target.style.borderColor = 'rgba(48,108,236,0.50)'}
+                      onBlur={e => e.target.style.borderColor = 'rgba(48,108,236,0.18)'}
+                    />
+                  </div>
 
                   <button type="submit" disabled={sending || !inputText.trim()} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0, background: inputText.trim() ? 'linear-gradient(135deg,#1E4FB8,#306CEC)' : 'rgba(255,255,255,0.06)', color: inputText.trim() ? '#fff' : 'rgba(255,255,255,0.20)', cursor: inputText.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: inputText.trim() ? '0 2px 12px rgba(48,108,236,0.40)' : 'none', transition: 'all .15s' }}>
                     <Send size={16} style={{ marginLeft: 2 }} />

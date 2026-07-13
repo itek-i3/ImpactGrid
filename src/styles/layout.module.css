@@ -424,6 +424,16 @@
   margin: 0 auto;
   padding: 36px 48px 64px;
   min-height: calc(100dvh - var(--topbar-height));
+  transition: max-width var(--transition-slow), padding var(--transition-slow);
+}
+
+/* When the sidebar is collapsed, reclaim that room for the content: relax the
+   max-width and trim the side padding so wide content (e.g. tables) gets more
+   horizontal space instead of leaving it as empty margin. */
+.pageContainerWide {
+  max-width: 1240px;
+  padding-left: 28px;
+  padding-right: 28px;
 }
 
 /* ── Page Cover ── */

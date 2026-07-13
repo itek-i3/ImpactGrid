@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef, forwardRef } from 'react';
 import { useEditorStore } from '@/lib/store/useEditorStore';
-import { Plus, Trash2, BarChart2, Type, Hash, DollarSign, Percent, Calendar, ChevronDown, Sigma, List, X, Pencil, Undo2, Redo2 } from 'lucide-react';
+import { Plus, Trash2, BarChart2, Type, Hash, DollarSign, Percent, Calendar, ChevronDown, Sigma, List, X, Pencil, Undo2, Redo2, GripVertical, RotateCcw } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, LineChart, Line,
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend
@@ -256,6 +256,7 @@ const EditableCell = forwardRef(function EditableCell({ value, onBlur, className
 
 function DropdownCell({ value, options, onChange, readOnly }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -267,7 +268,7 @@ function DropdownCell({ value, options, onChange, readOnly }) {
   const color = colorIdx >= 0 ? BADGE_COLORS[colorIdx % BADGE_COLORS.length] : null;
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => { if (!readOnly) setOpen((o) => !o); }} style={{ width: '100%', background: 'none', border: 'none', cursor: readOnly ? 'default' : 'pointer', padding: '5px 8px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <button onClick={(e) => { if (readOnly) return; if (open) { setOpen(false); } else { const r = e.currentTarget.getBoundingClientRect(); setMenuPos({ top: r.bottom + 2, left: r.left, width: r.width }); setOpen(true); } }} style={{ width: '100%', background: 'none', border: 'none', cursor: readOnly ? 'default' : 'pointer', padding: '5px 8px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 4 }}>
         {value ? (
           <span style={{ display: 'inline-block', background: color?.bg || 'rgba(255,255,255,0.07)', border: `1px solid ${color?.border || 'rgba(255,255,255,0.15)'}`, borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 600, color: color?.text || '#B8D4FF', whiteSpace: 'nowrap' }}>{value}</span>
         ) : (
@@ -276,7 +277,7 @@ function DropdownCell({ value, options, onChange, readOnly }) {
         {!readOnly && <ChevronDown size={10} style={{ color: '#3D5A8A', marginLeft: 'auto', flexShrink: 0 }} />}
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, zIndex: 999, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 10, padding: '4px', minWidth: 160, boxShadow: '0 8px 32px rgba(0,0,0,0.6)', backdropFilter: 'blur(16px)' }}>
+        <div style={{ position: 'fixed', top: menuPos?.top, left: menuPos?.left, zIndex: 999, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 10, padding: '4px', minWidth: Math.max(160, menuPos?.width || 0), boxShadow: '0 8px 32px rgba(0,0,0,0.6)', backdropFilter: 'blur(16px)' }}>
           {value && <button onClick={() => { onChange(''); setOpen(false); }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', textAlign: 'left', borderRadius: 6, fontSize: 11, color: '#6C82A3', display: 'flex', alignItems: 'center', gap: 6 }}><X size={10} /> Clear</button>}
           {options.map((opt, i) => {
             const c = BADGE_COLORS[i % BADGE_COLORS.length];
@@ -296,6 +297,7 @@ function DropdownCell({ value, options, onChange, readOnly }) {
 
 function MonthCell({ value, onChange, readOnly }) {
   const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -307,7 +309,7 @@ function MonthCell({ value, onChange, readOnly }) {
   const color = monthIdx >= 0 ? MONTH_COLORS[monthIdx] : '#7EB3FF';
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => { if (!readOnly) setOpen((o) => !o); }} style={{ width: '100%', background: 'none', border: 'none', cursor: readOnly ? 'default' : 'pointer', padding: '5px 8px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <button onClick={(e) => { if (readOnly) return; if (open) { setOpen(false); } else { const r = e.currentTarget.getBoundingClientRect(); setMenuPos({ top: r.bottom + 2, left: r.left, width: r.width }); setOpen(true); } }} style={{ width: '100%', background: 'none', border: 'none', cursor: readOnly ? 'default' : 'pointer', padding: '5px 8px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 4 }}>
         {value ? (
           <span style={{ display: 'inline-block', background: `${color}22`, border: `1px solid ${color}55`, borderRadius: 99, padding: '2px 10px', fontSize: 11, fontWeight: 700, color, whiteSpace: 'nowrap' }}>{value.slice(0, 3).toUpperCase()}</span>
         ) : (
@@ -316,7 +318,7 @@ function MonthCell({ value, onChange, readOnly }) {
         {!readOnly && <ChevronDown size={10} style={{ color: '#3D5A8A', marginLeft: 'auto', flexShrink: 0 }} />}
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, zIndex: 999, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 10, padding: '6px', minWidth: 160, boxShadow: '0 8px 32px rgba(0,0,0,0.6)', backdropFilter: 'blur(16px)' }}>
+        <div style={{ position: 'fixed', top: menuPos?.top, left: menuPos?.left, zIndex: 999, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 10, padding: '6px', minWidth: Math.max(160, menuPos?.width || 0), boxShadow: '0 8px 32px rgba(0,0,0,0.6)', backdropFilter: 'blur(16px)' }}>
           {value && <button onClick={() => { onChange(''); setOpen(false); }} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '5px 10px', textAlign: 'left', borderRadius: 6, fontSize: 11, color: '#6C82A3', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><X size={10} /> Clear</button>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
             {MONTHS.map((m, i) => {
@@ -371,6 +373,18 @@ function defaultSheetConfig() {
   return { columnTypes: [], columnFormulas: {}, columnOptions: {}, showChart: false, showTotals: false, chartType: 'bar', activeSeries: [], currencyCode: 'KES' };
 }
 
+// Nearest scrollable/clipping ancestor — used to keep a dragged table from
+// being moved off-screen where its columns become unreachable.
+function getScrollParent(el) {
+  let p = el?.parentElement;
+  while (p) {
+    const s = getComputedStyle(p);
+    if (/(auto|scroll|hidden)/.test(s.overflowX) || /(auto|scroll)/.test(s.overflowY)) return p;
+    p = p.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function TableBlock({ block, onUpdate, readOnly = false }) {
@@ -421,14 +435,14 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
 
   const updateConfig = useCallback((patch) => {
     const newConfig = sheetsConfig.map((c, i) => i === safeIdx ? { ...c, ...patch } : c);
-    onUpdate({ properties: { sheetsConfig: newConfig } });
-  }, [sheetsConfig, safeIdx, onUpdate]);
+    onUpdate({ properties: { ...(block.properties || {}), sheetsConfig: newConfig } });
+  }, [sheetsConfig, safeIdx, onUpdate, block.properties]);
 
   const updateBoth = useCallback((newRows, patch) => {
     const newSheets = sheets.map((s, i) => i === safeIdx ? { ...s, rows: newRows } : s);
     const newConfig = sheetsConfig.map((c, i) => i === safeIdx ? { ...c, ...patch } : c);
-    onUpdate({ content: { sheets: newSheets, activeSheetIndex: safeIdx }, properties: { sheetsConfig: newConfig } });
-  }, [sheets, sheetsConfig, safeIdx, onUpdate]);
+    onUpdate({ content: { sheets: newSheets, activeSheetIndex: safeIdx }, properties: { ...(block.properties || {}), sheetsConfig: newConfig } });
+  }, [sheets, sheetsConfig, safeIdx, onUpdate, block.properties]);
 
   // ── Sheet operations ──
   const addSheet = useCallback(() => {
@@ -444,10 +458,10 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     const newSheetsConfig = [...sheetsConfig, newConfig];
     onUpdate({
       content:    { sheets: newSheets, activeSheetIndex: newSheets.length - 1 },
-      properties: { sheetsConfig: newSheetsConfig },
+      properties: { ...(block.properties || {}), sheetsConfig: newSheetsConfig },
     });
     setActiveSheetIdx(newSheets.length - 1);
-  }, [sheets, sheetsConfig, rows, columnTypes, onUpdate]);
+  }, [sheets, sheetsConfig, rows, columnTypes, onUpdate, block.properties]);
 
   const commitRenameSheet = useCallback((idx) => {
     const trimmed = editingSheetName.trim();
@@ -465,15 +479,85 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     const newActiveIdx = safeIdx >= newSheets.length ? newSheets.length - 1 : safeIdx > idx ? safeIdx - 1 : safeIdx;
     onUpdate({
       content:    { sheets: newSheets, activeSheetIndex: newActiveIdx },
-      properties: { sheetsConfig: newSheetsConfig },
+      properties: { ...(block.properties || {}), sheetsConfig: newSheetsConfig },
     });
     setActiveSheetIdx(newActiveIdx);
-  }, [sheets, sheetsConfig, safeIdx, onUpdate]);
+  }, [sheets, sheetsConfig, safeIdx, onUpdate, block.properties]);
 
   // ── Row selection + move ──
   const [selectedRowIdx, setSelectedRowIdx] = useState(null); // 1-based (rows[0] is header)
   const [focusedCell, setFocusedCell] = useState(null); // { row: 0-based data row, col: 0-based col }
   const tableWrapperRef = useRef(null);
+
+  // ── Free-floating drag: pick the whole table up and move it anywhere ──
+  const savedOffset = block.properties?.offset || { x: 0, y: 0 };
+  const [dragging, setDragging] = useState(false);
+  const [liveOffset, setLiveOffset] = useState(null);
+  const dragRef = useRef(null);
+  const scrollRailRef = useRef(null); // the horizontal-scroll rail around the grid
+  const shownOffset = liveOffset || savedOffset;
+
+  const startDrag = useCallback((e) => {
+    if (readOnly) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const wrap = tableWrapperRef.current;
+    const scrollParent = wrap ? getScrollParent(wrap) : null;
+    dragRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      baseX: savedOffset.x, baseY: savedOffset.y,
+      wrapRect: wrap ? wrap.getBoundingClientRect() : null,
+      contRect: scrollParent ? scrollParent.getBoundingClientRect() : null,
+      last: savedOffset,
+    };
+    setLiveOffset(savedOffset);
+    setDragging(true);
+  }, [readOnly, savedOffset]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (ev) => {
+      const d = dragRef.current;
+      if (!d) return;
+      let nx = d.baseX + (ev.clientX - d.startX);
+      let ny = d.baseY + (ev.clientY - d.startY);
+      // Keep the whole block inside its scroll container so a drag can never
+      // strand columns off-screen. For a grid wider than the page this pins the
+      // horizontal offset (left column stays put) — reaching the rest is the
+      // scrollbar's job, which is exactly what triggers once space runs out.
+      if (d.wrapRect && d.contRect) {
+        const natLeft = d.wrapRect.left - d.baseX;
+        const natTop = d.wrapRect.top - d.baseY;
+        const { width: w, height: h } = d.wrapRect;
+        const minX = d.contRect.left - natLeft;
+        const maxX = d.contRect.right - w - natLeft;
+        const minY = d.contRect.top - natTop;
+        const maxY = d.contRect.bottom - h - natTop;
+        nx = Math.max(minX, Math.min(nx, Math.max(minX, maxX)));
+        ny = Math.max(minY, Math.min(ny, Math.max(minY, maxY)));
+      }
+      const next = { x: Math.round(nx), y: Math.round(ny) };
+      d.last = next;
+      setLiveOffset(next);
+    };
+    const up = () => {
+      const d = dragRef.current;
+      if (d?.last) onUpdate({ properties: { ...(block.properties || {}), offset: d.last } });
+      dragRef.current = null;
+      setLiveOffset(null);
+      setDragging(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [dragging, onUpdate, block.properties]);
+
+  const resetPosition = useCallback(() => {
+    setLiveOffset(null);
+    // Bring the first column back into view as well.
+    if (scrollRailRef.current) scrollRailRef.current.scrollLeft = 0;
+    onUpdate({ properties: { ...(block.properties || {}), offset: { x: 0, y: 0 } } });
+  }, [onUpdate, block.properties]);
 
   const moveRow = useCallback((fromIdx, direction) => {
     const toIdx = fromIdx + direction;
@@ -489,6 +573,13 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
   const [optionsEditorCol, setOptionsEditorCol]           = useState(null);
   const [newOptionText, setNewOptionText]                 = useState('');
   const [activeFormulaBuilderCol, setActiveFormulaBuilderCol] = useState(null);
+  // Viewport-anchored position for header popups so they escape the horizontal
+  // scroll container (.tableScroll) instead of being clipped by it.
+  const [headerMenuPos, setHeaderMenuPos] = useState(null); // { top, left }
+  const anchorMenu = useCallback((e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setHeaderMenuPos({ top: r.bottom + 4, left: r.left });
+  }, []);
   const [showCurrencyPicker, setShowCurrencyPicker]       = useState(false);
   const optionsEditorRef   = useRef(null);
   const currencyPickerRef  = useRef(null);
@@ -889,6 +980,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
   };
 
   // ── Render ──
+  const isMoved = shownOffset.x !== 0 || shownOffset.y !== 0;
   return (
     <div
       ref={tableWrapperRef}
@@ -896,8 +988,57 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       tabIndex={readOnly ? undefined : 0}
       onKeyDown={readOnly ? undefined : handleTableKeyDown}
       onFocus={() => {}} /* keep focus on wrapper when clicking between cells */
-      style={{ outline: 'none' }}
+      style={{
+        outline: 'none',
+        // Relative top/left (not transform) so the free-floating offset doesn't
+        // turn this element into the containing block for the fixed-positioned
+        // header/cell popups — they must stay anchored to the viewport.
+        position: 'relative',
+        left: isMoved ? shownOffset.x : undefined,
+        top: isMoved ? shownOffset.y : undefined,
+        zIndex: dragging ? 50 : (isMoved ? 5 : undefined),
+        userSelect: dragging ? 'none' : undefined,
+        transition: dragging ? 'none' : 'box-shadow .15s',
+        boxShadow: dragging ? '0 18px 50px rgba(0,0,0,0.55)' : undefined,
+        cursor: dragging ? 'grabbing' : undefined,
+      }}
     >
+
+      {/* ── Drag handle: pick the whole table up and move it anywhere ── */}
+      {!readOnly && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 6px' }}>
+          <button
+            type="button"
+            onPointerDown={startDrag}
+            title="Drag to move the table"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '3px 10px', borderRadius: 8,
+              border: '1px solid rgba(48,108,236,0.25)',
+              background: dragging ? 'rgba(48,108,236,0.22)' : 'rgba(255,255,255,0.03)',
+              color: dragging ? '#7EB3FF' : '#6C82A3',
+              cursor: dragging ? 'grabbing' : 'grab',
+              fontSize: 11, fontWeight: 600, touchAction: 'none', transition: 'all .15s',
+            }}
+            onMouseEnter={(e) => { if (!dragging) { e.currentTarget.style.background = 'rgba(48,108,236,0.12)'; e.currentTarget.style.color = '#7EB3FF'; } }}
+            onMouseLeave={(e) => { if (!dragging) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#6C82A3'; } }}
+          >
+            <GripVertical size={13} /> Move
+          </button>
+          {isMoved && (
+            <button
+              type="button"
+              onClick={resetPosition}
+              title="Snap the table back to its original spot"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 8, border: '1px solid rgba(48,108,236,0.20)', background: 'rgba(255,255,255,0.03)', color: '#6C82A3', cursor: 'pointer', fontSize: 11, fontWeight: 600, transition: 'all .15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#7EB3FF'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#6C82A3'; }}
+            >
+              <RotateCcw size={12} /> Reset position
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Sheet tab bar (top) ── */}
       <div style={{
@@ -999,6 +1140,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
         )}
       </div>
 
+      <div className={styles.tableScroll} ref={scrollRailRef}>
       <table className={styles.table}>
         <thead>
           <tr>
@@ -1015,7 +1157,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                         <div style={{ display: 'flex', alignItems: 'center' }}>
                           <button
                             className={styles.columnTypeTrigger}
-                            onClick={(e) => { e.stopPropagation(); setActiveDropdownCol(activeDropdownCol === ci ? null : ci); }}
+                            onClick={(e) => { e.stopPropagation(); if (activeDropdownCol === ci) { setActiveDropdownCol(null); } else { anchorMenu(e); setActiveDropdownCol(ci); } }}
                             title={`Column type: ${colType}`}
                           >
                             <IconComponent size={13} className={styles.typeIcon} style={colType === 'month' ? { color: '#F5A623' } : undefined} />
@@ -1025,7 +1167,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                           {activeDropdownCol === ci && (
                             <>
                               <div className={styles.dropdownBackdrop} onClick={(e) => { e.stopPropagation(); setActiveDropdownCol(null); }} />
-                              <div className={styles.columnTypeMenu}>
+                              <div className={styles.columnTypeMenu} style={{ position: 'fixed', top: headerMenuPos?.top, left: headerMenuPos?.left }}>
                                 <div className={styles.menuHeader}>Column Data Type</div>
                                 {COLUMN_TYPES.map((t) => {
                                   const TypeIcon = t.icon;
@@ -1050,7 +1192,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
 
                           {colType === 'dropdown' && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setOptionsEditorCol(optionsEditorCol === ci ? null : ci); setNewOptionText(''); }}
+                              onClick={(e) => { e.stopPropagation(); if (optionsEditorCol === ci) { setOptionsEditorCol(null); } else { anchorMenu(e); setOptionsEditorCol(ci); } setNewOptionText(''); }}
                               title="Edit options"
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, border: 'none', cursor: 'pointer', background: optionsEditorCol === ci ? 'rgba(48,108,236,0.25)' : 'rgba(255,255,255,0.05)', color: optionsEditorCol === ci ? '#7EB3FF' : '#6C82A3', transition: 'all .15s', flexShrink: 0, marginLeft: 2 }}
                             >
@@ -1061,7 +1203,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                           {/* Formula edit pencil — stays inline with the type icon */}
                           {colType === 'formula' && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setActiveFormulaBuilderCol(activeFormulaBuilderCol === ci ? null : ci); }}
+                              onClick={(e) => { e.stopPropagation(); if (activeFormulaBuilderCol === ci) { setActiveFormulaBuilderCol(null); } else { anchorMenu(e); setActiveFormulaBuilderCol(ci); } }}
                               title={activeFormulaBuilderCol === ci ? 'Close formula editor' : 'Edit formula'}
                               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 5, border: 'none', cursor: 'pointer', background: activeFormulaBuilderCol === ci ? 'rgba(48,108,236,0.25)' : 'rgba(255,255,255,0.05)', color: activeFormulaBuilderCol === ci ? '#7EB3FF' : '#6C82A3', transition: 'all .15s', flexShrink: 0, marginLeft: 2 }}
                             >
@@ -1074,7 +1216,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                         {colType === 'dropdown' && optionsEditorCol === ci && (() => {
                           const opts = columnOptions[ci] || [];
                           return (
-                            <div ref={optionsEditorRef} className={styles.columnTypeMenu} style={{ top: 'calc(100% + 4px)', minWidth: 230, zIndex: 601 }}>
+                            <div ref={optionsEditorRef} className={styles.columnTypeMenu} style={{ position: 'fixed', top: headerMenuPos?.top, left: headerMenuPos?.left, minWidth: 230, zIndex: 601 }}>
                               <div className={styles.menuHeader} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <span>Dropdown Options</span>
                                 <button onClick={() => setOptionsEditorCol(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6C82A3', display: 'flex', padding: 2 }}><X size={12} /></button>
@@ -1120,7 +1262,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                           };
                           return (
                             <div
-                              style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 700, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 12, padding: '12px', minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 8 }}
+                              style={{ position: 'fixed', top: headerMenuPos?.top, left: headerMenuPos?.left, zIndex: 700, background: 'rgba(4,9,20,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 12, padding: '12px', minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.55)', display: 'flex', flexDirection: 'column', gap: 8 }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1369,6 +1511,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
           })()}
         </tbody>
       </table>
+      </div>
 
       {/* ── Controls bar ── */}
       <div className={styles.tableControls}>
