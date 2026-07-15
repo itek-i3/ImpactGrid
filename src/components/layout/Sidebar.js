@@ -107,11 +107,13 @@ export default function Sidebar() {
   // Fetch target workspaces when copy modal opens
   useEffect(() => {
     if (!copyModal.open) return;
-    setSelectedWorkspaces([]);
-    setCopyResult(null);
-    setAllWorkspaces([]);
 
     async function loadTargets() {
+      // Reset any prior selection/result before loading fresh targets.
+      setSelectedWorkspaces([]);
+      setCopyResult(null);
+      setAllWorkspaces([]);
+
       // Try admin agencies endpoint first (works for superadmins, gives cross-agency list)
       try {
         const res = await fetch('/os/api/admin/agencies');
