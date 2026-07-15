@@ -22,6 +22,7 @@ import {
   Target,
   CalendarDays,
   Wallet,
+  TrendingUp,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -289,6 +290,14 @@ export default function Sidebar() {
                   >
                     <Wallet size={15} />
                     <span>Daily Finance</span>
+                  </button>
+                  <button
+                    className="ig-nav"
+                    onClick={() => { setCurrentView('valuation'); if (pathname !== '/') router.push('/'); }}
+                    style={currentView === 'valuation' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                  >
+                    <TrendingUp size={15} />
+                    <span>Valuation</span>
                   </button>
                 </>
               )}
