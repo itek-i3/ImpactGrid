@@ -52,6 +52,15 @@ function buildMonthCells(year, month) {
   return cells;
 }
 
+// A pasted Meet link like "meet.google.com/abc-defg-hij" has no scheme, so an
+// <a href> treats it as RELATIVE (under basePath /os it navigates in-app and the
+// "Join Meet" button appears to do nothing). Force an absolute https:// URL.
+function withScheme(url) {
+  const s = (url || '').trim();
+  if (!s) return '';
+  return /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`;
+}
+
 // Google Calendar "template" URL — opens a pre-filled event the user can save;
 // Google Meet is added there in one click (guests carried via `add`).
 function gcalStamp(iso) {
@@ -254,7 +263,7 @@ export default function MeetingsPanel() {
     const starts = new Date(`${fDate}T${fTime}`);
     const ends = new Date(starts.getTime() + fDuration * 60000);
 
-    let meetLink = fMeetLink.trim() || null;
+    let meetLink = withScheme(fMeetLink) || null;
     let googleEventId = editingId ? (meetings.find(m => m.id === editingId)?.google_event_id || null) : null;
 
     // Connected + new meeting → let Google create the Meet link and email invites.
@@ -466,7 +475,7 @@ export default function MeetingsPanel() {
                     ) : (
                       <div style={{ display: 'flex', gap: 7, marginTop: 9, flexWrap: 'wrap' }}>
                         {m.meet_link && (
-                          <a className="mtg-btn primary sm" href={m.meet_link} target="_blank" rel="noreferrer">
+                          <a className="mtg-btn primary sm" href={withScheme(m.meet_link)} target="_blank" rel="noreferrer">
                             <Video size={12} /> Join Meet
                           </a>
                         )}

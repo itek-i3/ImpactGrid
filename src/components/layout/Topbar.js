@@ -21,6 +21,7 @@ export default function Topbar() {
     updatePage, toggleFavoritePage,
     toggleSearch, workspace, userProfile, theme,
     unreadChatCount, unreadChatChannels, chatNotifs, clearChatNotifications, clearAllChatNotifications,
+    meetingNotifs, clearMeetingNotification, clearAllMeetingNotifications, setCurrentView,
   } = useWorkspaceStore();
   const toast = useToast();
   const { undo, redo, _historyStack, _futureStack } = useEditorStore();
@@ -131,7 +132,8 @@ export default function Topbar() {
   const isReadOnly = userProfile?.role === 'member';
   const isLight = theme === 'light';
   // Total unread MESSAGES across conversations (WhatsApp-style), not just channels.
-  const totalUnread = Object.values(chatNotifs || {}).reduce((s, n) => s + (n?.count || 0), 0);
+  const meetingReminders = Object.entries(meetingNotifs || {}).map(([key, m]) => ({ key, ...m })).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const totalUnread = Object.values(chatNotifs || {}).reduce((s, n) => s + (n?.count || 0), 0) + meetingReminders.length;
 
   return (
     <header style={{
@@ -331,15 +333,44 @@ export default function Topbar() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
               <span style={{ fontSize: 13.5, fontWeight: 700, color: '#E2EEFF' }}>Notifications</span>
-              {unreadChatChannels.length > 0 && (
-                <button onClick={() => clearAllChatNotifications()} style={{ background: 'none', border: 'none', color: '#7EB3FF', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {(unreadChatChannels.length > 0 || meetingReminders.length > 0) && (
+                <button onClick={() => { clearAllChatNotifications(); clearAllMeetingNotifications(); }} style={{ background: 'none', border: 'none', color: '#7EB3FF', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Mark all read
                 </button>
               )}
             </div>
 
             <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-              {unreadChatChannels.length === 0 ? (
+              {/* Meeting reminders first — they're time-sensitive */}
+              {meetingReminders.map((r) => (
+                <button key={r.key} onClick={() => {
+                  clearMeetingNotification(r.key);
+                  setShowNotifMenu(false);
+                  if (r.meetLink) window.open(r.meetLink, '_blank', 'noopener');
+                  else { setCurrentView('meetings'); router.push('/'); }
+                }} style={{
+                  width: '100%', display: 'flex', alignItems: 'flex-start', gap: 11, padding: '11px 15px',
+                  border: 'none', borderBottom: '1px solid rgba(48,108,236,0.08)', background: 'rgba(34,197,94,0.06)',
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background .12s',
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(34,197,94,0.14)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(34,197,94,0.06)'}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: 'rgba(34,197,94,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E' }}>
+                    <Bell size={16} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#E2EEFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#22C55E', background: 'rgba(34,197,94,0.16)', borderRadius: 99, padding: '0 6px', flexShrink: 0, marginLeft: 'auto' }}>Meeting</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8FB4E8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                      Starting now{r.meetLink ? ' · tap to join' : ''} · {new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </button>
+              ))}
+
+              {unreadChatChannels.length === 0 && meetingReminders.length === 0 ? (
                 <div style={{ padding: '30px 20px', textAlign: 'center', color: '#3D5A8A', fontSize: 12.5, lineHeight: 1.6 }}>
                   <Bell size={26} style={{ opacity: 0.4, marginBottom: 8 }} /><br />
                   You&apos;re all caught up 🎉

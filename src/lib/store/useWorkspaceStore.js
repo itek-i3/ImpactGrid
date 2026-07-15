@@ -13,6 +13,27 @@ const isDemoMode = () => {
   return false;
 };
 
+// Meeting reminders persist across reloads. Kept until dismissed, but pruned if
+// older than this so an ancient "starting now" doesn't linger in the bell.
+const MEETING_NOTIFS_KEY = 'impactgrid-meeting-notifs';
+const MEETING_NOTIF_TTL = 12 * 60 * 60 * 1000; // 12h
+const loadMeetingNotifs = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const obj = JSON.parse(localStorage.getItem(MEETING_NOTIFS_KEY) || '{}') || {};
+    const now = Date.now();
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v.at === 'number' && now - v.at < MEETING_NOTIF_TTL) out[k] = v;
+    }
+    return out;
+  } catch { return {}; }
+};
+const saveMeetingNotifs = (notifs) => {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(MEETING_NOTIFS_KEY, JSON.stringify(notifs || {})); } catch {}
+};
+
 /**
  * Workspace store — manages workspace state, page tree, and navigation.
  * In MVP/demo mode, uses local state. When Supabase is connected,
@@ -48,6 +69,8 @@ export const useWorkspaceStore = create((set, get) => ({
   unreadChatChannels: [],
   // Per-channel notification detail: { [channel]: { senderName, message, count, at, isDm } }
   chatNotifs: {},
+  // Meeting reminders shown in the bell: { [occurrenceKey]: { id, title, at, meetLink } }
+  meetingNotifs: {},
 
   // ── Actions ──────────────────────────────────
 
@@ -175,6 +198,28 @@ export const useWorkspaceStore = create((set, get) => ({
     }),
 
   clearAllChatNotifications: () => set({ unreadChatCount: 0, unreadChatChannels: [], chatNotifs: {} }),
+
+  // Re-load persisted reminders after mount (avoids SSR hydration mismatch).
+  hydrateMeetingNotifs: () => set({ meetingNotifs: loadMeetingNotifs() }),
+
+  addMeetingNotification: (key, meta = {}) =>
+    set((state) => {
+      if (!key || state.meetingNotifs[key]) return state; // one per occurrence
+      const meetingNotifs = { ...state.meetingNotifs, [key]: { id: meta.id, title: meta.title || 'Meeting', at: meta.at || Date.now(), meetLink: meta.meetLink || '' } };
+      saveMeetingNotifs(meetingNotifs);
+      return { meetingNotifs };
+    }),
+
+  clearMeetingNotification: (key) =>
+    set((state) => {
+      if (!key || !state.meetingNotifs[key]) return state;
+      const meetingNotifs = { ...state.meetingNotifs };
+      delete meetingNotifs[key];
+      saveMeetingNotifs(meetingNotifs);
+      return { meetingNotifs };
+    }),
+
+  clearAllMeetingNotifications: () => { saveMeetingNotifs({}); set({ meetingNotifs: {} }); },
 
   togglePageExpanded: (pageId) =>
     set((state) => {

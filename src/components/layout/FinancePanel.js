@@ -21,14 +21,29 @@ const fmtNice = (dateStr) => {
   const d = parseDay(dateStr);
   return `${d.toLocaleDateString('en-GB', { weekday: 'long' })} ${ordinal(d.getDate())} ${d.toLocaleDateString('en-GB', { month: 'long' })} ${d.getFullYear()}`;
 };
-const fmtNiceShort = (dateStr) => {
-  const d = parseDay(dateStr);
-  return `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${ordinal(d.getDate())} ${d.toLocaleDateString('en-GB', { month: 'short' })}`;
-};
 const monthKeyOf = (dateStr) => (dateStr || '').slice(0, 7);   // 'YYYY-MM'
 const monthLabel = (key) => {
   const [y, m] = (key || '').split('-');
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+};
+
+// ── Week helpers (weeks run Monday → Sunday) ──
+const pad2 = (n) => String(n).padStart(2, '0');
+const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const mondayOf = (dateStr) => { const d = parseDay(dateStr); const dow = (d.getDay() + 6) % 7; return addDays(d, -dow); };
+const weekKeyOf = (dateStr) => toDateStr(mondayOf(dateStr)); // the Monday's date, 'YYYY-MM-DD'
+const weekDates = (mondayStr) => { const m = parseDay(mondayStr); return Array.from({ length: 7 }, (_, i) => toDateStr(addDays(m, i))); };
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const weekdayOf = (dateStr) => WEEKDAY_NAMES[(parseDay(dateStr).getDay() + 6) % 7];
+const weekLabel = (mondayStr) => {
+  const m = parseDay(mondayStr); const s = addDays(m, 6);
+  const sameMonth = m.getMonth() === s.getMonth();
+  const mm = m.toLocaleDateString('en-GB', { month: 'short' });
+  const sm = s.toLocaleDateString('en-GB', { month: 'short' });
+  return sameMonth
+    ? `${ordinal(m.getDate())} – ${ordinal(s.getDate())} ${sm}`
+    : `${ordinal(m.getDate())} ${mm} – ${ordinal(s.getDate())} ${sm}`;
 };
 
 const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Supplies', 'Stock / Inventory', 'Transport', 'Utilities', 'Marketing', 'Equipment', 'Fees / Licenses', 'Miscellaneous'];
@@ -57,7 +72,9 @@ export default function FinancePanel() {
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);                    // the new-entry form is hidden until clicked
   const [monthToggles, setMonthToggles] = useState(() => new Set()); // months the user flipped from default
-  const [openDayId, setOpenDayId] = useState(null);                 // the day being edited
+  const [weekToggles, setWeekToggles] = useState(() => new Set());   // weeks the user flipped from default
+  const [openDay, setOpenDay] = useState(null);                     // the date (YYYY-MM-DD) whose slot is expanded
+  const [draft, setDraft] = useState({ revenue: '', items: [{ ...EMPTY_ITEM }], note: '' }); // editor buffer for openDay
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState(null);               // the business currently being viewed
   const [bizMenuOpen, setBizMenuOpen] = useState(false);
@@ -150,7 +167,7 @@ export default function FinancePanel() {
     return { revenue: r, expenses: e, net: r - e };
   }, [rows]);
 
-  // Group entries by calendar month, newest month first, with a monthly net.
+  // Group entries by calendar month → week (Mon–Sun) → day, newest first.
   const months = useMemo(() => {
     const map = new Map();
     rows.forEach(r => {
@@ -166,6 +183,28 @@ export default function FinancePanel() {
       // Net profit is a MONTHLY figure: the month's total revenue minus total expenses.
       mo.totals = { revenue: rev, expenses: exp, net: rev - exp };
       mo.label = monthLabel(mo.key);
+
+      // Split the month's entries into weeks. Each week keeps one entry per date
+      // (byDate) so there is only ever a single Monday, Tuesday, … per week.
+      const wmap = new Map();
+      mo.rows.forEach(r => {
+        const wk = weekKeyOf(r.entry_date);
+        if (!wmap.has(wk)) wmap.set(wk, { key: wk, rows: [], byDate: new Map() });
+        const w = wmap.get(wk);
+        w.rows.push(r);
+        w.byDate.set(r.entry_date, r);
+      });
+      const weeks = [...wmap.values()];
+      weeks.forEach(w => {
+        w.dates = weekDates(w.key);
+        let wr = 0, we = 0;
+        w.rows.forEach(r => { wr += num(r.revenue); we += num(r.expenses); });
+        w.totals = { revenue: wr, expenses: we, net: wr - we };
+        w.label = weekLabel(w.key);
+        w.count = new Set(w.rows.map(r => r.entry_date)).size;
+      });
+      weeks.sort((a, b) => (a.key < b.key ? 1 : -1)); // newest week first
+      mo.weeks = weeks;
     });
     arr.sort((a, b) => (a.key < b.key ? 1 : -1));   // newest month first
     return arr;
@@ -175,74 +214,100 @@ export default function FinancePanel() {
   const isMonthOpen = (key) => (key === latestMonthKey) !== monthToggles.has(key); // latest open by default
   const toggleMonth = (key) => setMonthToggles(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  const persistDemo = (next) => { setRows(next); try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {} };
+  const latestWeekKey = months[0]?.weeks?.[0]?.key;
+  const isWeekOpen = (key) => (key === latestWeekKey) !== weekToggles.has(key); // latest week open by default
+  const toggleWeek = (key) => setWeekToggles(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  const addEntry = async () => {
-    const items = cleanItems(nItems);
-    const expenses = itemsTotal(items);
-    if (num(nRevenue) === 0 && expenses === 0 && !nNote.trim()) return;
-    if (!isDemo && (!agencyId || !businessId)) return;
-    setSaving(true);
-    const base = {
-      agency_id: agencyId,
-      business_id: businessId,
-      created_by: isUuid(currentUserId) ? currentUserId : null,
-      entry_date: nDate || today,
-      revenue: num(nRevenue), expenses,
-      expense_items: items,
-      note: nNote.trim() || null,
-    };
-    const reset = () => { setNRevenue(''); setNItems([{ ...EMPTY_ITEM }]); setNNote(''); setNDate(today); setSaving(false); setShowAdd(false); };
-    if (isDemo) {
-      persistDemo([{ ...base, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...rows]);
-      reset(); return;
-    }
-    try {
-      const { data, error } = await createClient().from('daily_finance').insert(base).select('*').maybeSingle();
-      if (error) console.error('[finance] insert failed —', 'message:', error.message, '| code:', error.code, '| details:', error.details);
-      if (data) setRows(prev => [data, ...prev]);
-    } catch (err) { console.error('[finance] insert threw:', err); }
-    reset();
-  };
+  const persistDemo = (next) => { setRows(next); try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {} };
 
   const activeBiz = businesses.find(b => b.id === businessId) || null;
 
-  const editRow = (id, patch) => setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  // Create-or-update the single entry for a given date (never a second Monday).
+  // `d` is an explicit editor value so callers avoid any stale-state reads.
+  const saveDay = async (dateStr, d) => {
+    const items = cleanItems(d.items);
+    const expenses = itemsTotal(items);
+    const revenue = num(d.revenue);
+    const note = (d.note || '').trim() || null;
+    const existing = rows.find(r => r.entry_date === dateStr);
+    if (!existing && revenue === 0 && expenses === 0 && !note) return; // nothing to store
+    if (!isDemo && (!agencyId || !businessId)) return;
 
-  const commitRow = async (row) => {
-    if (!row) return;
-    const items = cleanItems(row.expense_items);
-    const patch = {
-      entry_date: row.entry_date, revenue: num(row.revenue),
-      expenses: itemsTotal(items), expense_items: items,
-      note: (row.note || '').trim() || null,
+    if (existing) {
+      const patch = { revenue, expenses, expense_items: items, note };
+      const next = rows.map(r => (r.id === existing.id ? { ...r, ...patch } : r));
+      setRows(next);
+      if (isDemo) { persistDemo(next); return; }
+      try {
+        const { error } = await createClient().from('daily_finance').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id);
+        if (error) console.error('[finance] update failed —', error.message, '| code:', error.code, '| details:', error.details);
+      } catch (err) { console.error('[finance] update threw:', err); }
+      return;
+    }
+
+    const base = {
+      agency_id: agencyId, business_id: businessId,
+      created_by: isUuid(currentUserId) ? currentUserId : null,
+      entry_date: dateStr, revenue, expenses, expense_items: items, note,
     };
-    editRow(row.id, patch);
-    if (isDemo) { persistDemo(rows.map(r => (r.id === row.id ? { ...r, ...patch } : r))); return; }
-    try { await createClient().from('daily_finance').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', row.id); }
-    catch (err) { console.error(err); }
+    if (isDemo) { persistDemo([{ ...base, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...rows]); return; }
+    try {
+      const { data, error } = await createClient().from('daily_finance').insert(base).select('*').maybeSingle();
+      if (error) console.error('[finance] insert failed —', error.message, '| code:', error.code, '| details:', error.details);
+      if (data) setRows(prev => (prev.some(r => r.id === data.id) ? prev : [data, ...prev]));
+    } catch (err) { console.error('[finance] insert threw:', err); }
+  };
+
+  // Open a day's editor, seeding the buffer from its existing entry (if any).
+  const openDayEditor = (dateStr) => {
+    if (openDay === dateStr) { setOpenDay(null); return; }
+    const entry = rows.find(r => r.entry_date === dateStr);
+    setDraft({
+      revenue: entry && entry.revenue != null ? String(entry.revenue) : '',
+      items: (Array.isArray(entry?.expense_items) && entry.expense_items.length)
+        ? entry.expense_items.map(i => ({ what: i.what || '', amount: i.amount != null ? String(i.amount) : '' }))
+        : [{ ...EMPTY_ITEM }],
+      note: entry?.note || '',
+    });
+    setOpenDay(dateStr);
+  };
+
+  const addEntry = async () => {
+    if (num(nRevenue) === 0 && itemsTotal(nItems) === 0 && !nNote.trim()) return;
+    if (!isDemo && (!agencyId || !businessId)) return;
+    setSaving(true);
+    // Upsert by date so picking a date that already exists edits it (no duplicate day).
+    await saveDay(nDate || today, { revenue: nRevenue, items: nItems, note: nNote });
+    setNRevenue(''); setNItems([{ ...EMPTY_ITEM }]); setNNote(''); setNDate(today); setSaving(false); setShowAdd(false);
   };
 
   const deleteRow = async (id) => {
+    if (!id) return;
+    setOpenDay(null);
     if (isDemo) { persistDemo(rows.filter(r => r.id !== id)); return; }
     setRows(prev => prev.filter(r => r.id !== id));
-    try { await createClient().from('daily_finance').delete().eq('id', id); } catch (_) {}
+    try {
+      const { error } = await createClient().from('daily_finance').delete().eq('id', id);
+      if (error) console.error('[finance] delete failed —', error.message, '| code:', error.code, '| details:', error.details);
+    } catch (err) { console.error('[finance] delete threw:', err); }
   };
 
   const netColor = (n) => (n > 0 ? '#22C55E' : n < 0 ? '#E0485A' : 'var(--color-text-tertiary)');
 
-  const itemsEditor = (items, setItems, onBlur) => {
+  // `commit(nextItems)` persists with an explicit value so add/remove/blur never
+  // read stale state (that was the bug where the item bin appeared to do nothing).
+  const itemsEditor = (items, setItems, commit) => {
     const change = (i, patch) => setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {items.map((it, i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8, alignItems: 'center' }}>
             <input className="fin-input" list="fin-cats" type="text" placeholder="What was spent on (e.g. Rent)"
-              value={it.what} onChange={e => change(i, { what: e.target.value })} onBlur={onBlur} />
+              value={it.what} onChange={e => change(i, { what: e.target.value })} onBlur={() => commit?.(items)} />
             <input className="fin-input" type="number" inputMode="decimal" placeholder="Amount"
-              value={it.amount} onChange={e => change(i, { amount: e.target.value })} onBlur={onBlur} />
+              value={it.amount} onChange={e => change(i, { amount: e.target.value })} onBlur={() => commit?.(items)} />
             <button className="fin-del" title="Remove item"
-              onClick={() => { setItems(items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_ITEM }]); onBlur?.(); }}>
+              onClick={() => { const next = items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_ITEM }]; setItems(next); commit?.(next); }}>
               <Trash2 size={13} />
             </button>
           </div>
@@ -414,43 +479,77 @@ export default function FinancePanel() {
                   </span>
                 </button>
 
-                {/* Days — daily revenue & expenses only (net is a monthly figure) */}
+                {/* Weeks — each expands into its seven weekdays (Mon–Sun) */}
                 {open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                    {month.rows.map(row => {
-                      const dayOpen = openDayId === row.id;
-                      const items = Array.isArray(row.expense_items) && row.expense_items.length ? row.expense_items : [{ ...EMPTY_ITEM }];
-                      const onBlur = () => commitRow(row);
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                    {month.weeks.map(week => {
+                      const wOpen = isWeekOpen(week.key);
                       return (
-                        <div key={row.id} style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${dayOpen ? 'var(--color-border-active)' : 'var(--color-border)'}`, borderRadius: 12, overflow: 'hidden' }}>
-                          {/* Compact row — date · revenue · expenses (no daily net) */}
-                          <div onClick={() => setOpenDayId(dayOpen ? null : row.id)}
-                            style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
-                            {dayOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
-                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtNiceShort(row.entry_date)}</span>
-                            <span style={{ fontSize: 12.5, color: '#22C55E', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(row.revenue)}</span>
-                            <span style={{ fontSize: 12.5, color: '#E0485A', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>−{money(row.expenses)}</span>
-                            <button className="fin-del" title="Delete" onClick={(e) => { e.stopPropagation(); deleteRow(row.id); }}><Trash2 size={13} /></button>
-                          </div>
+                        <div key={week.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {/* Week header — carries the week's totals */}
+                          <button className="fin-subweek" onClick={() => toggleWeek(week.key)}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                              {wOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>{week.label}</span>
+                              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>· {week.count} day{week.count !== 1 ? 's' : ''}</span>
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                              {!isMobile && <span style={{ fontSize: 11.5, color: '#22C55E', fontWeight: 700 }}>{money(week.totals.revenue)}</span>}
+                              {!isMobile && <span style={{ fontSize: 11.5, color: '#E0485A', fontWeight: 700 }}>−{money(week.totals.expenses)}</span>}
+                              <span style={{ fontSize: 12.5, color: netColor(week.totals.net), fontWeight: 800 }}>Net {money(week.totals.net)}</span>
+                            </span>
+                          </button>
 
-                          {/* Expanded editor */}
-                          {dayOpen && (
-                            <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
-                              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
-                                <div style={{ width: 160 }}>
-                                  <label style={lbl}>Date</label>
-                                  <input className="fin-input" type="date" value={row.entry_date} onChange={e => editRow(row.id, { entry_date: e.target.value })} onBlur={onBlur} />
-                                </div>
-                                <div style={{ width: 150 }}>
-                                  <label style={lbl}>Revenue</label>
-                                  <input className="fin-input" type="number" inputMode="decimal" value={row.revenue} onChange={e => editRow(row.id, { revenue: e.target.value })} onBlur={onBlur} />
-                                </div>
-                                <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)' }}>logged by {memberName(row.created_by)}</div>
-                              </div>
-                              <label style={lbl}>Expenses — what was spent</label>
-                              {itemsEditor(items, (next) => editRow(row.id, { expense_items: next, expenses: itemsTotal(next) }), onBlur)}
-                              <label style={{ ...lbl, marginTop: 12 }}>Note</label>
-                              <input className="fin-input" type="text" placeholder="Optional note…" value={row.note || ''} onChange={e => editRow(row.id, { note: e.target.value })} onBlur={onBlur} />
+                          {/* The seven weekdays — exactly one Monday, Tuesday, … */}
+                          {wOpen && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: isMobile ? 0 : 10 }}>
+                              {week.dates.map(ds => {
+                                const entry = week.byDate.get(ds);
+                                const has = !!entry;
+                                const dayOpen = openDay === ds;
+                                const commit = () => saveDay(ds, draft);
+                                return (
+                                  <div key={ds} style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${dayOpen ? 'var(--color-border-active)' : 'var(--color-border)'}`, borderRadius: 12, overflow: 'hidden', opacity: (has || dayOpen) ? 1 : 0.7 }}>
+                                    {/* Compact slot — weekday · revenue · expenses · delete */}
+                                    <div onClick={() => openDayEditor(ds)}
+                                      style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                                      {dayOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 700, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{weekdayOf(ds)}</span>
+                                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>{ordinal(parseDay(ds).getDate())}</span>
+                                      </span>
+                                      {has ? (
+                                        <>
+                                          <span style={{ fontSize: 12.5, color: '#22C55E', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(entry.revenue)}</span>
+                                          <span style={{ fontSize: 12.5, color: '#E0485A', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>−{money(entry.expenses)}</span>
+                                          <button className="fin-del" title="Delete this day" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                                        </>
+                                      ) : (
+                                        <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
+                                      )}
+                                    </div>
+
+                                    {/* Expanded editor (bound to the shared draft buffer) */}
+                                    {dayOpen && (
+                                      <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
+                                          <div style={{ width: 150 }}>
+                                            <label style={lbl}>Revenue</label>
+                                            <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
+                                          </div>
+                                          <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
+                                            {fmtNice(ds)}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
+                                          </div>
+                                        </div>
+                                        <label style={lbl}>Expenses — what was spent</label>
+                                        {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
+                                        <label style={{ ...lbl, marginTop: 12 }}>Note</label>
+                                        <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -512,6 +611,12 @@ export default function FinancePanel() {
           background: var(--color-bg-tertiary); border: 1px solid var(--color-border); color: var(--color-text-secondary); transition: .12s;
         }
         .fin-week:hover { border-color: var(--color-border-active); }
+        .fin-subweek {
+          width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          padding: 9px 13px; border-radius: 10px; cursor: pointer; font-family: inherit; text-align: left;
+          background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); transition: .12s;
+        }
+        .fin-subweek:hover { border-color: var(--color-border-active); }
         .fin-del {
           width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer;
           color: var(--color-text-tertiary); display: flex; align-items: center; justify-content: center; transition: .12s; flex-shrink: 0;
