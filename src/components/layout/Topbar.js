@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search, Bell, Plus, PanelLeft, Star, Share2, Undo2, Redo2,
@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client';
 
 export default function Topbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     currentPage, sidebarOpen, toggleSidebar,
     updatePage, toggleFavoritePage,
@@ -424,9 +425,14 @@ export default function Topbar() {
       {!isReadOnly && (
         <button
           onClick={async () => {
-            const { addPage } = useWorkspaceStore.getState();
-            const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
-            if (newId && workspace) router.push(`/${workspace.id}/${newId}`);
+            const store = useWorkspaceStore.getState();
+            const newId = await store.addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
+            if (!newId) return;
+            // Pages render in-place from the store — there is no /[workspace]/[page]
+            // route, so open it via currentPage and keep the URL on home ("/").
+            const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
+            if (freshPage) store.setCurrentPage(freshPage);
+            if (pathname !== '/') router.push('/');
           }}
           title="New page"
           style={{
