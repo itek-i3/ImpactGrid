@@ -470,6 +470,8 @@ function ChatContent() {
   const fileInputRef = useRef(null);
   const [staged, setStaged] = useState([]); // { id, name, type, size, url, uploading, error }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0); // enter/leave fire on children too; count to avoid flicker
   const removeStaged = (id) => setStaged(prev => prev.filter(s => s.id !== id));
 
   // Open the file picker filtered to a kind (WhatsApp "+" menu). `capture` opens
@@ -985,8 +987,21 @@ function ChatContent() {
               </div>
             </div>
 
-            {/* ── Chat area ── */}
-            <div style={{ flex: 1, display: (isMobile && !mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+            {/* ── Chat area (drag & drop files anywhere here) ── */}
+            <div
+              style={{ position: 'relative', flex: 1, display: (isMobile && !mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}
+              onDragEnter={canPost ? (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); dragCounter.current += 1; setDragOver(true); } } : undefined}
+              onDragOver={canPost ? (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); } : undefined}
+              onDragLeave={canPost ? () => { if (dragCounter.current > 0) { dragCounter.current -= 1; if (dragCounter.current === 0) setDragOver(false); } } : undefined}
+              onDrop={canPost ? (e) => { e.preventDefault(); dragCounter.current = 0; setDragOver(false); const files = e.dataTransfer?.files; if (files?.length) uploadFiles(files); } : undefined}
+            >
+              {dragOver && (
+                <div style={{ position: 'absolute', inset: 8, zIndex: 200, pointerEvents: 'none', background: 'rgba(6,12,26,0.85)', backdropFilter: 'blur(3px)', border: '2px dashed rgba(48,108,236,0.7)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(48,108,236,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7EB3FF' }}><Plus size={30} /></div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#E2EEFF' }}>Drop files to send</div>
+                  <div style={{ fontSize: 12.5, color: '#8FB4E8' }}>Photos, videos, documents &amp; audio</div>
+                </div>
+              )}
 
               {/* Chat header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, flexShrink: 0, background: '#000', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
