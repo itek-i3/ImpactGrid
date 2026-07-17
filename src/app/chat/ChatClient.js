@@ -7,7 +7,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
-import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward, ChevronLeft, AtSign } from 'lucide-react';
+import { Send, MessageSquare, Lock, Smile, Search, Check, CheckCheck, Pencil, Trash2, X, Forward, ChevronLeft, AtSign, FileText, Download, Plus, Image as ImageIcon, Camera, Music } from 'lucide-react';
 import { buildDmChannel, parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -17,8 +17,17 @@ import styles from '@/styles/layout.module.css';
 // Clients beat every 25s, so 60s tolerates a missed beat / slow network.
 const ONLINE_WINDOW_MS = 60 * 1000;
 
-// WhatsApp-style: a line that starts with "- " (or "* ") becomes a "• " bullet.
-const pointifyBullets = (text) => text.replace(/(^|\n)[-*] /g, '$1• ');
+const isImageType = (t) => typeof t === 'string' && t.startsWith('image/');
+const isVideoType = (t) => typeof t === 'string' && t.startsWith('video/');
+const isAudioType = (t) => typeof t === 'string' && t.startsWith('audio/');
+// Conversation-list preview: fall back to an attachment label for file-only messages.
+const previewText = (m) => (m?.message || (Array.isArray(m?.attachments) && m.attachments.length ? '📎 Attachment' : ''));
+const formatBytes = (n) => {
+  const b = Number(n) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 // WhatsApp-style unread-count badge shown beside a conversation.
 const UNREAD_BADGE = { flexShrink: 0, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#22C55E', color: '#052e16', fontSize: 10.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' };
@@ -427,20 +436,23 @@ function ChatContent() {
 
   const handleSend = async (e) => {
     e?.preventDefault();
-    if (!inputText.trim() || !workspaceId) return;
     const text = inputText.trim();
+    const ready = staged.filter(s => s.url && !s.uploading && !s.error);
+    if ((!text && ready.length === 0) || !workspaceId) return;
+    const atts = ready.map(s => ({ url: s.url, name: s.name, type: s.type, size: s.size }));
     setInputText('');
     setMentionOpen(false);
+    setStaged([]);
     setSending(true);
     if (isDemo) {
-      const msg = { id: crypto.randomUUID(), message: text, channel: activeChannel, createdAt: new Date().toISOString(), userId: currentUserId, userName: userProfile?.full_name || 'You', userRole: userProfile?.role || 'member' };
+      const msg = { id: crypto.randomUUID(), message: text, attachments: atts, channel: activeChannel, createdAt: new Date().toISOString(), userId: currentUserId, userName: userProfile?.full_name || 'You', userRole: userProfile?.role || 'member' };
       setMessages(prev => { const next = [...prev, msg]; localStorage.setItem(`demo-chat-${workspaceId}-${activeChannel}`, JSON.stringify(next)); return next; });
       setLastMessages(p => ({ ...p, [activeChannel]: msg }));
       setSending(false);
       return;
     }
     try {
-      const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, channel: activeChannel }) });
+      const res = await fetch(`/os/api/workspaces/${workspaceId}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, channel: activeChannel, attachments: atts }) });
       if (res.ok) {
         const j = await res.json();
         if (j.data) {
@@ -454,12 +466,113 @@ function ChatContent() {
     finally { setSending(false); }
   };
 
+  // ── File attachments ────────────────────────────────────────────────────────
+  const fileInputRef = useRef(null);
+  const [staged, setStaged] = useState([]); // { id, name, type, size, url, uploading, error }
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const removeStaged = (id) => setStaged(prev => prev.filter(s => s.id !== id));
+
+  // Open the file picker filtered to a kind (WhatsApp "+" menu). `capture` opens
+  // the device camera on mobile.
+  const pickFiles = useCallback((accept, capture) => {
+    const el = fileInputRef.current;
+    if (!el) return;
+    el.accept = accept || '';
+    if (capture) el.setAttribute('capture', capture); else el.removeAttribute('capture');
+    el.click();
+  }, []);
+
+  // One row of the "+" attachment menu.
+  const attachOption = (label, Icon, color, accept, capture) => (
+    <button key={label} type="button" onClick={() => { setAttachMenuOpen(false); pickFiles(accept, capture); }}
+      style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '9px 10px', borderRadius: 10, fontFamily: 'inherit', textAlign: 'left', transition: 'background .1s' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+      <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: `${color}22`, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={17} /></span>
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: '#E2EEFF' }}>{label}</span>
+    </button>
+  );
+
+  const uploadFiles = useCallback(async (files) => {
+    const list = Array.from(files || []).slice(0, 10);
+    for (const file of list) {
+      const id = crypto.randomUUID();
+      setStaged(prev => [...prev, { id, name: file.name, type: file.type, size: file.size, url: '', uploading: true, error: false }]);
+      if (isDemo) {
+        // Demo mode has no storage — use a local preview URL so the flow still works.
+        const url = URL.createObjectURL(file);
+        setStaged(prev => prev.map(s => s.id === id ? { ...s, url, uploading: false } : s));
+        continue;
+      }
+      try {
+        const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : '';
+        const key = `${workspaceId}/${id}${ext}`;
+        const sb = createClient();
+        const { error } = await sb.storage.from('chat-files').upload(key, file, { contentType: file.type || undefined, upsert: false });
+        if (error) throw error;
+        const { data: { publicUrl } } = sb.storage.from('chat-files').getPublicUrl(key);
+        setStaged(prev => prev.map(s => s.id === id ? { ...s, url: publicUrl, uploading: false } : s));
+      } catch (err) {
+        console.error('[chat] file upload failed:', err?.message || err);
+        setStaged(prev => prev.map(s => s.id === id ? { ...s, uploading: false, error: true } : s));
+      }
+    }
+  }, [isDemo, workspaceId]);
+
+  // Render a message's attachments — images inline, other files as download cards.
+  // dl() appends Supabase's ?download=<name> so the file keeps its ORIGINAL name
+  // (the download attribute alone is ignored cross-origin, giving the UUID name).
+  const renderAttachments = (atts, isOwn) => {
+    if (!Array.isArray(atts) || atts.length === 0) return null;
+    const dl = (a) => `${a.url}${a.url.includes('?') ? '&' : '?'}download=${encodeURIComponent(a.name)}`;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+        {atts.map((a, i) => (
+          isImageType(a.type) ? (
+            <div key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+              <a href={a.url} target="_blank" rel="noreferrer" style={{ display: 'block', lineHeight: 0 }}>
+                <img src={a.url} alt={a.name} style={{ maxWidth: 260, maxHeight: 280, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.12)' }} />
+              </a>
+              <a href={dl(a)} download={a.name} title={`Download ${a.name}`}
+                style={{ position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+                <Download size={14} />
+              </a>
+            </div>
+          ) : isVideoType(a.type) ? (
+            <div key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
+              <video src={a.url} controls preload="metadata" style={{ maxWidth: 280, maxHeight: 300, borderRadius: 10, display: 'block', background: '#000' }} />
+              <a href={dl(a)} download={a.name} title={`Download ${a.name}`} style={{ position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}><Download size={14} /></a>
+            </div>
+          ) : isAudioType(a.type) ? (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8, borderRadius: 10, background: isOwn ? 'rgba(255,255,255,0.12)' : 'rgba(48,108,236,0.12)', maxWidth: 290 }}>
+              <audio src={a.url} controls style={{ width: 270, maxWidth: '100%' }} />
+              <a href={dl(a)} download={a.name} style={{ fontSize: 11, color: isOwn ? 'rgba(255,255,255,0.8)' : '#8FB4E8', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}><Download size={12} style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span></a>
+            </div>
+          ) : (
+            <a key={i} href={dl(a)} rel="noreferrer" download={a.name}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, textDecoration: 'none', background: isOwn ? 'rgba(255,255,255,0.14)' : 'rgba(48,108,236,0.14)', border: '1px solid rgba(255,255,255,0.1)', maxWidth: 260 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isOwn ? '#fff' : '#7EB3FF' }}><FileText size={17} /></span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: isOwn ? '#fff' : '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <span style={{ display: 'block', fontSize: 10.5, color: isOwn ? 'rgba(255,255,255,0.6)' : '#8FB4E8' }}>{formatBytes(a.size)}</span>
+              </span>
+              <Download size={15} style={{ flexShrink: 0, color: isOwn ? 'rgba(255,255,255,0.7)' : '#7EB3FF' }} />
+            </a>
+          )
+        ))}
+      </div>
+    );
+  };
+
+  const canSendNow = !!inputText.trim() || staged.some(s => s.url && !s.uploading && !s.error);
+
   // ── @mentions ──────────────────────────────────────────────────────────────
-  // Input change: keep the text in sync AND look for an "@query" token ending at
-  // the caret so we can pop the mention picker (like WhatsApp/Slack).
+  // Input change: keep the text VERBATIM (no transforms — pasted spacing/newlines
+  // are preserved) AND look for an "@query" token ending at the caret so we can
+  // pop the mention picker (like WhatsApp/Slack).
   const onInputChange = (e) => {
     const el = e.target;
-    const value = pointifyBullets(el.value);
+    const value = el.value;
     setInputText(value);
     const caret = el.selectionStart ?? value.length;
     const m = value.slice(0, caret).match(/(?:^|\s)@([^\s@]*)$/);
@@ -815,7 +928,7 @@ function ChatContent() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {conv.lastMsg ? `${conv.lastMsg.userName?.split(' ')[0] || ''}: ${conv.lastMsg.message}` : 'No messages yet'}
+                            {conv.lastMsg ? `${conv.lastMsg.userName?.split(' ')[0] || ''}: ${previewText(conv.lastMsg)}` : 'No messages yet'}
                           </span>
                           {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
                             <span style={UNREAD_BADGE}>{chatNotifs[conv.id].count > 99 ? '99+' : chatNotifs[conv.id].count}</span>
@@ -859,7 +972,7 @@ function ChatContent() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {conv.lastMsg ? conv.lastMsg.message : `${chatSub || 'Say hello!'}`}
+                            {conv.lastMsg ? previewText(conv.lastMsg) : `${chatSub || 'Say hello!'}`}
                           </span>
                           {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
                             <span style={UNREAD_BADGE}>{chatNotifs[conv.id].count > 99 ? '99+' : chatNotifs[conv.id].count}</span>
@@ -1025,7 +1138,8 @@ function ChatContent() {
                                   position: 'relative',
                                 }}
                               >
-                                {renderMessageText(msg.message, isOwn)}
+                                {msg.message ? renderMessageText(msg.message, isOwn) : null}
+                                {renderAttachments(msg.attachments, isOwn)}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
                                   {msg.edited && <span style={{ fontSize: 9.5, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.5)' : 'rgba(160,190,240,0.42)', lineHeight: 1 }}>edited</span>}
                                   <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
@@ -1150,7 +1264,50 @@ function ChatContent() {
 
               {/* Input bar */}
               {canPost ? (
-                <form onSubmit={handleSend} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px 14px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.12)', flexShrink: 0 }}>
+                <form onSubmit={handleSend} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 14px 14px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.12)', flexShrink: 0 }}>
+                  {staged.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingBottom: 2 }}>
+                      {staged.map(s => (
+                        <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.2)', borderRadius: 10, padding: (isImageType(s.type) && s.url) ? 0 : '6px 26px 6px 8px', overflow: 'hidden', maxWidth: 230 }}>
+                          {isImageType(s.type) && s.url ? (
+                            <img src={s.url} alt={s.name} style={{ width: 54, height: 54, objectFit: 'cover', display: 'block', opacity: s.uploading ? 0.5 : 1 }} />
+                          ) : (
+                            <>
+                              <span style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, background: 'rgba(48,108,236,0.18)', color: '#7EB3FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={15} /></span>
+                              <span style={{ minWidth: 0, maxWidth: 130 }}>
+                                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                                <span style={{ display: 'block', fontSize: 10, color: s.error ? '#E0485A' : '#8FB4E8' }}>{s.error ? 'Failed' : s.uploading ? 'Uploading…' : formatBytes(s.size)}</span>
+                              </span>
+                            </>
+                          )}
+                          <button type="button" onClick={() => removeStaged(s.id)} title="Remove"
+                            style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { uploadFiles(e.target.files); e.target.value = ''; }} />
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <button type="button" onClick={() => setAttachMenuOpen(o => !o)} title="Attach"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: attachMenuOpen ? '#7EB3FF' : '#3D5A8A', display: 'flex', borderRadius: '50%', transition: 'transform .15s, color .15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#7EB3FF'} onMouseLeave={e => { if (!attachMenuOpen) e.currentTarget.style.color = '#3D5A8A'; }}>
+                      <Plus size={22} />
+                    </button>
+                    {attachMenuOpen && (
+                      <>
+                        <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 59 }} />
+                        <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, zIndex: 60, background: 'rgba(12,18,34,0.98)', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.22)', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', padding: 6, minWidth: 214 }}>
+                          {attachOption('Document', FileText, '#8B7CFF', '')}
+                          {attachOption('Photos & videos', ImageIcon, '#3E7BFF', 'image/*,video/*')}
+                          {attachOption('Camera', Camera, '#FF3D7F', 'image/*', 'environment')}
+                          {attachOption('Audio', Music, '#FF7A2F', 'audio/*')}
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <div ref={emojiRef} style={{ position: 'relative', flexShrink: 0 }}>
                     <button type="button" onClick={() => setEmojiOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: '#3D5A8A', display: 'flex', borderRadius: '50%', transition: '.15s' }}
                       onMouseEnter={e => e.currentTarget.style.color = '#7EB3FF'}
@@ -1201,12 +1358,32 @@ function ChatContent() {
                       rows={1}
                       value={inputText}
                       onChange={onInputChange}
+                      onPaste={e => {
+                        // Pasted files/images → upload them. Text is left to paste
+                        // verbatim (no transform) so spacing/arrangement is kept.
+                        const files = Array.from(e.clipboardData?.files || []);
+                        if (files.length) { e.preventDefault(); uploadFiles(files); }
+                      }}
                       onKeyDown={e => {
                         if (mentionOpen && mentionCandidates.length > 0) {
                           if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => (i + 1) % mentionCandidates.length); return; }
                           if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIdx(i => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
                           if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(mentionCandidates[mentionIdx % mentionCandidates.length]); return; }
                           if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); return; }
+                        }
+                        // WhatsApp-style: typing a space right after "- " at line start
+                        // turns it into "• ". Targeted (only the just-typed dash), so
+                        // it never rewrites pasted content.
+                        if (e.key === ' ') {
+                          const el = e.target;
+                          if (el.selectionStart === el.selectionEnd && /(^|\n)-$/.test(inputText.slice(0, el.selectionStart))) {
+                            e.preventDefault();
+                            const pos = el.selectionStart;
+                            const next = `${inputText.slice(0, pos - 1)}• ${inputText.slice(pos)}`;
+                            setInputText(next);
+                            requestAnimationFrame(() => { const c = pos + 1; el.setSelectionRange(c, c); });
+                            return;
+                          }
                         }
                         if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend(); }
                       }}
@@ -1218,9 +1395,10 @@ function ChatContent() {
                     />
                   </div>
 
-                  <button type="submit" disabled={sending || !inputText.trim()} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0, background: inputText.trim() ? 'linear-gradient(135deg,#1E4FB8,#306CEC)' : 'rgba(255,255,255,0.06)', color: inputText.trim() ? '#fff' : 'rgba(255,255,255,0.20)', cursor: inputText.trim() ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: inputText.trim() ? '0 2px 12px rgba(48,108,236,0.40)' : 'none', transition: 'all .15s' }}>
+                  <button type="submit" disabled={sending || !canSendNow} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0, background: canSendNow ? 'linear-gradient(135deg,#1E4FB8,#306CEC)' : 'rgba(255,255,255,0.06)', color: canSendNow ? '#fff' : 'rgba(255,255,255,0.20)', cursor: canSendNow ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: canSendNow ? '0 2px 12px rgba(48,108,236,0.40)' : 'none', transition: 'all .15s' }}>
                     <Send size={16} style={{ marginLeft: 2 }} />
                   </button>
+                  </div>
                 </form>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.12)', fontSize: 12.5, color: '#3D5A8A', flexShrink: 0 }}>

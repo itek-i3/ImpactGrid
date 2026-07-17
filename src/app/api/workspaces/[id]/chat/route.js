@@ -41,7 +41,7 @@ export async function GET(request, { params }) {
     }
   }
 
-  const selectCols = `id, message, channel, created_at, edited, user_id, profiles:user_id (full_name, email, role)`;
+  const selectCols = `id, message, channel, created_at, edited, user_id, attachments, profiles:user_id (full_name, email, role)`;
 
   // DMs: filter only by channel (agency already encoded in channel name + validated above)
   // Group channels: filter by workspace_id as usual
@@ -82,6 +82,7 @@ export async function GET(request, { params }) {
       createdAt: msg.created_at,
       edited: msg.edited || false,
       userId: msg.user_id,
+      attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
       userName: p.full_name || p.email || 'Member',
       userEmail: p.email || '',
       userRole: p.role || 'member',
@@ -101,8 +102,15 @@ export async function POST(request, { params }) {
   const body = await request.json().catch(() => ({}));
   const { message, channel = 'random' } = body;
 
-  if (!message || message.trim() === '') return badRequest('message is required');
-  
+  // Sanitize attachments to { url, name, type, size } (max 10).
+  const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
+    .slice(0, 10)
+    .map((a) => ({ url: String(a?.url || ''), name: String(a?.name || 'file'), type: String(a?.type || ''), size: Number(a?.size) || 0 }))
+    .filter((a) => a.url);
+
+  const text = (message || '').trim();
+  if (text === '' && attachments.length === 0) return badRequest('message or attachments required');
+
   const isValidChannel = VALID_CHANNELS.includes(channel) || channel.startsWith('dm:');
   if (!isValidChannel) return badRequest('invalid channel');
 
@@ -145,8 +153,9 @@ export async function POST(request, { params }) {
     .insert({
       workspace_id: workspaceId,
       user_id: user.id,
-      message: message.trim(),
+      message: text,
       channel,
+      attachments,
     })
     .select(`
       id,
@@ -155,6 +164,7 @@ export async function POST(request, { params }) {
       created_at,
       edited,
       user_id,
+      attachments,
       profiles:user_id (
         full_name,
         email,
@@ -172,6 +182,7 @@ export async function POST(request, { params }) {
     createdAt: data.created_at,
     edited: data.edited || false,
     userId: data.user_id,
+    attachments: Array.isArray(data.attachments) ? data.attachments : [],
     userName: data.profiles?.full_name || 'Anonymous Member',
     userEmail: data.profiles?.email || '',
     userRole: data.profiles?.role || 'member',
@@ -195,7 +206,7 @@ export async function PATCH(request) {
     .update({ message: message.trim(), edited: true })
     .eq('id', messageId)
     .select(`
-      id, message, channel, created_at, edited, user_id,
+      id, message, channel, created_at, edited, user_id, attachments,
       profiles:user_id ( full_name, email, role )
     `)
     .maybeSingle();
@@ -210,6 +221,7 @@ export async function PATCH(request) {
     createdAt: data.created_at,
     edited: data.edited || false,
     userId: data.user_id,
+    attachments: Array.isArray(data.attachments) ? data.attachments : [],
     userName: data.profiles?.full_name || 'Anonymous Member',
     userEmail: data.profiles?.email || '',
     userRole: data.profiles?.role || 'member',
