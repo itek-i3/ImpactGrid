@@ -59,17 +59,34 @@ export async function GET(request, { params }) {
 
   if (error) return fromSupabaseError(error);
 
-  const formatted = (data || []).map((msg) => ({
-    id: msg.id,
-    message: msg.message,
-    channel: msg.channel,
-    createdAt: msg.created_at,
-    edited: msg.edited || false,
-    userId: msg.user_id,
-    userName: msg.profiles?.full_name || 'Anonymous Member',
-    userEmail: msg.profiles?.email || '',
-    userRole: msg.profiles?.role || 'member',
-  }));
+  // Resolve sender identities via admin. The embedded profiles join above runs
+  // under profiles RLS, which only exposes the viewer's own primary agency — so
+  // cross-agency / admin-granted members would otherwise show as "Anonymous
+  // Member" even though the member list already resolves their names via admin.
+  const senderIds = [...new Set((data || []).map((m) => m.user_id).filter(Boolean))];
+  const senders = {};
+  if (senderIds.length) {
+    const { data: profs } = await admin
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .in('id', senderIds);
+    (profs || []).forEach((p) => { senders[p.id] = p; });
+  }
+
+  const formatted = (data || []).map((msg) => {
+    const p = senders[msg.user_id] || msg.profiles || {};
+    return {
+      id: msg.id,
+      message: msg.message,
+      channel: msg.channel,
+      createdAt: msg.created_at,
+      edited: msg.edited || false,
+      userId: msg.user_id,
+      userName: p.full_name || p.email || 'Member',
+      userEmail: p.email || '',
+      userRole: p.role || 'member',
+    };
+  });
 
   return ok(formatted);
 }
