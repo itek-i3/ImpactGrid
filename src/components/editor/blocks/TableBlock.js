@@ -410,6 +410,8 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
   const columnFormulas = properties.columnFormulas || {};
   const columnOptions  = properties.columnOptions  || {};
   const currencyCode   = properties.currencyCode   || 'KES';
+  const columnWidths   = properties.columnWidths   || {};  // { [colIndex]: px }
+  const rowHeights     = properties.rowHeights     || {};  // { [dataRowIndex]: px }
 
   const cleanText = (html) => (html || '').replace(/<[^>]*>/g, '').trim();
 
@@ -567,6 +569,87 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     updateRows(newRows);
     setSelectedRowIdx(toIdx);
   }, [rows, updateRows]);
+
+  // ── Column reorder (drag a header to a new position) ──
+  const [dragCol, setDragCol] = useState(null);       // source column being dragged
+  const [dragOverCol, setDragOverCol] = useState(null); // hovered drop target
+
+  const moveColumn = useCallback((from, to) => {
+    const colCount = rows[0]?.length || 0;
+    if (from == null || to == null || from === to) return;
+    if (from < 0 || to < 0 || from >= colCount || to >= colCount) return;
+    // New order of OLD column indices: pull `from` out, insert it at `to`.
+    const order = [];
+    for (let i = 0; i < colCount; i++) if (i !== from) order.push(i);
+    order.splice(to, 0, from);
+    const inv = []; order.forEach((oldIdx, newIdx) => { inv[oldIdx] = newIdx; }); // old→new
+
+    const newRows = rows.map((row) => order.map((oi) => row[oi]));
+    const newTypes = order.map((oi) => columnTypes[oi]);
+    const remap = (obj) => { const out = {}; order.forEach((oi, ni) => { if (obj[oi] !== undefined) out[ni] = obj[oi]; }); return out; };
+    // Formulas: remap their key AND the column indices they reference.
+    const newFormulas = {};
+    order.forEach((oi, ni) => {
+      const cfg = columnFormulas[oi];
+      if (cfg === undefined) return;
+      const nc = { ...cfg };
+      if (typeof nc.colA === 'number') nc.colA = inv[nc.colA];
+      if (typeof nc.colB === 'number') nc.colB = inv[nc.colB];
+      if (typeof nc.colC === 'number') nc.colC = inv[nc.colC];
+      if (Array.isArray(nc.cols)) nc.cols = nc.cols.map((c) => inv[c]).filter((c) => c !== undefined);
+      newFormulas[ni] = nc;
+    });
+    updateBoth(newRows, { columnTypes: newTypes, columnWidths: remap(columnWidths), columnOptions: remap(columnOptions), columnFormulas: newFormulas });
+    setFocusedCell(null);
+    setSelectedRowIdx(null);
+  }, [rows, columnTypes, columnWidths, columnOptions, columnFormulas, updateBoth]);
+
+  // ── Excel-style resize: drag a header's right edge (width) or a row's bottom
+  // edge (height). Live-previewed, committed on pointer up. ──
+  const [resizing, setResizing] = useState(false);
+  const [resizePreview, setResizePreview] = useState(null); // { kind:'col'|'row', index, size }
+  const resizeRef = useRef(null);
+
+  const startResize = useCallback((kind, index, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = e.currentTarget.parentElement; // th (for col) or td (for row)
+    const base = kind === 'col'
+      ? (columnWidths[index] || cell?.offsetWidth || 120)
+      : (rowHeights[index] || cell?.parentElement?.offsetHeight || 40);
+    resizeRef.current = { kind, index, start: kind === 'col' ? e.clientX : e.clientY, base, last: base };
+    setResizePreview({ kind, index, size: base });
+    setResizing(true);
+  }, [columnWidths, rowHeights]);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const move = (ev) => {
+      const d = resizeRef.current;
+      if (!d) return;
+      const size = d.kind === 'col'
+        ? Math.max(60, Math.round(d.base + (ev.clientX - d.start)))
+        : Math.max(28, Math.round(d.base + (ev.clientY - d.start)));
+      d.last = size;
+      setResizePreview({ kind: d.kind, index: d.index, size });
+    };
+    const up = () => {
+      const d = resizeRef.current;
+      if (d) {
+        if (d.kind === 'col') updateConfig({ columnWidths: { ...columnWidths, [d.index]: d.last } });
+        else updateConfig({ rowHeights: { ...rowHeights, [d.index]: d.last } });
+      }
+      resizeRef.current = null;
+      setResizePreview(null);
+      setResizing(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [resizing, updateConfig, columnWidths, rowHeights]);
+
+  const colWidthOf = (ci) => (resizePreview?.kind === 'col' && resizePreview.index === ci) ? resizePreview.size : columnWidths[ci];
+  const rowHeightOf = (ri) => (resizePreview?.kind === 'row' && resizePreview.index === ri) ? resizePreview.size : rowHeights[ri];
 
   // ── Cell / row / column operations (unchanged logic, now through helpers) ──
   const [activeDropdownCol, setActiveDropdownCol]         = useState(null);
@@ -1142,6 +1225,10 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
 
       <div className={styles.tableScroll} ref={scrollRailRef}>
       <table className={styles.table}>
+        <colgroup>
+          {!readOnly && <col style={{ width: 28 }} />}
+          {rows[0]?.map((_, ci) => <col key={ci} style={colWidthOf(ci) ? { width: colWidthOf(ci) } : undefined} />)}
+        </colgroup>
         <thead>
           <tr>
             {/* Row handle header — empty, just sets column width */}
@@ -1150,8 +1237,32 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
               const colType = columnTypes[ci] || 'text';
               const IconComponent = getTypeIcon(colType);
               return (
-                <th key={ci} className={styles.tableHeader}>
+                <th
+                  key={ci}
+                  className={styles.tableHeader}
+                  style={{
+                    position: 'relative',
+                    ...(colWidthOf(ci) ? { width: colWidthOf(ci), minWidth: colWidthOf(ci), maxWidth: colWidthOf(ci) } : {}),
+                    ...(dragOverCol === ci && dragCol !== null && dragCol !== ci ? { boxShadow: 'inset 3px 0 0 0 #306CEC' } : {}),
+                    ...(dragCol === ci ? { opacity: 0.5 } : {}),
+                  }}
+                  onDragOver={!readOnly ? (e) => { if (dragCol !== null) { e.preventDefault(); if (dragOverCol !== ci) setDragOverCol(ci); } } : undefined}
+                  onDrop={!readOnly ? (e) => { e.preventDefault(); if (dragCol !== null && dragCol !== ci) moveColumn(dragCol, ci); setDragCol(null); setDragOverCol(null); } : undefined}
+                >
                   <div className={styles.headerContainer}>
+                    {!readOnly && (
+                      <span
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragCol(ci); }}
+                        onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
+                        title="Drag to reorder column"
+                        style={{ display: 'flex', alignItems: 'center', cursor: 'grab', color: '#3D5A8A', marginRight: 2, flexShrink: 0 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#7EB3FF'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#3D5A8A'; }}
+                      >
+                        <GripVertical size={13} />
+                      </span>
+                    )}
                     {!readOnly && (
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flexDirection: 'column', gap: 2 }}>
                         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -1343,6 +1454,15 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
                     )}
                     <EditableCell value={cell} onBlur={(text) => updateCell(0, ci, text)} className={styles.headerText} readOnly={readOnly} placeholder="Column" />
                   </div>
+                  {!readOnly && (
+                    <div
+                      onPointerDown={(e) => startResize('col', ci, e)}
+                      title="Drag to resize column"
+                      style={{ position: 'absolute', top: 0, right: -3, width: 8, height: '100%', cursor: 'col-resize', zIndex: 3, touchAction: 'none' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.35)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    />
+                  )}
                 </th>
               );
             })}
@@ -1350,13 +1470,21 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
         </thead>
         <tbody>
           {rows.slice(1).map((row, ri) => (
-            <tr key={ri + 1} style={selectedRowIdx === ri + 1 ? { background: 'rgba(48,108,236,0.10)' } : undefined}>
+            <tr key={ri + 1} style={{ ...(selectedRowIdx === ri + 1 ? { background: 'rgba(48,108,236,0.10)' } : {}), ...(rowHeightOf(ri) ? { height: rowHeightOf(ri) } : {}) }}>
               {/* Row handle cell */}
               {!readOnly && (
                 <td
-                  style={{ width: 28, minWidth: 28, padding: 0, textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid rgba(48,108,236,0.10)', cursor: 'pointer', userSelect: 'none' }}
+                  style={{ position: 'relative', width: 28, minWidth: 28, padding: 0, textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid rgba(48,108,236,0.10)', cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => setSelectedRowIdx(selectedRowIdx === ri + 1 ? null : ri + 1)}
                 >
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => startResize('row', ri, e)}
+                    title="Drag to resize row height"
+                    style={{ position: 'absolute', left: 0, bottom: -3, width: '100%', height: 8, cursor: 'row-resize', zIndex: 3, touchAction: 'none' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.35)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  />
                   {selectedRowIdx === ri + 1 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                       <button
