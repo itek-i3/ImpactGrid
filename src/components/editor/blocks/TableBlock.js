@@ -604,6 +604,46 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     setSelectedRowIdx(null);
   }, [rows, columnTypes, columnWidths, columnOptions, columnFormulas, updateBoth]);
 
+  // Pointer-based drag so you actually SEE the column move: a labelled chip
+  // follows the cursor and the insertion point highlights as you go.
+  const colDragRef = useRef(null); // { from, over }
+  const [colChip, setColChip] = useState(null); // { x, y, label }
+
+  const startColDrag = useCallback((ci, e) => {
+    if (readOnly) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const label = ((rows[0]?.[ci] || '').replace(/<[^>]*>/g, '').trim()) || `Column ${ci + 1}`;
+    colDragRef.current = { from: ci, over: ci };
+    setDragCol(ci);
+    setDragOverCol(ci);
+    setColChip({ x: e.clientX, y: e.clientY, label });
+  }, [readOnly, rows]);
+
+  useEffect(() => {
+    if (dragCol === null) return;
+    document.body.style.userSelect = 'none';
+    const move = (ev) => {
+      let over = null;
+      const ths = tableWrapperRef.current?.querySelectorAll('thead th[data-col]');
+      ths?.forEach((th) => { const r = th.getBoundingClientRect(); if (ev.clientX >= r.left && ev.clientX <= r.right) over = Number(th.getAttribute('data-col')); });
+      if (colDragRef.current) colDragRef.current.over = over;
+      setDragOverCol(over);
+      setColChip((c) => (c ? { ...c, x: ev.clientX, y: ev.clientY } : c));
+    };
+    const up = () => {
+      const d = colDragRef.current;
+      if (d && d.from != null && d.over != null && d.over !== d.from) moveColumn(d.from, d.over);
+      colDragRef.current = null;
+      setDragCol(null);
+      setDragOverCol(null);
+      setColChip(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { document.body.style.userSelect = ''; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [dragCol, moveColumn]);
+
   // ── Excel-style resize: drag a header's right edge (width) or a row's bottom
   // edge (height). Live-previewed, committed on pointer up. ──
   const [resizing, setResizing] = useState(false);
@@ -1239,26 +1279,23 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
               return (
                 <th
                   key={ci}
+                  data-col={ci}
                   className={styles.tableHeader}
                   style={{
                     position: 'relative',
                     ...(colWidthOf(ci) ? { width: colWidthOf(ci), minWidth: colWidthOf(ci), maxWidth: colWidthOf(ci) } : {}),
-                    ...(dragOverCol === ci && dragCol !== null && dragCol !== ci ? { boxShadow: 'inset 3px 0 0 0 #306CEC' } : {}),
-                    ...(dragCol === ci ? { opacity: 0.5 } : {}),
+                    ...(dragOverCol === ci && dragCol !== null && dragCol !== ci ? { boxShadow: `inset ${ci > dragCol ? '-' : ''}3px 0 0 0 #306CEC` } : {}),
+                    ...(dragCol === ci ? { opacity: 0.4 } : {}),
                   }}
-                  onDragOver={!readOnly ? (e) => { if (dragCol !== null) { e.preventDefault(); if (dragOverCol !== ci) setDragOverCol(ci); } } : undefined}
-                  onDrop={!readOnly ? (e) => { e.preventDefault(); if (dragCol !== null && dragCol !== ci) moveColumn(dragCol, ci); setDragCol(null); setDragOverCol(null); } : undefined}
                 >
                   <div className={styles.headerContainer}>
                     {!readOnly && (
                       <span
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragCol(ci); }}
-                        onDragEnd={() => { setDragCol(null); setDragOverCol(null); }}
+                        onPointerDown={(e) => startColDrag(ci, e)}
                         title="Drag to reorder column"
-                        style={{ display: 'flex', alignItems: 'center', cursor: 'grab', color: '#3D5A8A', marginRight: 2, flexShrink: 0 }}
+                        style={{ display: 'flex', alignItems: 'center', cursor: dragCol === ci ? 'grabbing' : 'grab', color: dragCol === ci ? '#7EB3FF' : '#3D5A8A', marginRight: 2, flexShrink: 0, touchAction: 'none' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = '#7EB3FF'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = '#3D5A8A'; }}
+                        onMouseLeave={(e) => { if (dragCol !== ci) e.currentTarget.style.color = '#3D5A8A'; }}
                       >
                         <GripVertical size={13} />
                       </span>
@@ -1690,6 +1727,13 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
       </div>
 
       {showChart && renderChart()}
+
+      {/* Floating label that follows the cursor while dragging a column */}
+      {colChip && (
+        <div style={{ position: 'fixed', top: colChip.y + 14, left: colChip.x + 14, zIndex: 10000, pointerEvents: 'none', background: 'rgba(48,108,236,0.96)', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, boxShadow: '0 8px 26px rgba(0,0,0,0.5)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {colChip.label}
+        </div>
+      )}
     </div>
   );
 }
