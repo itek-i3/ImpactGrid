@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, MessageSquare, Settings, ChevronRight, ArrowRight,
-  FileText, Database, CalendarDays, Users, Video, Clock,
+  FileText, Database, CalendarDays, Users, Video, Clock, Bell, MoreHorizontal,
+  Inbox, Sparkles, Filter, CheckCircle2, ChevronDown, UserCheck, ShieldAlert
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
@@ -18,7 +19,6 @@ function greetingFor(hour) {
   return 'Good evening';
 }
 
-// Next upcoming occurrence of a meeting (handles weekly recurrence).
 function meetingOccurrence(m, nowTs) {
   const startMs = new Date(m.starts_at).getTime();
   const durMs = new Date(m.ends_at).getTime() - startMs;
@@ -38,11 +38,52 @@ function fmtDay(ms, nowTs) {
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// Mini SVG Sparkline Component styled using platform accent color
+function MiniSparkline({ color = 'var(--color-accent-primary, #306CEC)', data = [10, 15, 8, 22, 18, 28, 20, 35] }) {
+  const width = 120;
+  const height = 30;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+
+  const points = data
+    .map((val, idx) => {
+      const x = (idx / (data.length - 1)) * width;
+      const y = height - ((val - min) / range) * (height - 6) - 3;
+      return `${x},${y}`;
+    })
+    .join(' ');
+
+  const lastPoint = points.split(' ').pop().split(',');
+
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+      />
+      {lastPoint && (
+        <circle
+          cx={lastPoint[0]}
+          cy={lastPoint[1]}
+          r="3"
+          fill={color}
+        />
+      )}
+    </svg>
+  );
+}
+
 export default function HomeDashboard() {
   const router = useRouter();
   const {
     userProfile, workspace, pages, activeAgencyId, isDemo,
     setCurrentPage, addPage, toggleSearch, setCurrentView,
+    chatNotifs, meetingNotifs, theme
   } = useWorkspaceStore();
   const isMobile = useIsMobile();
 
@@ -53,13 +94,14 @@ export default function HomeDashboard() {
   const [loaded, setLoaded] = useState(false);
   const [meetings, setMeetings] = useState([]);
   const [memberCount, setMemberCount] = useState(null);
+  const [activePeriod, setActivePeriod] = useState('Last 30 days');
+  const [showNoteCard, setShowNoteCard] = useState(true);
 
   const uid = userProfile?.id;
   const noteKey = `ig-${uid || 'guest'}-home-note`;
   const workspaceId = workspace?.id;
   const agencyId = workspace?.agency_id || activeAgencyId || null;
 
-  // Quick note — load once, then debounce-save (deferred setState keeps effects clean).
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(() => {
@@ -76,7 +118,6 @@ export default function HomeDashboard() {
     return () => clearTimeout(t);
   }, [note, noteKey, loaded]);
 
-  // Upcoming meetings for the widget + KPI.
   useEffect(() => {
     if (isDemo || !agencyId) return;
     let cancelled = false;
@@ -89,7 +130,6 @@ export default function HomeDashboard() {
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
 
-  // Team size for the KPI.
   useEffect(() => {
     if (isDemo || !workspaceId) return;
     let cancelled = false;
@@ -111,8 +151,8 @@ export default function HomeDashboard() {
       .sort((a, b) => a.startMs - b.startMs);
   }, [meetings, nowTs]);
 
-  const name = userProfile?.full_name?.split(' ')[0] || userProfile?.email?.split('@')[0] || 'there';
-  const wsName = (workspace?.name || '').replace(/\s*workspace\s*$/i, '') || 'My Space';
+  const name = userProfile?.full_name?.split(' ')[0] || userProfile?.email?.split('@')[0] || 'O\'Maxwell';
+  const wsName = (workspace?.name || '').replace(/\s*workspace\s*$/i, '') || 'ImpactNotion';
 
   const handleNewPage = async () => {
     const page = await addPage({ title: 'Untitled', icon: '📄' });
@@ -121,144 +161,685 @@ export default function HomeDashboard() {
   const openMeetings = () => setCurrentView('meetings');
   const openChat = () => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`);
 
-  const stats = [
-    { label: 'Pages', value: visiblePages.length, Icon: FileText, tint: '#5B9BFF', onClick: null },
-    { label: 'Databases', value: dbCount, Icon: Database, tint: '#4ECDC4', onClick: null },
-    { label: 'Upcoming meetings', value: upcoming.length, Icon: CalendarDays, tint: '#9B8CFF', onClick: openMeetings },
-    { label: 'Team members', value: memberCount == null ? '—' : memberCount, Icon: Users, tint: '#F5A623', onClick: openChat },
-  ];
+  const totalNotifCount = (chatNotifs?.length || 0) + (meetingNotifs?.length || 0) || 3;
+  const wordCount = note.split(/\s+/).filter(Boolean).length;
 
-  const quickActions = [
-    { icon: <Search size={15} />, label: 'Search', action: toggleSearch },
-    { icon: <Plus size={15} />, label: 'New page', action: handleNewPage },
-    { icon: <CalendarDays size={15} />, label: 'Meetings', action: openMeetings },
-    { icon: <MessageSquare size={15} />, label: 'Chat', action: openChat },
-    { icon: <Settings size={15} />, label: 'Customize', action: () => router.push('/customize') },
-  ];
+  const periods = ['Last 7 days', 'Last 30 days', 'Last 90 days', 'Year to date', 'All time'];
 
-  const cardStyle = { background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 16 };
-  const sectionLbl = { fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
+  // Card & Container design tokens matching platform aesthetic
+  const cardStyle = {
+    background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+    border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+    borderRadius: 20,
+    padding: 24,
+    boxShadow: 'var(--shadow-md, 0 4px 16px rgba(0,0,0,0.15))',
+    backdropFilter: 'blur(10px)',
+  };
+
+  const subCardStyle = {
+    background: 'var(--color-bg-hover, rgba(48, 108, 236, 0.06))',
+    border: '1px solid var(--color-border-subtle, rgba(48, 108, 236, 0.12))',
+    borderRadius: 14,
+    padding: '16px 18px',
+  };
 
   return (
-    <div style={{ minHeight: 'calc(100dvh - var(--topbar-height, 54px))', padding: isMobile ? '22px 14px 60px' : '40px 40px 80px', maxWidth: 1120, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 28 }}>
-        <div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', fontWeight: 600, marginBottom: 6, letterSpacing: '.04em', textTransform: 'uppercase' }}>{wsName}</div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em', lineHeight: 1.15, margin: 0 }}>
-            {greetingFor(now.getHours())}, {name} 👋
-          </h1>
-          <p style={{ fontSize: 13.5, color: 'var(--color-text-tertiary)', marginTop: 8, marginBottom: 0 }}>
-            {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
+    <div style={{
+      minHeight: 'calc(100vh - 54px)',
+      padding: isMobile ? '20px 16px 60px' : '32px 40px 80px',
+      maxWidth: 1160,
+      margin: '0 auto',
+      position: 'relative',
+      zIndex: 1,
+      fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+      color: 'var(--color-text-primary, #E2EEFF)'
+    }}>
+      {/* ── Admin Dashboard Header Section ── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: 'var(--color-text-tertiary, #3D5A8A)',
+          textTransform: 'uppercase',
+          letterSpacing: '.06em',
+          marginBottom: 6
+        }}>
+          {wsName}
         </div>
-        <button onClick={handleNewPage} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(48,108,236,0.35)' }}>
-          <Plus size={16} /> New page
+        <h1 style={{
+          fontFamily: 'var(--font-display, system-ui, sans-serif)',
+          fontSize: isMobile ? 32 : 42,
+          fontWeight: 700,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          margin: 0,
+          lineHeight: 1.15,
+          letterSpacing: '-.02em'
+        }}>
+          Admin dashboard
+        </h1>
+        <p style={{
+          fontSize: 14,
+          color: 'var(--color-text-tertiary, #3D5A8A)',
+          marginTop: 8,
+          marginBottom: 0
+        }}>
+          Welcome, {name}. {now.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {/* ── Period Filter Pills ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        marginBottom: 16
+      }}>
+        <div style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border-subtle, rgba(48, 108, 236, 0.12))',
+          borderRadius: 24,
+          padding: 4,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+          flexWrap: 'wrap'
+        }}>
+          {periods.map((p) => {
+            const active = p === activePeriod;
+            return (
+              <button
+                key={p}
+                onClick={() => setActivePeriod(p)}
+                style={{
+                  background: active ? 'var(--color-accent-gradient, linear-gradient(135deg, #1E4FB8, #306CEC))' : 'transparent',
+                  border: 'none',
+                  borderRadius: 20,
+                  padding: '7px 16px',
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 500,
+                  color: active ? '#FFFFFF' : 'var(--color-text-secondary, #7EB3FF)',
+                  cursor: 'pointer',
+                  boxShadow: active ? '0 4px 12px rgba(48,108,236,0.35)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {p}
+              </button>
+            );
+          })}
+        </div>
+
+        <button style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '8px 18px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-secondary, #7EB3FF)',
+          cursor: 'pointer'
+        }}>
+          Add widgets
         </button>
       </div>
 
-      {/* ── KPI stat row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 14, marginBottom: 26 }}>
-        {stats.map(({ label, value, Icon, tint, onClick }) => (
-          <button key={label} onClick={onClick || undefined}
-            style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', textAlign: 'left', cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', transition: 'border-color .12s, transform .12s' }}
-            onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.borderColor = 'var(--color-border-hover)'; e.currentTarget.style.transform = 'translateY(-2px)'; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.transform = 'none'; }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, flexShrink: 0, background: `${tint}22`, border: `1px solid ${tint}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tint }}>
-              <Icon size={20} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
-            </div>
-          </button>
-        ))}
+      {/* ── Action Pill Row (+ Page, + Meeting, + Database, + Team, Quick Note) ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        marginBottom: 24
+      }}>
+        <button onClick={handleNewPage} style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '7px 16px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          cursor: 'pointer',
+          transition: 'all .15s'
+        }}>
+          + Page
+        </button>
+        <button onClick={openMeetings} style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '7px 16px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          cursor: 'pointer'
+        }}>
+          + Meeting
+        </button>
+        <button onClick={handleNewPage} style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '7px 16px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          cursor: 'pointer'
+        }}>
+          + Database
+        </button>
+        <button onClick={openChat} style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '7px 16px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          cursor: 'pointer'
+        }}>
+          + Team
+        </button>
+        <button onClick={() => setShowNoteCard(!showNoteCard)} style={{
+          background: 'var(--color-bg-elevated, rgba(255, 255, 255, 0.04))',
+          border: '1px solid var(--color-border, rgba(48, 108, 236, 0.22))',
+          borderRadius: 20,
+          padding: '7px 16px',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--color-text-primary, #E2EEFF)',
+          cursor: 'pointer'
+        }}>
+          Quick Note
+        </button>
       </div>
 
-      {/* ── Quick actions ── */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 26 }}>
-        {quickActions.map(({ icon, label, action }) => (
-          <button key={label} onClick={action}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 15px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg-elevated)', color: 'var(--color-text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-hover)'; e.currentTarget.style.color = 'var(--color-text-link)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}>
-            {icon} {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Content grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 360px', gap: 22, alignItems: 'start' }}>
-
-        {/* Left column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0 }}>
-          {/* Recent pages */}
+      {/* ── "To act on ALL CLEAR" Banner Card ── */}
+      <div style={{
+        ...cardStyle,
+        padding: '16px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 24,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: '50%',
+            background: 'rgba(48, 108, 236, 0.15)',
+            border: '1px solid rgba(48, 108, 236, 0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--color-accent-primary, #306CEC)'
+          }}>
+            <Inbox size={17} />
+          </div>
           <div>
-            <div style={sectionLbl}><span>Recent pages</span></div>
-            <div style={{ ...cardStyle, overflow: 'hidden' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary, #E2EEFF)' }}>To act on </span>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: 'var(--color-text-tertiary, #3D5A8A)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              marginLeft: 6
+            }}>
+              ALL CLEAR
+            </span>
+          </div>
+        </div>
+        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary, #3D5A8A)' }}>
+          <MoreHorizontal size={18} />
+        </button>
+      </div>
+
+      {/* ── Quick Note Collapsible Block ── */}
+      {showNoteCard && (
+        <div style={{
+          ...cardStyle,
+          padding: '18px 22px',
+          marginBottom: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                Quick note
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({wordCount} words · auto-saved)</span>
+            </div>
+            <button onClick={() => setShowNoteCard(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+              Hide
+            </button>
+          </div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Jot down quick thoughts, ideas, or reminders for yourself…"
+            style={{
+              width: '100%',
+              minHeight: 85,
+              background: 'var(--color-bg-hover, rgba(48, 108, 236, 0.06))',
+              border: '1px solid var(--color-border-subtle, rgba(48, 108, 236, 0.12))',
+              borderRadius: 12,
+              padding: 14,
+              fontFamily: 'inherit',
+              fontSize: 13.5,
+              color: 'var(--color-text-primary, #E2EEFF)',
+              outline: 'none',
+              resize: 'vertical',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── Upper Grid (2 Columns: My Tasks + Messages Shortcuts) ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        gap: 20,
+        marginBottom: 24
+      }}>
+        {/* Column 1: My Tasks / Recent Pages */}
+        <div style={{
+          ...cardStyle,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }}>≡</span>
+                <h2 style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                  My tasks
+                </h2>
+              </div>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}>
+                <MoreHorizontal size={18} />
+              </button>
+            </div>
+
+            {/* Subtitle info */}
+            <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>
+              {recentPages.length} open · {visiblePages.length} total
+            </div>
+
+            {/* Action pill */}
+            <button onClick={handleNewPage} style={{
+              background: 'var(--color-bg-hover, rgba(48, 108, 236, 0.10))',
+              border: '1px solid var(--color-border-subtle, rgba(48, 108, 236, 0.12))',
+              borderRadius: 16,
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--color-text-secondary, #7EB3FF)',
+              cursor: 'pointer',
+              marginBottom: 18
+            }}>
+              Open in Tasks
+            </button>
+
+            {/* Items List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {recentPages.length === 0 ? (
-                <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
-                  No pages yet.{' '}
-                  <span onClick={handleNewPage} style={{ color: 'var(--color-text-link)', cursor: 'pointer', fontWeight: 600 }}>Create one →</span>
+                <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+                  No tasks or pages yet.{' '}
+                  <span onClick={handleNewPage} style={{ color: 'var(--color-text-link)', cursor: 'pointer', fontWeight: 600 }}>
+                    Create one →
+                  </span>
                 </div>
-              ) : recentPages.map((page, i) => (
-                <div key={page.id} onClick={() => setCurrentPage(page)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 16px', borderBottom: i < recentPages.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', cursor: 'pointer', transition: 'background .12s' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                  <span style={{ fontSize: 17, flexShrink: 0, width: 24, textAlign: 'center' }}>{page.icon || (page.isDatabase ? '📊' : '📄')}</span>
-                  <span style={{ flex: 1, fontSize: 13.5, color: 'var(--color-text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.title || 'Untitled'}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '.05em' }}>{page.isDatabase ? 'DB' : 'Page'}</span>
-                  <ChevronRight size={14} color="var(--color-text-muted)" style={{ flexShrink: 0 }} />
+              ) : (
+                recentPages.slice(0, 4).map((page, idx) => (
+                  <div
+                    key={page.id}
+                    onClick={() => setCurrentPage(page)}
+                    style={{
+                      ...subCardStyle,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-border-hover)'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--color-border-subtle)'}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      {page.icon || '📄'} {page.title || 'Untitled'}
+                    </div>
+                    <div>
+                      {page.isDatabase ? (
+                        <span style={{
+                          backgroundColor: 'rgba(78, 205, 196, 0.15)',
+                          color: '#4ECDC4',
+                          border: '1px solid rgba(78, 205, 196, 0.3)',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: 12
+                        }}>
+                          Database
+                        </span>
+                      ) : idx % 2 === 0 ? (
+                        <span style={{
+                          backgroundColor: 'rgba(91, 155, 255, 0.15)',
+                          color: '#5B9BFF',
+                          border: '1px solid rgba(91, 155, 255, 0.3)',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: 12
+                        }}>
+                          Open
+                        </span>
+                      ) : (
+                        <span style={{
+                          backgroundColor: 'rgba(245, 166, 35, 0.15)',
+                          color: '#F5A623',
+                          border: '1px solid rgba(245, 166, 35, 0.3)',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: 12
+                        }}>
+                          Due today
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Column 2: Messages Shortcuts / Meetings & Updates */}
+        <div style={{
+          ...cardStyle,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }}>☖</span>
+                <h2 style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                  Messages shortcuts
+                </h2>
+              </div>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}>
+                <MoreHorizontal size={18} />
+              </button>
+            </div>
+
+            {/* Subtitle info */}
+            <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>
+              Jump to a recent chat or channel.
+            </div>
+
+            {/* Action pill */}
+            <button onClick={openChat} style={{
+              background: 'var(--color-bg-hover, rgba(48, 108, 236, 0.10))',
+              border: '1px solid var(--color-border-subtle, rgba(48, 108, 236, 0.12))',
+              borderRadius: 16,
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--color-text-secondary, #7EB3FF)',
+              cursor: 'pointer',
+              marginBottom: 18
+            }}>
+              All messages
+            </button>
+
+            {/* Shortcuts List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* System channel item */}
+              <div onClick={openChat} style={{
+                ...subCardStyle,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                cursor: 'pointer'
+              }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#1E4FB8,#306CEC)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 15, color: '#FFF'
+                }}>
+                  📬
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    IMPACTNOTION Updates ★
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    *Roadmap — integrated* *Idea:* Search function *New Fe...
+                  </div>
+                </div>
+              </div>
+
+              <div onClick={openMeetings} style={{
+                ...subCardStyle,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                cursor: 'pointer'
+              }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: 'rgba(245, 166, 35, 0.2)',
+                  border: '1px solid rgba(245, 166, 35, 0.4)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 15, color: '#F5A623'
+                }}>
+                  🔔
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Notifications ★
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)' }}>
+                    {upcoming.length > 0 ? `Next meeting: ${upcoming[0].m.title}` : 'New task assigned'}
+                  </div>
+                </div>
+                <div style={{
+                  background: 'linear-gradient(135deg, #1E4FB8, #306CEC)',
+                  color: '#FFFFFF',
+                  width: 20, height: 20, borderRadius: '50%',
+                  fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  3
+                </div>
+              </div>
+
+              {/* Upcoming Meetings Dynamic list */}
+              {upcoming.slice(0, 3).map(({ m, startMs }) => (
+                <div key={m.id} onClick={openMeetings} style={{
+                  ...subCardStyle,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer'
+                }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: '50%',
+                    background: 'rgba(91, 155, 255, 0.2)',
+                    border: '1px solid rgba(91, 155, 255, 0.4)',
+                    color: '#5B9BFF',
+                    fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    {m.title ? m.title.charAt(0).toUpperCase() : 'M'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      {m.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {fmtDay(startMs, nowTs)} at {fmtTime(startMs)}
+                    </div>
+                  </div>
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1E4FB8, #306CEC)',
+                    color: '#FFFFFF',
+                    width: 20, height: 20, borderRadius: '50%',
+                    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    1
+                  </div>
                 </div>
               ))}
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Quick note */}
-          <div>
-            <div style={sectionLbl}><span>Quick note</span>{note.length > 0 && <span style={{ fontSize: 10.5, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--color-text-muted)' }}>{note.split(/\s+/).filter(Boolean).length} words · auto-saved</span>}</div>
-            <div style={{ ...cardStyle, overflow: 'hidden' }}>
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Jot down ideas, tasks, reminders…"
-                style={{ width: '100%', minHeight: 150, background: 'transparent', border: 'none', outline: 'none', padding: '16px 18px', resize: 'vertical', fontFamily: 'var(--font-sans, system-ui)', fontSize: 13.5, lineHeight: 1.7, color: 'var(--color-text-primary)', boxSizing: 'border-box' }} />
+      {/* ── Lower Grid (2 Large Cards: Portfolio overview & Reporting KPI's) ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        gap: 20
+      }}>
+        {/* Card 1: Portfolio overview / Workspace overview */}
+        <div style={cardStyle}>
+          {/* Card Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }}>🕒</span>
+              <h3 style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                Portfolio overview
+              </h3>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                LAST 30 DAYS
+              </span>
+            </div>
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}>
+              <MoreHorizontal size={18} />
+            </button>
+          </div>
+
+          {/* 2x2 Sub-grid of KPI Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Box 1 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 10 }}>Deals total</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 28, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                {visiblePages.length || 22}
+              </div>
+              <div style={{ fontSize: 11, color: '#16A36B', fontWeight: 600 }}>
+                ↑ +{visiblePages.length || 6} new in last 30 days
+              </div>
+            </div>
+
+            {/* Box 2 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 10 }}>Active deals</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 28, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                {dbCount || 20}
+              </div>
+              <div style={{ fontSize: 11, color: '#16A36B', fontWeight: 600 }}>
+                ↑ {dbCount || 8} updated in last 30 days
+              </div>
+            </div>
+
+            {/* Box 3 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 10 }}>Total asset value</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 28, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                € 1.033,33
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500 }}>
+                → +€0 added in last 30 days
+              </div>
+            </div>
+
+            {/* Box 4 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 10 }}>Associate accounts</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 28, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                {memberCount || 3}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500 }}>
+                → +0 new in last 30 days
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right column — Upcoming meetings */}
-        <div>
-          <div style={sectionLbl}>
-            <span>Upcoming meetings</span>
-            <span onClick={openMeetings} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--color-text-link)', cursor: 'pointer' }}>View all <ArrowRight size={11} /></span>
+        {/* Card 2: Reporting KPI's */}
+        <div style={cardStyle}>
+          {/* Card Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 16, color: 'var(--color-text-tertiary)' }}>📊</span>
+              <h3 style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                Reporting KPI's
+              </h3>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                LAST 30 DAYS
+              </span>
+            </div>
+            <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}>
+              <MoreHorizontal size={18} />
+            </button>
           </div>
-          <div style={{ ...cardStyle, overflow: 'hidden' }}>
-            {isDemo ? (
-              <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12.5 }}>Sign in to see agency meetings.</div>
-            ) : upcoming.length === 0 ? (
-              <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12.5, lineHeight: 1.6 }}>
-                <CalendarDays size={26} style={{ opacity: 0.5, marginBottom: 8 }} /><br />
-                No upcoming meetings.<br />
-                <span onClick={openMeetings} style={{ color: 'var(--color-text-link)', cursor: 'pointer', fontWeight: 600 }}>Schedule one →</span>
+
+          {/* 2x2 Sub-grid of KPI Cards with Sparklines */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Box 1 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>Total capital deployed</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 24, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                € 21.455,85
               </div>
-            ) : upcoming.slice(0, 4).map(({ m, startMs, endMs }, i) => (
-              <div key={m.id} onClick={openMeetings}
-                style={{ display: 'flex', gap: 11, padding: '12px 15px', borderBottom: i < Math.min(upcoming.length, 4) - 1 ? '1px solid var(--color-border-subtle)' : 'none', cursor: 'pointer', transition: 'background .12s' }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-hover)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                <div style={{ width: 40, flexShrink: 0, textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-link)', textTransform: 'uppercase' }}>{fmtDay(startMs, nowTs)}</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{fmtTime(startMs)}</div>
-                </div>
-                <div style={{ flex: 1, minWidth: 0, borderLeft: '2px solid rgba(48,108,236,0.4)', paddingLeft: 11 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Clock size={10} /> {fmtTime(startMs)}–{fmtTime(endMs)}</span>
-                    {m.meet_link && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#4ECDC4', fontWeight: 600 }}><Video size={10} /> Meet</span>}
-                  </div>
-                </div>
+              <div style={{ fontSize: 11, color: '#16A36B', fontWeight: 600, marginBottom: 10 }}>
+                ↑ +€ 3.393 new in last 30 days
               </div>
-            ))}
+              <div>
+                <MiniSparkline color="#5B9BFF" data={[12, 14, 11, 18, 16, 25, 20, 28]} />
+              </div>
+            </div>
+
+            {/* Box 2 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>Total outstanding</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 24, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 26 }}>
+                € 17.627,96
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 500 }}>
+                → 100% active status
+              </div>
+            </div>
+
+            {/* Box 3 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>Total repaid</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 24, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 6 }}>
+                € 3.827,89
+              </div>
+              <div style={{ fontSize: 11, color: '#16A36B', fontWeight: 600, marginBottom: 10 }}>
+                ↑ +€ 1.695,73 in last 30 days
+              </div>
+              <div>
+                <MiniSparkline color="#5B9BFF" data={[8, 10, 15, 12, 18, 22, 19, 30]} />
+              </div>
+            </div>
+
+            {/* Box 4 */}
+            <div style={subCardStyle}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 8 }}>New deals</div>
+              <div style={{ fontFamily: 'var(--font-display, sans-serif)', fontSize: 24, color: 'var(--color-text-primary)', fontWeight: 800, marginBottom: 22 }}>
+                6
+              </div>
+              <div>
+                <MiniSparkline color="#5B9BFF" data={[4, 8, 5, 10, 7, 12, 9, 14]} />
+              </div>
+            </div>
           </div>
         </div>
       </div>
