@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2 } from 'lucide-react';
+import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2, BarChart2 } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -16,6 +17,8 @@ const cleanItems = (items) => (items || [])
 
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const parseDay = (dateStr) => new Date(`${dateStr}T00:00:00`);
+// Short axis label, e.g. "5 Jul"
+const fmtChartDay = (dateStr) => { const d = parseDay(dateStr); return `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`; };
 // "Monday 5th July 2026"
 const fmtNice = (dateStr) => {
   const d = parseDay(dateStr);
@@ -165,6 +168,22 @@ export default function FinancePanel() {
     let r = 0, e = 0;
     rows.forEach(x => { r += num(x.revenue); e += num(x.expenses); });
     return { revenue: r, expenses: e, net: r - e };
+  }, [rows]);
+
+  // Daily revenue vs expenses for the chart (one bar-pair per day, recent first-45).
+  const chartData = useMemo(() => {
+    const map = new Map();
+    rows.forEach(r => {
+      if (!r.entry_date) return;
+      if (!map.has(r.entry_date)) map.set(r.entry_date, { date: r.entry_date, revenue: 0, expenses: 0 });
+      const e = map.get(r.entry_date);
+      e.revenue += num(r.revenue);
+      e.expenses += num(r.expenses);
+    });
+    return [...map.values()]
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .slice(-45)
+      .map(e => ({ label: fmtChartDay(e.date), Revenue: e.revenue, Expenses: e.expenses }));
   }, [rows]);
 
   // Group entries by calendar month → week (Mon–Sun) → day, newest first.
@@ -422,6 +441,28 @@ export default function FinancePanel() {
           </div>
         ))}
       </div>
+
+      {/* Revenue vs Expenses chart */}
+      {chartData.length > 0 && (
+        <div style={{ ...card, marginBottom: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Revenue vs Expenses</span>
+            <span style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{activeBiz?.name ? `${activeBiz.name} · ` : ''}daily</span>
+          </div>
+          <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
+            <BarChart data={chartData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
+              <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+              <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+              <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Bar dataKey="Revenue" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
+              <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* New entry — hidden behind a button so it doesn't take up space */}
       {showAdd ? (
