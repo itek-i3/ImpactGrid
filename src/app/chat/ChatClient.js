@@ -20,6 +20,15 @@ const ONLINE_WINDOW_MS = 60 * 1000;
 const isImageType = (t) => typeof t === 'string' && t.startsWith('image/');
 const isVideoType = (t) => typeof t === 'string' && t.startsWith('video/');
 const isAudioType = (t) => typeof t === 'string' && t.startsWith('audio/');
+// dataTransfer.types is an array in modern browsers but a DOMStringList in some
+// (older Safari/Edge) — handle both so drag-drop works everywhere.
+const dragHasFiles = (e) => {
+  const t = e?.dataTransfer?.types;
+  if (!t) return false;
+  if (typeof t.includes === 'function') return t.includes('Files');
+  if (typeof t.contains === 'function') return t.contains('Files');
+  try { return Array.prototype.indexOf.call(t, 'Files') !== -1; } catch { return false; }
+};
 // Conversation-list preview: fall back to an attachment label for file-only messages.
 const previewText = (m) => (m?.message || (Array.isArray(m?.attachments) && m.attachments.length ? '📎 Attachment' : ''));
 const formatBytes = (n) => {
@@ -471,7 +480,6 @@ function ChatContent() {
   const [staged, setStaged] = useState([]); // { id, name, type, size, url, uploading, error }
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const dragCounter = useRef(0); // enter/leave fire on children too; count to avoid flicker
   const removeStaged = (id) => setStaged(prev => prev.filter(s => s.id !== id));
 
   // Open the file picker filtered to a kind (WhatsApp "+" menu). `capture` opens
@@ -990,10 +998,9 @@ function ChatContent() {
             {/* ── Chat area (drag & drop files anywhere here) ── */}
             <div
               style={{ position: 'relative', flex: 1, display: (isMobile && !mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}
-              onDragEnter={canPost ? (e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); dragCounter.current += 1; setDragOver(true); } } : undefined}
-              onDragOver={canPost ? (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); } : undefined}
-              onDragLeave={canPost ? () => { if (dragCounter.current > 0) { dragCounter.current -= 1; if (dragCounter.current === 0) setDragOver(false); } } : undefined}
-              onDrop={canPost ? (e) => { e.preventDefault(); dragCounter.current = 0; setDragOver(false); const files = e.dataTransfer?.files; if (files?.length) uploadFiles(files); } : undefined}
+              onDragOver={canPost ? (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; if (!dragOver && dragHasFiles(e)) setDragOver(true); } : undefined}
+              onDragLeave={canPost ? (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); } : undefined}
+              onDrop={canPost ? (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer?.files; if (files?.length) uploadFiles(files); } : undefined}
             >
               {dragOver && (
                 <div style={{ position: 'absolute', inset: 8, zIndex: 200, pointerEvents: 'none', background: 'rgba(6,12,26,0.85)', backdropFilter: 'blur(3px)', border: '2px dashed rgba(48,108,236,0.7)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -1276,6 +1283,7 @@ function ChatContent() {
                   <Check size={14} /> {forwardToast}
                 </div>
               )}
+
 
               {/* Input bar */}
               {canPost ? (
