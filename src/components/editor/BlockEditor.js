@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Plus, GripVertical } from 'lucide-react';
+import { Plus, GripVertical, Trash2, Copy, X } from 'lucide-react';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import { parseClipboardToBlocks } from '@/lib/utils/pasteParser';
 import BlockMenu from './BlockMenu';
@@ -53,9 +53,9 @@ const BLOCK_COMPONENTS = {
 };
 
 /**
- * BlockEditor — the main editor container.
- * Renders ordered blocks, handles creation/deletion/reordering,
- * slash command menu, and floating format toolbar.
+ * BlockEditor — Notion-like block editor component.
+ * Renders an array of blocks with rich editing, drag-and-drop reordering,
+ * multi-block selection checkboxes, slash command menu, and floating format toolbar.
  */
 export default function BlockEditor({ pageId, parentBlockId = null, readOnly = false }) {
   const {
@@ -66,6 +66,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
     moveBlock,
     updateBlock,
     deleteBlock,
+    deleteSelectedBlocks,
     duplicateBlock,
     changeBlockType,
     setActiveBlock,
@@ -92,7 +93,43 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   // Drag and Drop reorder state
   const [dropTarget, setDropTarget] = useState({ id: null, position: null });
 
+  // Multi-block checkbox selection state
+  const [selectedBlockIds, setSelectedBlockIds] = useState(new Set());
+
   const editorRef = useRef(null);
+
+  const toggleSelectBlock = useCallback((blockId) => {
+    setSelectedBlockIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(blockId)) {
+        next.delete(blockId);
+      } else {
+        next.add(blockId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedBlockIds.size === blocks.length && blocks.length > 0) {
+      setSelectedBlockIds(new Set());
+    } else {
+      setSelectedBlockIds(new Set(blocks.map((b) => b.id)));
+    }
+  }, [blocks, selectedBlockIds.size]);
+
+  const handleDeleteSelected = useCallback(async () => {
+    const ids = Array.from(selectedBlockIds);
+    if (ids.length === 0) return;
+    await deleteSelectedBlocks(ids);
+    setSelectedBlockIds(new Set());
+  }, [selectedBlockIds, deleteSelectedBlocks]);
+
+  const handleDuplicateSelected = useCallback(() => {
+    const ids = Array.from(selectedBlockIds);
+    ids.forEach((id) => duplicateBlock(id));
+    setSelectedBlockIds(new Set());
+  }, [selectedBlockIds, duplicateBlock]);
 
   const handleGripClick = useCallback((e, block) => {
     e.stopPropagation();
@@ -146,7 +183,6 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       if (readOnly) return;
       e.preventDefault();
       const draggedBlockId = e.dataTransfer.getData('text/plain');
-      const targetPos = dropTarget.position === 'top' ? 'before' : 'after';
       setDropTarget({ id: null, position: null });
 
       const draggedEl = document.getElementById(`block-${draggedBlockId}`);
@@ -155,10 +191,17 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       }
 
       if (draggedBlockId && draggedBlockId !== targetBlockId && moveBlock) {
+        const targetEl = document.getElementById(`block-${targetBlockId}`);
+        let targetPos = 'after';
+        if (targetEl) {
+          const rect = targetEl.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          targetPos = e.clientY < midY ? 'before' : 'after';
+        }
         moveBlock(draggedBlockId, targetBlockId, targetPos);
       }
     },
-    [readOnly, dropTarget, moveBlock]
+    [readOnly, moveBlock]
   );
 
   // ── Slash Command Handling ──
@@ -515,17 +558,69 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
 
   return (
     <div className={`${styles.editor} ${readOnly ? styles.readOnlyEditor : ''}`} ref={editorRef}>
+      {/* Top Batch Selection Toolbar */}
+      {!readOnly && blocks.length > 0 && (
+        <div className={styles.batchToolbar}>
+          <div className={styles.batchToolbarLeft}>
+            <input
+              type="checkbox"
+              className={styles.blockSelectCheckbox}
+              checked={selectedBlockIds.size > 0 && selectedBlockIds.size === blocks.length}
+              onChange={toggleSelectAll}
+              title="Select all blocks"
+            />
+            <span>
+              {selectedBlockIds.size > 0
+                ? `${selectedBlockIds.size} of ${blocks.length} selected`
+                : 'Select all'}
+            </span>
+          </div>
+
+          {selectedBlockIds.size > 0 && (
+            <div className={styles.batchToolbarRight}>
+              <button
+                className={`${styles.batchActionBtn} ${styles.batchDeleteBtn}`}
+                onClick={handleDeleteSelected}
+                title="Delete selected blocks"
+              >
+                <Trash2 size={14} />
+                Delete ({selectedBlockIds.size})
+              </button>
+              <button
+                className={styles.batchActionBtn}
+                onClick={handleDuplicateSelected}
+                title="Duplicate selected blocks"
+              >
+                <Copy size={14} />
+                Duplicate
+              </button>
+              <button
+                className={styles.batchActionBtn}
+                onClick={() => setSelectedBlockIds(new Set())}
+                title="Deselect all"
+              >
+                <X size={14} />
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {blocks.map((block, index) => {
         const BlockComponent = BLOCK_COMPONENTS[block.type];
         if (!BlockComponent) return null;
 
         const isAutoFocus = focusBlockId === block.id;
         const listIndex = block.type === 'numbered_list' ? getListIndex(block.id, index) : 0;
+        const isChecked = selectedBlockIds.has(block.id);
 
         return (
           <div
             key={block.id}
             className={`${styles.blockWrapper} ${parentBlockId ? styles.blockWrapperNested : ''} ${
+              isChecked ? styles.blockWrapperChecked : ''
+            } ${
               dropTarget.id === block.id && dropTarget.position === 'top' ? styles.dropIndicatorTop || '' : ''
             } ${
               dropTarget.id === block.id && dropTarget.position === 'bottom' ? styles.dropIndicatorBottom || '' : ''
@@ -544,6 +639,16 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
             {/* Block Controls */}
             {!readOnly && (
               <div className={styles.blockControls}>
+                <input
+                  type="checkbox"
+                  className={styles.blockSelectCheckbox}
+                  checked={isChecked}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleSelectBlock(block.id);
+                  }}
+                  title="Select block"
+                />
                 <button
                   className={styles.blockControlBtn}
                   onClick={(e) => {

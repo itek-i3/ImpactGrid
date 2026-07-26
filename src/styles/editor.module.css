@@ -17,14 +17,31 @@
   align-items: flex-start;
   gap: var(--space-1);
   padding: 1px 0;
-  margin: 0 -44px;
-  padding-left: 44px;
+  margin: 0 -72px;
+  padding-left: 72px;
   border-radius: var(--radius-md);
   transition: background var(--transition-fast);
 }
 
 .blockWrapper:hover {
   background: var(--color-bg-hover);
+}
+
+.blockWrapperChecked {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-radius: var(--radius-md);
+}
+
+.blockWrapperChecked .blockControls {
+  opacity: 1 !important;
+}
+
+.blockSelectCheckbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  margin-right: 4px;
 }
 
 .dropIndicatorTop {
@@ -39,16 +56,76 @@
   opacity: 1;
 }
 
+/* ── Top Batch Selection Toolbar ── */
+.batchToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  background: #0d172a;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 50;
+  animation: fadeInDown 0.15s ease forwards;
+}
+
+.batchToolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-sm);
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.batchToolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batchActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+.batchActionBtn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.batchDeleteBtn {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+}
+
+.batchDeleteBtn:hover {
+  background: rgba(239, 68, 68, 0.35) !important;
+  color: #ffffff !important;
+}
+
 /* ── Block Controls (drag handle + add button) ── */
 .blockControls {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 2px;
   opacity: 0;
   transition: opacity var(--transition-fast);
   position: absolute;
-  left: 0;
-  top: 2px;
+  left: 4px;
+  top: 3px;
   flex-shrink: 0;
 }
 

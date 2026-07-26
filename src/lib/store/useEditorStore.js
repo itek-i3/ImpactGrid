@@ -449,38 +449,70 @@ export const useEditorStore = create((set, get) => ({
       activeBlockId: toDelete.has(state.activeBlockId) ? null : state.activeBlockId,
     }));
 
-    if (isDemoMode()) return;
-
-    try {
-      for (const id of toDelete) {
-        await fetch(`/os/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
+    if (!isDemoMode()) {
+      try {
+        for (const id of toDelete) {
+          await fetch(`/os/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
+        }
+        if (pageId) {
+          get().syncBlockOrder(pageId);
+        }
+      } catch (e) {
+        console.error('Failed to delete blocks from database:', e);
       }
-      if (pageId) {
-        get().syncBlockOrder(pageId);
-      }
-    } catch (e) {
-      console.error('Failed to delete blocks from database:', e);
     }
   },
 
-  moveBlock: async (blockId, newIndex) => {
+  deleteSelectedBlocks: async (blockIds) => {
+    if (!blockIds || blockIds.length === 0) return;
     get().pushHistory();
-    const blocks = [...get().blocks];
-    const currentIndex = blocks.findIndex((b) => b.id === blockId);
-    if (currentIndex === -1) return;
+    const state = get();
 
-    const pageId = blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
+    const allToDelete = new Set();
+    blockIds.forEach((id) => {
+      allToDelete.add(id);
+      const descendants = getDescendantIds(state.blocks, id);
+      descendants.forEach((d) => allToDelete.add(d));
+    });
 
-    const [movedBlock] = blocks.splice(currentIndex, 1);
-    blocks.splice(newIndex, 0, movedBlock);
-    const newBlocks = blocks.map((b, i) => ({ ...b, sortOrder: i }));
+    const pageId = state.blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
+    let filtered = state.blocks.filter((b) => !allToDelete.has(b.id));
 
-    set((state) => setBlocksState(state, newBlocks, pageId));
+    if (filtered.length === 0 && pageId) {
+      const pId = crypto.randomUUID();
+      filtered = [
+        {
+          id: pId,
+          pageId,
+          type: 'paragraph',
+          content: { text: '' },
+          properties: {},
+          parentBlockId: null,
+          sortOrder: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+    } else {
+      filtered = filtered.map((b, i) => ({ ...b, sortOrder: i }));
+    }
 
-    if (isDemoMode()) return;
+    set((state) => ({
+      ...setBlocksState(state, filtered, pageId),
+      activeBlockId: allToDelete.has(state.activeBlockId) ? null : state.activeBlockId,
+    }));
 
-    if (pageId) {
-      get().syncBlockOrder(pageId);
+    if (!isDemoMode()) {
+      try {
+        for (const id of allToDelete) {
+          await fetch(`/os/api/pages/${pageId}/blocks/${id}`, { method: 'DELETE' });
+        }
+        if (pageId) {
+          get().syncBlockOrder(pageId);
+        }
+      } catch (e) {
+        console.error('Failed to batch delete blocks from database:', e);
+      }
     }
   },
 

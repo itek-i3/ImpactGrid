@@ -27,7 +27,7 @@ import {
 import styles from '@/styles/editor.module.css';
 
 const FRIENDLY_NAMES = {
-  paragraph: 'Text',
+  paragraph: 'Paragraph',
   h1: 'Heading 1',
   h2: 'Heading 2',
   h3: 'Heading 3',
@@ -71,7 +71,7 @@ const BG_COLORS = [
 ];
 
 const CONVERT_TYPES = [
-  { type: 'paragraph', name: 'Text', icon: <Type size={14} /> },
+  { type: 'paragraph', name: 'Paragraph', icon: <Type size={14} /> },
   { type: 'h1', name: 'Heading 1', icon: <Heading1 size={14} /> },
   { type: 'h2', name: 'Heading 2', icon: <Heading2 size={14} /> },
   { type: 'h3', name: 'Heading 3', icon: <Heading3 size={14} /> },
@@ -231,6 +231,25 @@ export default function BlockActionMenu({
       )
     )
     .filter((section) => section.length > 0);
+
+  if (searchQuery.trim()) {
+    const convertSearchMatches = CONVERT_TYPES.filter(
+      (ct) =>
+        ct.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ct.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (ct.type === 'paragraph' && ('text'.includes(searchQuery.toLowerCase()) || 'paragraph'.includes(searchQuery.toLowerCase())))
+    ).map((ct) => ({
+      id: `turn_into_${ct.type}`,
+      name: `Turn into ${ct.name}`,
+      icon: ct.icon,
+      isAction: true,
+      handler: () => handleTurnInto(ct.type),
+    }));
+
+    if (convertSearchMatches.length > 0) {
+      filteredSections.unshift(convertSearchMatches);
+    }
+  }
 
   return (
     <div
