@@ -35,6 +35,49 @@ export default function Topbar() {
   const doUndo = () => (undoController ? undoController.undo() : undo());
   const doRedo = () => (undoController ? undoController.redo() : redo());
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isZ = e.key.toLowerCase() === 'z';
+      const isY = e.key.toLowerCase() === 'y';
+      const isMod = e.ctrlKey || e.metaKey;
+
+      if (!isMod || (!isZ && !isY)) return;
+
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      );
+
+      if (undoController) {
+        if (isZ && !e.shiftKey && undoController.canUndo) {
+          e.preventDefault();
+          doUndo();
+        } else if ((isY || (isZ && e.shiftKey)) && undoController.canRedo) {
+          e.preventDefault();
+          doRedo();
+        }
+        return;
+      }
+
+      if (isZ && !e.shiftKey) {
+        if (canUndo && (!isInput || activeEl?.value === '' || activeEl?.textContent === '')) {
+          e.preventDefault();
+          doUndo();
+        }
+      } else if (isY || (isZ && e.shiftKey)) {
+        if (canRedo && (!isInput || activeEl?.value === '' || activeEl?.textContent === '')) {
+          e.preventDefault();
+          doRedo();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoController, canUndo, canRedo, doUndo, doRedo]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [showPublishMenu, setShowPublishMenu] = useState(false);

@@ -86,38 +86,78 @@ export const useEditorStore = create((set, get) => ({
   toolbarVisible: false,
   toolbarPosition: { top: 0, left: 0 },
 
-  // ── Global undo/redo (tracks table block changes) ──
-  _historyStack: [],   // [{ blockId, content, properties }]
+  // ── Global undo/redo (tracks page block snapshots) ──
+  _historyStack: [],   // Array<Array<Block>>
   _futureStack: [],
   _skipHistory: false,
+  _lastHistoryTime: 0,
+
+  pushHistory: () => {
+    if (get()._skipHistory) return;
+    const now = Date.now();
+    const currentBlocks = get().blocks;
+    if (!currentBlocks || currentBlocks.length === 0) return;
+    const snapshot = JSON.parse(JSON.stringify(currentBlocks));
+    set((s) => ({
+      _historyStack: [...s._historyStack.slice(-49), snapshot],
+      _futureStack: [],
+      _lastHistoryTime: now,
+    }));
+  },
 
   undo: () => {
     const { _historyStack, blocks } = get();
     if (_historyStack.length === 0) return;
-    const entry = _historyStack[_historyStack.length - 1];
-    const current = blocks.find(b => b.id === entry.blockId);
-    if (!current) { set(s => ({ _historyStack: s._historyStack.slice(0, -1) })); return; }
-    set(s => ({
+    const prevBlocks = _historyStack[_historyStack.length - 1];
+    const currentSnapshot = JSON.parse(JSON.stringify(blocks));
+    const pageId = blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
+
+    set((s) => ({
       _historyStack: s._historyStack.slice(0, -1),
-      _futureStack: [...s._futureStack, { blockId: entry.blockId, content: current.content, properties: current.properties }],
+      _futureStack: [...s._futureStack, currentSnapshot],
       _skipHistory: true,
     }));
-    get().updateBlock(entry.blockId, { content: entry.content, properties: entry.properties });
+
+    if (pageId) {
+      set((s) => setBlocksState(s, prevBlocks, pageId));
+      if (!isDemoMode()) {
+        get().syncBlockOrder(pageId);
+        prevBlocks.forEach((b) => {
+          saveBlockDebounced(b.id, pageId, { type: b.type, content: b.content, properties: b.properties });
+        });
+      }
+    } else {
+      set({ blocks: prevBlocks });
+    }
+
     set({ _skipHistory: false });
   },
 
   redo: () => {
     const { _futureStack, blocks } = get();
     if (_futureStack.length === 0) return;
-    const entry = _futureStack[_futureStack.length - 1];
-    const current = blocks.find(b => b.id === entry.blockId);
-    if (!current) { set(s => ({ _futureStack: s._futureStack.slice(0, -1) })); return; }
-    set(s => ({
+    const nextBlocks = _futureStack[_futureStack.length - 1];
+    const currentSnapshot = JSON.parse(JSON.stringify(blocks));
+    const pageId = blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
+
+    set((s) => ({
       _futureStack: s._futureStack.slice(0, -1),
-      _historyStack: [...s._historyStack, { blockId: entry.blockId, content: current.content, properties: current.properties }],
+      _historyStack: [...s._historyStack, currentSnapshot],
       _skipHistory: true,
     }));
-    get().updateBlock(entry.blockId, { content: entry.content, properties: entry.properties });
+
+    if (pageId) {
+      set((s) => setBlocksState(s, nextBlocks, pageId));
+      if (!isDemoMode()) {
+        get().syncBlockOrder(pageId);
+        nextBlocks.forEach((b) => {
+          saveBlockDebounced(b.id, pageId, { type: b.type, content: b.content, properties: b.properties });
+        });
+      }
+    } else {
+      set({ blocks: nextBlocks });
+    }
+
     set({ _skipHistory: false });
   },
 
@@ -162,6 +202,7 @@ export const useEditorStore = create((set, get) => ({
   },
 
   addBlock: async (block, afterBlockId = null) => {
+    get().pushHistory();
     const pageId = block.pageId || get().blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
     if (!pageId) return;
 
@@ -267,14 +308,11 @@ export const useEditorStore = create((set, get) => ({
     const pageId = get().blocks.find((b) => b.id === blockId)?.pageId || useWorkspaceStore.getState().currentPage?.id;
     if (!pageId) return;
 
-    // Capture undo history for table blocks (text blocks use browser-native undo)
-    if (!get()._skipHistory && (updates.content !== undefined || updates.properties !== undefined)) {
-      const current = get().blocks.find(b => b.id === blockId);
-      if (current?.type === 'table') {
-        set(s => ({
-          _historyStack: [...s._historyStack.slice(-49), { blockId, content: current.content, properties: current.properties }],
-          _futureStack: [],
-        }));
+    if (!get()._skipHistory && (updates.content !== undefined || updates.properties !== undefined || updates.type !== undefined)) {
+      const now = Date.now();
+      const lastTime = get()._lastHistoryTime || 0;
+      if (now - lastTime > 800 || updates.type !== undefined) {
+        get().pushHistory();
       }
     }
 
@@ -292,6 +330,7 @@ export const useEditorStore = create((set, get) => ({
   },
 
   deleteBlock: async (blockId) => {
+    get().pushHistory();
     const state = get();
     const descendants = getDescendantIds(state.blocks, blockId);
     const toDelete = new Set([blockId, ...descendants]);
@@ -320,6 +359,7 @@ export const useEditorStore = create((set, get) => ({
   },
 
   moveBlock: async (blockId, newIndex) => {
+    get().pushHistory();
     const blocks = [...get().blocks];
     const currentIndex = blocks.findIndex((b) => b.id === blockId);
     if (currentIndex === -1) return;
@@ -340,6 +380,7 @@ export const useEditorStore = create((set, get) => ({
   },
 
   duplicateBlock: async (blockId) => {
+    get().pushHistory();
     const state = get();
     const block = state.blocks.find((b) => b.id === blockId);
     if (!block) return;
@@ -416,6 +457,7 @@ export const useEditorStore = create((set, get) => ({
   },
 
   changeBlockType: async (blockId, newType) => {
+    get().pushHistory();
     const pageId = get().blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
 
     set((state) => {
@@ -463,7 +505,7 @@ export const useEditorStore = create((set, get) => ({
   // ── Initialize with default blocks ──
 
   initBlocks: async (pageId) => {
-    set({ isSaving: true });
+    set({ isSaving: true, _historyStack: [], _futureStack: [] });
     try {
       if (isDemoMode()) {
         const cached = get().blocksByPage?.[pageId];
