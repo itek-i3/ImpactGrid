@@ -7,7 +7,7 @@ import styles from '@/styles/editor.module.css';
 /**
  * ToggleBlock — collapsible section with heading and nested content.
  */
-export default function ToggleBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function ToggleBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const [isOpen, setIsOpen] = useState(block.properties?.isOpen ?? true);
   const titleRef = useRef(null);
   const contentRef = useRef(null);
@@ -57,6 +57,7 @@ export default function ToggleBlock({ block, onUpdate, onKeyDown, onInput, autoF
             if (onInput) onInput(e);
           }}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
       </div>
       {isOpen && (

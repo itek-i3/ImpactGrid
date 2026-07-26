@@ -189,7 +189,10 @@ export const useEditorStore = create((set, get) => ({
 
   syncBlockOrder: async (pageId) => {
     if (isDemoMode()) return;
-    const orderedIds = get().blocks.map((b) => b.id);
+    const pageBlocks = get().blocksByPage?.[pageId] || get().blocks.filter((b) => b.pageId === pageId);
+    const orderedIds = pageBlocks.map((b) => b.id);
+    if (!orderedIds || orderedIds.length === 0) return;
+
     try {
       await fetch(`/os/api/pages/${pageId}/blocks`, {
         method: 'PATCH',
@@ -220,7 +223,7 @@ export const useEditorStore = create((set, get) => ({
       ? get().blocks.findIndex((b) => b.id === afterBlockId) + 1
       : get().blocks.length;
 
-    const tempId = crypto.randomUUID();
+    const tempId = block.id || crypto.randomUUID();
     const optimisticBlock = {
       id: tempId,
       pageId,
@@ -237,7 +240,11 @@ export const useEditorStore = create((set, get) => ({
     if (afterBlockId) {
       const index = get().blocks.findIndex((b) => b.id === afterBlockId);
       newBlocks = [...get().blocks];
-      newBlocks.splice(index + 1, 0, optimisticBlock);
+      if (index !== -1) {
+        newBlocks.splice(index + 1, 0, optimisticBlock);
+      } else {
+        newBlocks.push(optimisticBlock);
+      }
       newBlocks = newBlocks.map((b, i) => ({ ...b, sortOrder: i }));
     } else {
       newBlocks = [...get().blocks, optimisticBlock];
@@ -301,6 +308,104 @@ export const useEditorStore = create((set, get) => ({
         ...setBlocksState(state, get().blocks.filter((b) => b.id !== tempId), pageId),
         activeBlockId: get().activeBlockId === tempId ? null : get().activeBlockId,
       }));
+    }
+  },
+
+  addBlocks: async (blocksArray, afterBlockId = null) => {
+    if (!blocksArray || blocksArray.length === 0) return [];
+    get().pushHistory();
+
+    const firstBlock = blocksArray[0];
+    const pageId = firstBlock.pageId || get().blocks[0]?.pageId || useWorkspaceStore.getState().currentPage?.id;
+    if (!pageId) return [];
+
+    const currentBlocks = get().blocks;
+    let targetIndex = afterBlockId ? currentBlocks.findIndex((b) => b.id === afterBlockId) : currentBlocks.length - 1;
+    if (targetIndex === -1) targetIndex = currentBlocks.length - 1;
+
+    let resolvedParentBlockId = firstBlock.parentBlockId;
+    if (resolvedParentBlockId === undefined) {
+      if (afterBlockId) {
+        const afterBlock = currentBlocks.find((b) => b.id === afterBlockId);
+        resolvedParentBlockId = afterBlock ? afterBlock.parentBlockId : null;
+      } else {
+        resolvedParentBlockId = null;
+      }
+    }
+
+    const newBlocks = [...currentBlocks];
+    const insertAt = targetIndex + 1;
+
+    const tempCreated = blocksArray.map((b) => ({
+      id: b.id || crypto.randomUUID(),
+      pageId,
+      type: b.type || 'paragraph',
+      content: b.content || { text: '' },
+      properties: b.properties || {},
+      parentBlockId: b.parentBlockId !== undefined ? b.parentBlockId : resolvedParentBlockId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    newBlocks.splice(insertAt, 0, ...tempCreated);
+    const finalBlocks = newBlocks.map((b, i) => ({ ...b, sortOrder: i }));
+    const createdBlocks = finalBlocks.slice(insertAt, insertAt + tempCreated.length);
+
+    set((state) => ({
+      ...setBlocksState(state, finalBlocks, pageId),
+      activeBlockId: createdBlocks[createdBlocks.length - 1].id,
+    }));
+
+    if (!isDemoMode()) {
+      try {
+        for (const b of createdBlocks) {
+          await fetch(`/os/api/pages/${pageId}/blocks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: b.id,
+              type: b.type,
+              content: b.content,
+              properties: b.properties,
+              parentBlockId: b.parentBlockId,
+              sortOrder: b.sortOrder,
+            }),
+          });
+        }
+        if (pageId) {
+          await get().syncBlockOrder(pageId);
+        }
+      } catch (e) {
+        console.error('Failed to add blocks batch to database:', e);
+      }
+    }
+
+    return createdBlocks;
+  },
+
+  moveBlock: async (draggedId, targetId, position = 'after') => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    get().pushHistory();
+
+    const currentBlocks = [...get().blocks];
+    const draggedIndex = currentBlocks.findIndex((b) => b.id === draggedId);
+    if (draggedIndex === -1) return;
+
+    const [draggedBlock] = currentBlocks.splice(draggedIndex, 1);
+
+    let targetIndex = currentBlocks.findIndex((b) => b.id === targetId);
+    if (targetIndex === -1) targetIndex = currentBlocks.length;
+
+    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1;
+    currentBlocks.splice(insertIndex, 0, draggedBlock);
+
+    const pageId = draggedBlock.pageId || get().blocks[0]?.pageId;
+    const finalBlocks = currentBlocks.map((b, i) => ({ ...b, sortOrder: i }));
+
+    set((state) => setBlocksState(state, finalBlocks, pageId));
+
+    if (!isDemoMode() && pageId) {
+      await get().syncBlockOrder(pageId);
     }
   },
 
@@ -557,6 +662,7 @@ export const useEditorStore = create((set, get) => ({
       });
 
       let blocks = data.map(mapBlockFromDb);
+      blocks.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
       if (blocks.length === 0) {
         // Check local cache before seeding an empty paragraph

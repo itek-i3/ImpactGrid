@@ -6,7 +6,7 @@ import styles from '@/styles/editor.module.css';
 /**
  * QuoteBlock — blockquote with left accent border.
  */
-export default function QuoteBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function QuoteBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export default function QuoteBlock({ block, onUpdate, onKeyDown, onInput, autoFo
           if (onInput) onInput(e);
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
     </div>
   );

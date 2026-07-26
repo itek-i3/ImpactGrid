@@ -119,8 +119,9 @@ export default function BlockToolbar({ position, onClose }) {
       ref={toolbarRef}
       className={styles.toolbar}
       style={{
-        top: position.top - 48,
-        left: position.left,
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        transform: 'translateX(-50%)',
       }}
     >
       {formatButtons.map((btn, i) => {

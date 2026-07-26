@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Plus, GripVertical } from 'lucide-react';
 import { useEditorStore } from '@/lib/store/useEditorStore';
+import { parseClipboardToBlocks } from '@/lib/utils/pasteParser';
 import BlockMenu from './BlockMenu';
 import BlockToolbar from './BlockToolbar';
 import BlockActionMenu from './BlockActionMenu';
@@ -61,6 +62,8 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
     blocks: allBlocks,
     activeBlockId,
     addBlock,
+    addBlocks,
+    moveBlock,
     updateBlock,
     deleteBlock,
     duplicateBlock,
@@ -86,6 +89,9 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   // Track which block needs auto-focus
   const [focusBlockId, setFocusBlockId] = useState(null);
 
+  // Drag and Drop reorder state
+  const [dropTarget, setDropTarget] = useState({ id: null, position: null });
+
   const editorRef = useRef(null);
 
   const handleGripClick = useCallback((e, block) => {
@@ -95,6 +101,65 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
     setActionMenuPosition({ top: rect.bottom + 4, left: rect.left });
     setActionMenuOpen(true);
   }, []);
+
+  // ── Drag & Drop Handlers ──
+
+  const handleDragStart = useCallback((e, blockId) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', blockId);
+    const blockEl = document.getElementById(`block-${blockId}`);
+    if (blockEl) {
+      setTimeout(() => {
+        blockEl.style.opacity = '0.4';
+      }, 0);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback((e, blockId) => {
+    const blockEl = document.getElementById(`block-${blockId}`);
+    if (blockEl) {
+      blockEl.style.opacity = '1';
+    }
+    setDropTarget({ id: null, position: null });
+  }, []);
+
+  const handleDragOver = useCallback((e, blockId) => {
+    if (readOnly) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    const targetEl = document.getElementById(`block-${blockId}`);
+    if (targetEl) {
+      const rect = targetEl.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const position = e.clientY < midY ? 'top' : 'bottom';
+      setDropTarget({ id: blockId, position });
+    }
+  }, [readOnly]);
+
+  const handleDragLeave = useCallback((e, blockId) => {
+    setDropTarget((prev) => (prev.id === blockId ? { id: null, position: null } : prev));
+  }, []);
+
+  const handleDrop = useCallback(
+    (e, targetBlockId) => {
+      if (readOnly) return;
+      e.preventDefault();
+      const draggedBlockId = e.dataTransfer.getData('text/plain');
+      const targetPos = dropTarget.position === 'top' ? 'before' : 'after';
+      setDropTarget({ id: null, position: null });
+
+      const draggedEl = document.getElementById(`block-${draggedBlockId}`);
+      if (draggedEl) {
+        draggedEl.style.opacity = '1';
+      }
+
+      if (draggedBlockId && draggedBlockId !== targetBlockId && moveBlock) {
+        moveBlock(draggedBlockId, targetBlockId, targetPos);
+      }
+    },
+    [readOnly, dropTarget, moveBlock]
+  );
 
   // ── Slash Command Handling ──
 
@@ -196,7 +261,12 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
 
   useEffect(() => {
     if (readOnly) return;
-    function handleSelectionChange() {
+
+    let isMouseDown = false;
+
+    function checkAndShowToolbar() {
+      if (isMouseDown) return;
+
       const selection = window.getSelection();
       if (
         selection &&
@@ -206,18 +276,42 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       ) {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        setToolbarPosition({
-          top: rect.top + window.scrollY,
-          left: rect.left + rect.width / 2 - 120,
-        });
+        if (rect.width === 0 && rect.height === 0) {
+          setToolbarPosition(null);
+          return;
+        }
+
+        const top = rect.top - 46 < 10 ? rect.bottom + 8 : rect.top - 46;
+        const left = rect.left + rect.width / 2;
+        setToolbarPosition({ top, left });
       } else {
         setToolbarPosition(null);
       }
     }
 
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () =>
-      document.removeEventListener('selectionchange', handleSelectionChange);
+    function handleMouseDown(e) {
+      isMouseDown = true;
+      setToolbarPosition(null);
+    }
+
+    function handleMouseUp() {
+      isMouseDown = false;
+      setTimeout(checkAndShowToolbar, 20);
+    }
+
+    function handleKeyUp() {
+      checkAndShowToolbar();
+    }
+
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
   }, [readOnly]);
 
   // ── Block Event Handlers ──
@@ -228,6 +322,47 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
       updateBlock(blockId, updates);
     },
     [updateBlock, readOnly]
+  );
+
+  const handleBlockPaste = useCallback(
+    async (e, targetBlockId) => {
+      if (readOnly) return;
+      const parsedBlocks = parseClipboardToBlocks(e.clipboardData);
+      if (!parsedBlocks || parsedBlocks.length === 0) return;
+
+      // If pasting multi-line or distinct block types:
+      if (parsedBlocks.length > 1 || parsedBlocks[0].type !== 'paragraph') {
+        e.preventDefault();
+
+        const targetBlock = blocks.find((b) => b.id === targetBlockId);
+        const isTargetEmpty = !targetBlock?.content?.text || targetBlock.content.text.trim() === '';
+
+        if (isTargetEmpty) {
+          // Replace empty target block with first item
+          changeBlockType(targetBlockId, parsedBlocks[0].type);
+          updateBlock(targetBlockId, {
+            content: parsedBlocks[0].content,
+            properties: parsedBlocks[0].properties || {},
+          });
+
+          if (parsedBlocks.length > 1) {
+            const added = await addBlocks(parsedBlocks.slice(1), targetBlockId);
+            if (added.length > 0) {
+              setFocusBlockId(added[added.length - 1].id);
+            }
+          } else {
+            setFocusBlockId(targetBlockId);
+          }
+        } else {
+          // Append all parsed blocks after non-empty target block
+          const added = await addBlocks(parsedBlocks, targetBlockId);
+          if (added.length > 0) {
+            setFocusBlockId(added[added.length - 1].id);
+          }
+        }
+      }
+    },
+    [readOnly, blocks, changeBlockType, updateBlock, addBlocks]
   );
 
   const handleBlockKeyDown = useCallback(
@@ -390,13 +525,20 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
         return (
           <div
             key={block.id}
-            className={`${styles.blockWrapper} ${parentBlockId ? styles.blockWrapperNested : ''}`}
+            className={`${styles.blockWrapper} ${parentBlockId ? styles.blockWrapperNested : ''} ${
+              dropTarget.id === block.id && dropTarget.position === 'top' ? styles.dropIndicatorTop || '' : ''
+            } ${
+              dropTarget.id === block.id && dropTarget.position === 'bottom' ? styles.dropIndicatorBottom || '' : ''
+            }`}
             onClick={(e) => {
               if (!readOnly) {
                 e.stopPropagation();
                 setActiveBlock(block.id);
               }
             }}
+            onDragOver={(e) => handleDragOver(e, block.id)}
+            onDragLeave={(e) => handleDragLeave(e, block.id)}
+            onDrop={(e) => handleDrop(e, block.id)}
             id={`block-${block.id}`}
           >
             {/* Block Controls */}
@@ -414,8 +556,11 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
                 </button>
                 <button
                   className={`${styles.blockControlBtn} ${styles.dragHandle}`}
-                  title="Block actions"
+                  title="Drag to reorder / Click for actions"
                   onClick={(e) => handleGripClick(e, block)}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, block.id)}
+                  onDragEnd={(e) => handleDragEnd(e, block.id)}
                 >
                   <GripVertical size={14} />
                 </button>
@@ -442,6 +587,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
                 onUpdate={(updates) => !readOnly && handleBlockUpdate(block.id, updates)}
                 onKeyDown={(e) => !readOnly && handleBlockKeyDown(e, block.id, index)}
                 onInput={(e) => !readOnly && handleBlockInput(block.id, e)}
+                onPaste={(e) => !readOnly && handleBlockPaste(e, block.id)}
                 readOnly={readOnly}
               />
             </div>

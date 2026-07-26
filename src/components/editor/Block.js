@@ -1,13 +1,12 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { GripVertical, Plus } from 'lucide-react';
 import styles from '@/styles/editor.module.css';
 
 /**
  * Block — individual block wrapper component.
- * Provides drag handle, add button, styling wrapper, and selection state.
- * Used by BlockEditor to wrap each block type component.
+ * Provides drag handle, add button, styling wrapper, selection state, and drag-and-drop reordering.
  */
 export default function Block({
   block,
@@ -17,11 +16,12 @@ export default function Block({
   readOnly,
   onSelect,
   onAddBelow,
-  onDragStart,
   onGripClick,
+  onMoveBlock,
   children,
 }) {
   const wrapperRef = useRef(null);
+  const [dropPosition, setDropPosition] = useState(null); // 'top' | 'bottom' | null
 
   const handleAddBelow = useCallback(
     (e) => {
@@ -43,13 +43,76 @@ export default function Block({
     if (!readOnly && onSelect) onSelect(block.id);
   }, [block.id, readOnly, onSelect]);
 
+  const handleDragStart = useCallback(
+    (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', block.id);
+      if (wrapperRef.current) {
+        wrapperRef.current.style.opacity = '0.4';
+      }
+    },
+    [block.id]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    if (wrapperRef.current) {
+      wrapperRef.current.style.opacity = '1';
+    }
+    setDropPosition(null);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (e) => {
+      if (readOnly) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      if (wrapperRef.current) {
+        const rect = wrapperRef.current.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          setDropPosition('top');
+        } else {
+          setDropPosition('bottom');
+        }
+      }
+    },
+    [readOnly]
+  );
+
+  const handleDragLeave = useCallback(() => {
+    setDropPosition(null);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e) => {
+      if (readOnly) return;
+      e.preventDefault();
+      const draggedBlockId = e.dataTransfer.getData('text/plain');
+      const targetPos = dropPosition === 'top' ? 'before' : 'after';
+      setDropPosition(null);
+      if (wrapperRef.current) {
+        wrapperRef.current.style.opacity = '1';
+      }
+      if (draggedBlockId && draggedBlockId !== block.id && onMoveBlock) {
+        onMoveBlock(draggedBlockId, block.id, targetPos);
+      }
+    },
+    [readOnly, dropPosition, block.id, onMoveBlock]
+  );
+
   return (
     <div
       ref={wrapperRef}
       className={`${styles.blockWrapper} ${
         isActive ? styles.blockActive || '' : ''
-      } ${isSelected ? styles.blockSelected || '' : ''}`}
+      } ${isSelected ? styles.blockSelected || '' : ''} ${
+        dropPosition === 'top' ? styles.dropIndicatorTop || '' : ''
+      } ${dropPosition === 'bottom' ? styles.dropIndicatorBottom || '' : ''}`}
       onClick={handleClick}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       id={`block-${block.id}`}
       data-block-id={block.id}
       data-block-type={block.type}
@@ -66,12 +129,11 @@ export default function Block({
           </button>
           <button
             className={`${styles.blockControlBtn} ${styles.dragHandle}`}
-            title="Block actions"
+            title="Drag to reorder / Click for actions"
             onClick={handleGripClick}
             draggable
-            onDragStart={(e) => {
-              if (onDragStart) onDragStart(e, block.id, index);
-            }}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
           >
             <GripVertical size={14} />
           </button>

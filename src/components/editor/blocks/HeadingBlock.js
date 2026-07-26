@@ -20,7 +20,7 @@ const placeholders = {
 /**
  * HeadingBlock — H1, H2, H3, H4 with appropriate typography.
  */
-export default function HeadingBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function HeadingBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const level = block.type;
   const ref = useRef(null);
 
@@ -51,6 +51,7 @@ export default function HeadingBlock({ block, onUpdate, onKeyDown, onInput, auto
         if (onInput) onInput(e);
       }}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
     />
   );
 }

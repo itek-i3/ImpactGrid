@@ -6,7 +6,7 @@ import styles from '@/styles/editor.module.css';
 /**
  * BulletListBlock — bulleted list item with bullet marker.
  */
-export function BulletListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export function BulletListBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -37,6 +37,7 @@ export function BulletListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus
           if (onInput) onInput(e);
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
     </div>
   );
@@ -45,7 +46,7 @@ export function BulletListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus
 /**
  * NumberedListBlock — numbered list item.
  */
-export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, listIndex, readOnly = false }) {
+export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, listIndex, readOnly = false }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -76,6 +77,7 @@ export function NumberedListBlock({ block, onUpdate, onKeyDown, onInput, autoFoc
           if (onInput) onInput(e);
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
     </div>
   );

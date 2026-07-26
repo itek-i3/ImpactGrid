@@ -24,7 +24,7 @@ const defaultIcons = {
 /**
  * CalloutBlock — colored background container with icon + text.
  */
-export default function CalloutBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function CalloutBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const color = block.properties?.color || 'blue';
   const icon = block.properties?.icon || defaultIcons[color] || '💡';
   const ref = useRef(null);
@@ -74,6 +74,7 @@ export default function CalloutBlock({ block, onUpdate, onKeyDown, onInput, auto
           if (onInput) onInput(e);
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
     </div>
   );

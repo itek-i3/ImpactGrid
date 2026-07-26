@@ -6,7 +6,7 @@ import styles from '@/styles/editor.module.css';
 /**
  * CheckboxBlock — todo item with checked state and strikethrough.
  */
-export default function CheckboxBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function CheckboxBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const checked = block.properties?.checked || false;
   const ref = useRef(null);
 
@@ -50,6 +50,7 @@ export default function CheckboxBlock({ block, onUpdate, onKeyDown, onInput, aut
           if (onInput) onInput(e);
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
       />
     </div>
   );

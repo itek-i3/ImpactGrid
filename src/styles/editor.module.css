@@ -27,6 +27,14 @@
   background: var(--color-bg-hover);
 }
 
+.dropIndicatorTop {
+  border-top: 2px solid #3b82f6 !important;
+}
+
+.dropIndicatorBottom {
+  border-bottom: 2px solid #3b82f6 !important;
+}
+
 .blockWrapper:hover .blockControls {
   opacity: 1;
 }
@@ -617,48 +625,50 @@
 /* ── Floating Toolbar ── */
 .toolbar {
   position: fixed;
-  z-index: var(--z-popover);
+  z-index: 99999;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: var(--space-1);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  gap: 3px;
+  padding: 5px 8px;
+  background: #0d172a;
+  border: 1px solid rgba(79, 130, 246, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: fadeInDown 0.12s ease forwards;
 }
 
 .toolbarBtn {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
+  border-radius: 7px;
+  color: #93c5fd;
   cursor: pointer;
-  transition: all var(--transition-fast);
-  background: none;
+  transition: all 0.15s ease;
+  background: transparent;
   border: none;
   font-size: var(--text-sm);
 }
 
 .toolbarBtn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 .toolbarBtnActive {
-  background: var(--color-accent-primary-subtle);
-  color: var(--color-accent-primary);
+  background: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
 }
 
 .toolbarDivider {
   width: 1px;
   height: 20px;
-  background: var(--color-border);
-  margin: 0 var(--space-1);
+  background: rgba(255, 255, 255, 0.18);
+  margin: 0 4px;
 }
 
 .toolbarColorDot {

@@ -7,7 +7,7 @@ import styles from '@/styles/editor.module.css';
  * TextBlock — basic paragraph block with contentEditable.
  * Uses uncontrolled ref pattern to avoid React re-render cursor issues.
  */
-export default function TextBlock({ block, onUpdate, onKeyDown, onInput, autoFocus, readOnly = false }) {
+export default function TextBlock({ block, onUpdate, onKeyDown, onInput, onPaste, autoFocus, readOnly = false }) {
   const ref = useRef(null);
 
   // Sync innerText with store content
@@ -47,6 +47,7 @@ export default function TextBlock({ block, onUpdate, onKeyDown, onInput, autoFoc
         if (onInput) onInput(e);
       }}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
     />
   );
 }
