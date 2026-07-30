@@ -7,6 +7,7 @@ import { Building, Plus, ArrowLeft, ShieldCheck, AlertCircle, Users, Calendar, L
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import ImgOrFallback from '@/components/ui/ImgOrFallback';
 
 function AdminPanelContent() {
   const router = useRouter();
@@ -499,9 +500,7 @@ function AdminPanelContent() {
                           <td style={{ padding: '13px 12px', fontWeight: 600, color: '#fff', fontSize: 14 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.30)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#7EB3FF', flexShrink: 0, overflow: 'hidden' }}>
-                                {member.avatar_url
-                                  ? <img src={member.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  : (member.full_name || member.email || '?').charAt(0).toUpperCase()}
+                                <ImgOrFallback src={member.avatar_url} fallback={(member.full_name || member.email || '?').charAt(0).toUpperCase()} />
                               </div>
                               {member.full_name || '—'}
                             </div>
@@ -653,11 +652,7 @@ function AdminPanelContent() {
                                   fontSize: 14, fontWeight: 'bold', color: '#7EB3FF',
                                   overflow: 'hidden'
                                 }}>
-                                  {agency.logoUrl ? (
-                                    <img src={agency.logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  ) : (
-                                    agency.name.charAt(0).toUpperCase()
-                                  )}
+                                  <ImgOrFallback src={agency.logoUrl} alt="Logo" fallback={agency.name.charAt(0).toUpperCase()} />
                                 </div>
                                 <button
                                   title="Edit logo"

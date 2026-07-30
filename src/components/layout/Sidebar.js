@@ -28,6 +28,7 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
+import ImgOrFallback from '@/components/ui/ImgOrFallback';
 import styles from '@/styles/layout.module.css';
 
 function ImpactLogo({ size = 28 }) {
@@ -209,11 +210,8 @@ export default function Sidebar() {
                 flexShrink: 0, overflow: 'hidden',
                 background: workspace?.logoUrl ? 'transparent' : undefined,
               }}>
-                {workspace?.logoUrl ? (
-                  <img src={workspace.logoUrl} alt="Logo" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }} />
-                ) : (
-                  <Image src={logoImg} width={32} height={32} alt="Logo" style={{ objectFit: 'contain' }} />
-                )}
+                <ImgOrFallback src={workspace?.logoUrl} alt="Logo" imgStyle={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }}
+                  fallback={<Image src={logoImg} width={32} height={32} alt="Logo" style={{ objectFit: 'contain' }} />} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="display" style={{
@@ -441,11 +439,8 @@ export default function Sidebar() {
                             onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; }}
                             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'none'; }}
                           >
-                            {agency.logo_url ? (
-                              <img src={agency.logo_url} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
-                            ) : (
-                              <span style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(48,108,236,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 11 }}>🏢</span>
-                            )}
+                            <ImgOrFallback src={agency.logo_url} imgStyle={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+                              fallback={<span style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(48,108,236,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 11 }}>🏢</span>} />
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agency.name}</span>
                             {isActive && <Check size={13} style={{ color: '#306CEC', flexShrink: 0 }} />}
                           </button>

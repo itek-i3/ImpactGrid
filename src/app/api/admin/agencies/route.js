@@ -44,7 +44,7 @@ export async function GET() {
     .from('agencies')
     .select(`
       *,
-      profiles(id),
+      profiles!profiles_agency_id_fkey(id),
       workspaces(id, name)
     `)
     .order('name');
