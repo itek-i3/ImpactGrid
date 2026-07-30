@@ -1,9 +1,31 @@
 import { ok, created, noContent, badRequest, forbidden, notFound, fromSupabaseError } from '@/lib/api/response';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { parseDmChannel, isDmParticipant } from '@/lib/chat/dmChannels';
+import { sendPushToUsers } from '@/lib/push/send';
 
 const VALID_CHANNELS = ['daily_tasks', 'weekly_tasks', 'random'];
+const GROUP_CHANNEL_NAMES = { daily_tasks: 'Daily Tasks', weekly_tasks: 'Weekly Tasks', random: 'Random' };
 const MANAGER_ONLY_CHANNELS = ['weekly_tasks'];
+
+// Who should be notified about a new message (everyone in the agency for a group
+// channel, the other participant for a DM) — minus the sender.
+async function pushRecipients(admin, workspaceId, channel, senderId) {
+  if (channel.startsWith('dm:')) {
+    const dm = parseDmChannel(channel);
+    return (dm.participants || []).filter((id) => id && id !== senderId);
+  }
+  const { data: ws } = await admin.from('workspaces').select('agency_id').eq('id', workspaceId).single();
+  if (!ws?.agency_id) return [];
+  const [profs, mems] = await Promise.all([
+    admin.from('profiles').select('id').eq('agency_id', ws.agency_id),
+    admin.from('agency_members').select('user_id').eq('agency_id', ws.agency_id),
+  ]);
+  const set = new Set();
+  (profs.data || []).forEach((p) => set.add(p.id));
+  (mems.data || []).forEach((m) => set.add(m.user_id));
+  set.delete(senderId);
+  return [...set];
+}
 
 export async function GET(request, { params }) {
   const { id: workspaceId } = await params;
@@ -174,6 +196,21 @@ export async function POST(request, { params }) {
     .single();
 
   if (error) return fromSupabaseError(error);
+
+  // Fire push notifications to the recipients (best-effort; never blocks the send).
+  try {
+    const adminPush = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+    const senderName = data.profiles?.full_name || data.profiles?.email || 'Someone';
+    const isDm = channel.startsWith('dm:');
+    const recipients = await pushRecipients(adminPush, workspaceId, channel, user.id);
+    const preview = text || (attachments.length ? '📎 Attachment' : 'New message');
+    await sendPushToUsers(recipients, {
+      title: isDm ? senderName : `${senderName} · #${GROUP_CHANNEL_NAMES[channel] || channel}`,
+      body: preview.length > 120 ? `${preview.slice(0, 117)}…` : preview,
+      tag: channel,
+      url: `/os/chat?workspaceId=${workspaceId}&channel=${encodeURIComponent(channel)}`,
+    });
+  } catch (_) { /* push is best-effort */ }
 
   return created({
     id: data.id,

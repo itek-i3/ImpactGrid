@@ -20,6 +20,16 @@ const LS_KEY = 'impactgrid-session';
 const REMINDER_GRACE_MS = 5 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
+// VAPID public key (base64url) → Uint8Array, required by pushManager.subscribe.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
 // A pasted Meet link without a scheme is treated as relative — force https://.
 function withScheme(url) {
   const s = (url || '').trim();
@@ -153,7 +163,7 @@ export default function SessionProvider() {
 
     const sb = createClient();
     const notifCh = sb.channel(`global-notif:${workspaceId}:${userId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, async (payload) => {
         const row = payload.new;
         
         // Ignore our own messages
@@ -171,9 +181,19 @@ export default function SessionProvider() {
         const isViewingChannel = row.channel === activeChatChannel && document.visibilityState === 'visible';
         if (isViewingChannel) return;
 
-        // Resolve who sent it so the bell can show the sender + a preview.
+        // Resolve who sent it. Prefer the loaded members list; if the sender
+        // isn't there (members not loaded yet, or a cross-agency member), fall
+        // back to the chat API which resolves names via admin — so a real member
+        // is never shown as "Someone".
         const sender = members.find((m) => m.id === row.user_id);
-        const senderName = sender?.full_name || sender?.email || 'Someone';
+        let senderName = sender?.full_name || sender?.email || '';
+        if (!senderName) {
+          try {
+            const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${encodeURIComponent(row.channel)}&messageId=${row.id}`);
+            if (res.ok) { const m = (await res.json()).data?.[0]; if (m?.userName) senderName = m.userName; }
+          } catch (_) {}
+        }
+        if (!senderName) senderName = 'Someone';
         addChatNotification(row.channel, {
           senderName,
           message: row.message,
@@ -245,6 +265,35 @@ export default function SessionProvider() {
       try { Notification.requestPermission().catch(() => {}); } catch (_) {}
     }
   }, []);
+
+  // ── 4b. Web Push — subscribe this device so messages notify even when closed ──
+  useEffect(() => {
+    if (isDemo || !userId) return;
+    const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapid) return; // push not configured
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (_) {} }
+        if (Notification.permission !== 'granted') return;
+        // Register the SW — try root path first, then the /os basePath as a fallback.
+        let reg = null;
+        for (const path of ['/session-sw.js', '/os/session-sw.js']) {
+          try { reg = await navigator.serviceWorker.register(path, { scope: path.startsWith('/os') ? '/os/' : '/' }); if (reg) break; } catch (_) {}
+        }
+        if (!reg) return;
+        await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapid) });
+        }
+        if (cancelled || !sub) return;
+        await fetch('/os/api/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub }) });
+      } catch (_) { /* push unsupported / blocked — silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, isDemo]);
 
   // ── 5. Meeting reminders — fire the moment a meeting I'm part of starts ──────
   useEffect(() => {
