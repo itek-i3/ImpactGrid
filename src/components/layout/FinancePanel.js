@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2, BarChart2 } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2, BarChart2, CalendarDays } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -49,8 +49,46 @@ const weekLabel = (mondayStr) => {
     : `${ordinal(m.getDate())} ${mm} – ${ordinal(s.getDate())} ${sm}`;
 };
 
-const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Supplies', 'Stock / Inventory', 'Transport', 'Utilities', 'Marketing', 'Equipment', 'Fees / Licenses', 'Miscellaneous'];
+const EXPENSE_CATEGORIES = ['Rent', 'Water', 'Electricity', 'Salaries', 'Supplies', 'Stock / Inventory', 'Transport', 'Utilities', 'Internet / Airtime', 'Marketing', 'Equipment', 'Fees / Licenses', 'Miscellaneous'];
 const EMPTY_ITEM = { what: '', amount: '' };
+
+// Distinct hues for the weekly category breakdown. Colour is secondary here —
+// every bar is labelled with its category name and amount.
+const CATEGORY_PALETTE = ['#E0485A', '#F97316', '#F5A623', '#EAB308', '#84CC16', '#EC4899', '#5B9BFF', '#0EA5E9', '#14B8A6', '#F472B6'];
+
+// Aggregate a week's expense line-items into per-category totals (what the money
+// was actually spent on — Rent, Water, Salaries …), largest first. Case-insensitive
+// so "Water"/"water" merge; any expense logged without line items → "Unlabelled".
+const buildBreakdown = (week) => {
+  const map = new Map();
+  let labelled = 0, rowExpenses = 0;
+  (week.rows || []).forEach((r) => {
+    rowExpenses += num(r.expenses);
+    (Array.isArray(r.expense_items) ? r.expense_items : []).forEach((it) => {
+      const raw = (it.what || '').trim();
+      const amt = num(it.amount);
+      if (amt <= 0) return;
+      const key = raw ? raw.toLowerCase() : '__unlabelled__';
+      if (!map.has(key)) map.set(key, { label: raw || 'Unlabelled', amount: 0 });
+      map.get(key).amount += amt;
+      labelled += amt;
+    });
+  });
+  const remainder = rowExpenses - labelled;   // expenses recorded without itemisation
+  if (remainder > 0.5) {
+    if (!map.has('__unlabelled__')) map.set('__unlabelled__', { label: 'Unlabelled', amount: 0 });
+    map.get('__unlabelled__').amount += remainder;
+  }
+  const list = [...map.values()].filter((x) => x.amount > 0).sort((a, b) => b.amount - a.amount);
+  const total = list.reduce((s, x) => s + x.amount, 0);
+  return { list, total };
+};
+// Bold pill badge for a stat value (used in month/week/day headers instead of
+// plain colored text — reads as a distinct "fact", not just more grey text).
+const chip = (text, tint) => (
+  <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, background: `${tint}20`, color: tint, fontWeight: 800, fontSize: 11.5, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{text}</span>
+);
+
 const DEMO_MEMBERS = [
   { id: 'manager-1', full_name: 'John Doe', email: 'john@example.com' },
   { id: 'member-1', full_name: 'Alice Smith', email: 'alice@example.com' },
@@ -81,6 +119,8 @@ export default function FinancePanel() {
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState(null);               // the business currently being viewed
   const [bizMenuOpen, setBizMenuOpen] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState('daily');
+  const [chartType, setChartType] = useState('bar');
 
   const canAccess = isDemo || (isAcr && ['manager', 'superadmin'].includes(userProfile?.role));
 
@@ -170,21 +210,30 @@ export default function FinancePanel() {
     return { revenue: r, expenses: e, net: r - e };
   }, [rows]);
 
-  // Daily revenue vs expenses for the chart (one bar-pair per day, recent first-45).
+  // Report-ready revenue vs expenses chart (daily, weekly, or monthly).
   const chartData = useMemo(() => {
     const map = new Map();
     rows.forEach(r => {
       if (!r.entry_date) return;
-      if (!map.has(r.entry_date)) map.set(r.entry_date, { date: r.entry_date, revenue: 0, expenses: 0 });
-      const e = map.get(r.entry_date);
+      let key = r.entry_date;
+      let label = fmtChartDay(r.entry_date);
+      if (reportPeriod === 'weekly') {
+        key = weekKeyOf(r.entry_date);
+        label = weekLabel(key);
+      } else if (reportPeriod === 'monthly') {
+        key = monthKeyOf(r.entry_date);
+        label = monthLabel(key);
+      }
+      if (!map.has(key)) map.set(key, { key, label, revenue: 0, expenses: 0 });
+      const e = map.get(key);
       e.revenue += num(r.revenue);
       e.expenses += num(r.expenses);
     });
     return [...map.values()]
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-      .slice(-45)
-      .map(e => ({ label: fmtChartDay(e.date), Revenue: e.revenue, Expenses: e.expenses }));
-  }, [rows]);
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .slice(reportPeriod === 'daily' ? -45 : -12)
+      .map(e => ({ label: e.label, Revenue: e.revenue, Expenses: e.expenses }));
+  }, [rows, reportPeriod]);
 
   // Group entries by calendar month → week (Mon–Sun) → day, newest first.
   const months = useMemo(() => {
@@ -341,6 +390,50 @@ export default function FinancePanel() {
     );
   };
 
+  // Category breakdown card — shared by the weekly and monthly views (same
+  // shape: any container with a `.rows` array of daily_finance entries).
+  const renderBreakdown = (container, periodLabel) => {
+    const { list, total } = buildBreakdown(container);
+    return (
+      <div style={{ border: '1px solid rgba(224,72,90,0.18)', background: 'rgba(224,72,90,0.08)', borderRadius: 12, padding: '12px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 11 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: '#E0485A' }}>Where the money went this {periodLabel}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>by category</div>
+        </div>
+        {total <= 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No expenses logged this {periodLabel} yet.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            {list.map((c, i) => {
+              const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
+              const max = list[0].amount;
+              const pct = Math.round((c.amount / total) * 100);
+              return (
+                <div key={c.label} style={{ display: 'grid', gridTemplateColumns: isMobile ? '84px 1fr' : '130px 1fr', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{c.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, height: 16, borderRadius: 6, background: 'rgba(255,255,255,0.05)', overflow: 'hidden', minWidth: 0 }}>
+                      <div style={{ width: `${Math.max(3, (c.amount / max) * 100)}%`, height: '100%', borderRadius: 6, background: color, opacity: 0.9 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, whiteSpace: 'nowrap' }}>{money(c.amount)}</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', flexShrink: 0, width: 30, textAlign: 'right' }}>{pct}%</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 3, paddingTop: 9, borderTop: '1px solid rgba(224,72,90,0.15)', fontSize: 12 }}>
+              <span style={{ color: 'var(--color-text-tertiary)' }}>Total spent this {periodLabel}</span>
+              <strong style={{ color: '#E0485A', fontVariantNumeric: 'tabular-nums' }}>{money(total)}</strong>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const card = { background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 14, padding: 16 };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5, display: 'block' };
   const canAdd = num(nRevenue) !== 0 || itemsTotal(nItems) !== 0 || nNote.trim();
@@ -365,8 +458,8 @@ export default function FinancePanel() {
           <Wallet size={22} />
         </div>
         <div>
-          <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Daily Finance</div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Log daily revenue and itemized expenses — per business, grouped by week</div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Finance</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Track daily revenue &amp; expenses, and see exactly where each week&apos;s money goes</div>
         </div>
       </div>
 
@@ -442,25 +535,59 @@ export default function FinancePanel() {
         ))}
       </div>
 
-      {/* Revenue vs Expenses chart */}
+      {/* Revenue vs Expenses and Expenses-only charts */}
       {chartData.length > 0 && (
         <div style={{ ...card, marginBottom: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Revenue vs Expenses</span>
-            <span style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{activeBiz?.name ? `${activeBiz.name} · ` : ''}daily</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Finance reports</span>
+            <span style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{activeBiz?.name ? `${activeBiz.name} · ` : ''}{reportPeriod}</span>
           </div>
-          <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
-            <BarChart data={chartData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
-              <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
-              <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
-              <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Bar dataKey="Revenue" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
-              <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {['daily','weekly','monthly'].map(period => (
+                <button key={period} onClick={() => setReportPeriod(period)} style={{ border: '1px solid', borderColor: reportPeriod === period ? 'rgba(91,155,255,0.6)' : 'var(--color-border)', background: reportPeriod === period ? 'rgba(91,155,255,0.16)' : 'transparent', color: reportPeriod === period ? '#EAF1FF' : 'var(--color-text-secondary)', borderRadius: 999, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
+                  {period}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+              {['bar','line'].map(mode => (
+                <button key={mode} onClick={() => setChartType(mode)} style={{ border: '1px solid', borderColor: chartType === mode ? 'rgba(34,197,94,0.6)' : 'var(--color-border)', background: chartType === mode ? 'rgba(34,197,94,0.14)' : 'transparent', color: chartType === mode ? '#EAF1FF' : 'var(--color-text-secondary)', borderRadius: 999, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, padding: 10, background: 'var(--color-bg-secondary)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: 8 }}>Revenue vs Expenses · {reportPeriod}</div>
+              <ResponsiveContainer width="100%" height={isMobile ? 240 : 300}>
+                {chartType === 'line' ? (
+                  <LineChart data={chartData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
+                    <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                    <Tooltip cursor={{ stroke: 'rgba(48,108,236,0.35)', strokeWidth: 1 }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Line type="monotone" dataKey="Revenue" stroke="#22C55E" strokeWidth={2.6} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Expenses" stroke="#E0485A" strokeWidth={2.6} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                ) : (
+                  <BarChart data={chartData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
+                    <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                    <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Bar dataKey="Revenue" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       )}
 
@@ -506,91 +633,101 @@ export default function FinancePanel() {
             const open = isMonthOpen(month.key);
             return (
               <div key={month.key}>
-                {/* Month header — carries the monthly Net profit */}
-                <button className="fin-week" onClick={() => toggleMonth(month.key)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>{month.label}</span>
-                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>· {month.rows.length} day{month.rows.length !== 1 ? 's' : ''}</span>
+                {/* Month header — bold, elevated, blue accent stripe */}
+                <button className="fin-month" onClick={() => toggleMonth(month.key)}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                    {open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
+                    <CalendarDays size={16} style={{ color: '#5B9BFF', flexShrink: 0 }} />
+                    <span className="fin-month-title">{month.label}</span>
+                    <span className="fin-month-sub">{month.rows.length} day{month.rows.length !== 1 ? 's' : ''} logged</span>
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 14, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                    {!isMobile && <span style={{ fontSize: 12, color: '#22C55E', fontWeight: 700 }}>{money(month.totals.revenue)}</span>}
-                    {!isMobile && <span style={{ fontSize: 12, color: '#E0485A', fontWeight: 700 }}>{money(month.totals.expenses)}</span>}
-                    <span style={{ fontSize: 13.5, color: netColor(month.totals.net), fontWeight: 800 }}>Net profit {money(month.totals.net)}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {!isMobile && chip(money(month.totals.revenue), '#22C55E')}
+                    {!isMobile && chip(`−${money(month.totals.expenses)}`, '#E0485A')}
+                    {chip(`Net ${money(month.totals.net)}`, netColor(month.totals.net))}
                   </span>
                 </button>
 
-                {/* Weeks — each expands into its seven weekdays (Mon–Sun) */}
+                {/* Weeks — nested under the month via a connecting guide line */}
                 {open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                  <div className="fin-month-body">
+                    {/* Monthly expense breakdown — the whole month's spend, by category */}
+                    {renderBreakdown(month, 'month')}
+
                     {month.weeks.map(week => {
                       const wOpen = isWeekOpen(week.key);
                       return (
-                        <div key={week.key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {/* Week header — carries the week's totals */}
-                          <button className="fin-subweek" onClick={() => toggleWeek(week.key)}>
+                        <div key={week.key}>
+                          {/* Week header — carries the week's totals, amber accent stripe */}
+                          <button className="fin-weekhead" onClick={() => toggleWeek(week.key)}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                               {wOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                              <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-text-primary)' }}>{week.label}</span>
-                              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>· {week.count} day{week.count !== 1 ? 's' : ''}</span>
+                              <span className="fin-week-title">{week.label}</span>
+                              <span className="fin-week-sub">{week.count} day{week.count !== 1 ? 's' : ''}</span>
                             </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                              {!isMobile && <span style={{ fontSize: 11.5, color: '#22C55E', fontWeight: 700 }}>{money(week.totals.revenue)}</span>}
-                              {!isMobile && <span style={{ fontSize: 11.5, color: '#E0485A', fontWeight: 700 }}>−{money(week.totals.expenses)}</span>}
-                              <span style={{ fontSize: 12.5, color: netColor(week.totals.net), fontWeight: 800 }}>Net {money(week.totals.net)}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+                              {!isMobile && chip(money(week.totals.revenue), '#22C55E')}
+                              {!isMobile && chip(`−${money(week.totals.expenses)}`, '#E0485A')}
+                              {chip(`Net ${money(week.totals.net)}`, netColor(week.totals.net))}
                             </span>
                           </button>
 
-                          {/* The seven weekdays — exactly one Monday, Tuesday, … */}
+                          {/* Weekly expense breakdown + days — nested under the week via a guide line */}
                           {wOpen && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: isMobile ? 0 : 10 }}>
-                              {week.dates.map(ds => {
-                                const entry = week.byDate.get(ds);
-                                const has = !!entry;
-                                const dayOpen = openDay === ds;
-                                const commit = () => saveDay(ds, draft);
-                                return (
-                                  <div key={ds} style={{ background: 'var(--color-bg-secondary)', border: `1px solid ${dayOpen ? 'var(--color-border-active)' : 'var(--color-border)'}`, borderRadius: 12, overflow: 'hidden', opacity: (has || dayOpen) ? 1 : 0.7 }}>
-                                    {/* Compact slot — weekday · revenue · expenses · delete */}
-                                    <div onClick={() => openDayEditor(ds)}
-                                      style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
-                                      {dayOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
-                                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        <span style={{ fontSize: 13, fontWeight: 700, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{weekdayOf(ds)}</span>
-                                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>{ordinal(parseDay(ds).getDate())}</span>
-                                      </span>
-                                      {has ? (
-                                        <>
-                                          <span style={{ fontSize: 12.5, color: '#22C55E', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(entry.revenue)}</span>
-                                          <span style={{ fontSize: 12.5, color: '#E0485A', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>−{money(entry.expenses)}</span>
-                                          <button className="fin-del" title="Delete this day" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
-                                        </>
-                                      ) : (
-                                        <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
+                            <div className="fin-week-body">
+                              {renderBreakdown(week, 'week')}
+
+                              {/* The seven weekdays — one unified list, not seven separate boxes */}
+                              <div className="fin-daylist">
+                                {week.dates.map((ds, i) => {
+                                  const entry = week.byDate.get(ds);
+                                  const has = !!entry;
+                                  const dayOpen = openDay === ds;
+                                  const commit = () => saveDay(ds, draft);
+                                  return (
+                                    <div key={ds} className={`fin-dayrow${i < 6 ? ' fin-dayrow-div' : ''}`}
+                                      style={{ background: dayOpen ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                                      {/* Compact slot — weekday · revenue · expenses · delete */}
+                                      <div onClick={() => openDayEditor(ds)}
+                                        style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                                        {dayOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          <span style={{ fontSize: 13, fontWeight: 800, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{weekdayOf(ds)}</span>
+                                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>{ordinal(parseDay(ds).getDate())}</span>
+                                        </span>
+                                        {has ? (
+                                          <>
+                                            {chip(money(entry.revenue), '#22C55E')}
+                                            {chip(`−${money(entry.expenses)}`, '#E0485A')}
+                                            <button className="fin-del" title="Delete this day" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                                          </>
+                                        ) : (
+                                          <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
+                                        )}
+                                      </div>
+
+                                      {/* Expanded editor (bound to the shared draft buffer) */}
+                                      {dayOpen && (
+                                        <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
+                                            <div style={{ width: 150 }}>
+                                              <label style={lbl}>Revenue</label>
+                                              <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
+                                            </div>
+                                            <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
+                                              {fmtNice(ds)}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
+                                            </div>
+                                          </div>
+                                          <label style={lbl}>Expenses — what was spent</label>
+                                          {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
+                                          <label style={{ ...lbl, marginTop: 12 }}>Note</label>
+                                          <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
+                                        </div>
                                       )}
                                     </div>
-
-                                    {/* Expanded editor (bound to the shared draft buffer) */}
-                                    {dayOpen && (
-                                      <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
-                                          <div style={{ width: 150 }}>
-                                            <label style={lbl}>Revenue</label>
-                                            <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
-                                          </div>
-                                          <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
-                                            {fmtNice(ds)}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
-                                          </div>
-                                        </div>
-                                        <label style={lbl}>Expenses — what was spent</label>
-                                        {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
-                                        <label style={{ ...lbl, marginTop: 12 }}>Note</label>
-                                        <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -646,18 +783,37 @@ export default function FinancePanel() {
           font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
         }
         .fin-additem:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }
-        .fin-week {
-          width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12;
-          padding: 11px 15px; border-radius: 12px; cursor: pointer; font-family: inherit; text-align: left;
-          background: var(--color-bg-tertiary); border: 1px solid var(--color-border); color: var(--color-text-secondary); transition: .12s;
-        }
-        .fin-week:hover { border-color: var(--color-border-active); }
-        .fin-subweek {
+        .fin-month {
           width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-          padding: 9px 13px; border-radius: 10px; cursor: pointer; font-family: inherit; text-align: left;
-          background: var(--color-bg-secondary); border: 1px solid var(--color-border); color: var(--color-text-secondary); transition: .12s;
+          padding: 15px 18px; border-radius: 16px; cursor: pointer; font-family: inherit; text-align: left;
+          background: linear-gradient(135deg, rgba(48,108,236,0.14), rgba(48,108,236,0.04) 75%);
+          border: 1px solid rgba(91,155,255,0.30); border-left: 4px solid #5B9BFF;
+          color: var(--color-text-secondary); transition: .12s;
         }
-        .fin-subweek:hover { border-color: var(--color-border-active); }
+        .fin-month:hover { border-color: rgba(91,155,255,0.55); }
+        .fin-month-title { font-size: 15.5px; font-weight: 800; color: var(--color-text-primary); letter-spacing: -.01em; }
+        .fin-month-sub { font-size: 11px; color: var(--color-text-tertiary); margin-left: 2px; }
+        .fin-month-body {
+          display: flex; flex-direction: column; gap: 12px; margin-top: 10px;
+          padding-left: 17px; margin-left: 9px; border-left: 2px solid rgba(91,155,255,0.22);
+        }
+        .fin-weekhead {
+          width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          padding: 10px 14px; border-radius: 11px; cursor: pointer; font-family: inherit; text-align: left;
+          background: rgba(245,166,35,0.07); border: 1px solid rgba(245,166,35,0.25); border-left: 3px solid #F5A623;
+          color: var(--color-text-secondary); transition: .12s;
+        }
+        .fin-weekhead:hover { border-color: rgba(245,166,35,0.55); }
+        .fin-week-title { font-size: 13px; font-weight: 800; color: var(--color-text-primary); }
+        .fin-week-sub { font-size: 10.5px; color: var(--color-text-tertiary); margin-left: 2px; }
+        .fin-week-body {
+          display: flex; flex-direction: column; gap: 10px; margin-top: 8px;
+          padding-left: 15px; margin-left: 7px; border-left: 2px solid rgba(245,166,35,0.20);
+        }
+        .fin-daylist {
+          border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; background: var(--color-bg-secondary);
+        }
+        .fin-dayrow-div { border-bottom: 1px solid var(--color-border-subtle); }
         .fin-del {
           width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer;
           color: var(--color-text-tertiary); display: flex; align-items: center; justify-content: center; transition: .12s; flex-shrink: 0;
