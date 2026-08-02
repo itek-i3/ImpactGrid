@@ -290,24 +290,29 @@ export default function SessionProvider() {
     }
   }, []);
 
-  // ── 4b. Web Push — subscribe this device so messages notify even when closed ──
+  // ── 4b. Service worker + Web Push ────────────────────────────────────────
+  // The SW registers unconditionally — Chrome's "Install app" prompt requires
+  // an active service worker, independent of whether notification permission
+  // has been granted (or even asked for). Push subscription is the part that
+  // stays gated behind permission.
   useEffect(() => {
     if (isDemo || !userId) return;
-    const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    if (!vapid) return; // push not configured
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
     let cancelled = false;
     (async () => {
       try {
-        if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (_) {} }
-        if (Notification.permission !== 'granted') return;
         // Register the SW — try root path first, then the /os basePath as a fallback.
         let reg = null;
         for (const path of ['/session-sw.js', '/os/session-sw.js']) {
           try { reg = await navigator.serviceWorker.register(path, { scope: path.startsWith('/os') ? '/os/' : '/' }); if (reg) break; } catch (_) {}
         }
-        if (!reg) return;
+        if (!reg || cancelled) return;
         await navigator.serviceWorker.ready;
+
+        const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        if (!vapid || !('PushManager' in window)) return; // push not configured/supported — SW is still registered for installability
+        if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (_) {} }
+        if (Notification.permission !== 'granted') return;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
           sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapid) });
