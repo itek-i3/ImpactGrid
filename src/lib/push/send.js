@@ -22,20 +22,22 @@ export async function sendPushToUsers(userIds, payload) {
     const ids = [...new Set((userIds || []).filter(Boolean))];
     if (!ids.length) return;
     const webpush = await getWebpush();
-    if (!webpush) return;
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+    if (!webpush) { console.warn('[push] skipped: VAPID keys not configured'); return; }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) { console.warn('[push] skipped: SUPABASE_SERVICE_ROLE_KEY not configured'); return; }
     const admin = createAdminClient();
-    const { data: subs } = await admin.from('push_subscriptions').select('endpoint, p256dh, auth').in('user_id', ids);
-    if (!subs?.length) return;
+    const { data: subs, error: fetchErr } = await admin.from('push_subscriptions').select('endpoint, p256dh, auth').in('user_id', ids);
+    if (fetchErr) { console.error('[push] failed to load subscriptions', fetchErr); return; }
+    if (!subs?.length) { console.warn('[push] skipped: no subscriptions for', ids); return; }
     const body = JSON.stringify(payload || {});
     await Promise.all(subs.map(async (s) => {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body);
       } catch (err) {
+        console.error('[push] send failed', err?.statusCode, err?.body || err?.message);
         if (err?.statusCode === 404 || err?.statusCode === 410) {
           await admin.from('push_subscriptions').delete().eq('endpoint', s.endpoint).then(() => {}, () => {});
         }
       }
     }));
-  } catch (_) { /* never break message sending */ }
+  } catch (err) { console.error('[push] unexpected error', err); }
 }
