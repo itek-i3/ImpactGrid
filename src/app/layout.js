@@ -1,6 +1,7 @@
 import { Inter, League_Spartan, DM_Sans, Plus_Jakarta_Sans, Schibsted_Grotesk, JetBrains_Mono } from 'next/font/google';
 import ThemeInitializer from '@/components/layout/ThemeInitializer';
 import SessionProvider from '@/components/layout/SessionProvider';
+import PageTransition from '@/components/layout/PageTransition';
 import '@/styles/globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -27,7 +28,7 @@ export default function RootLayout({ children }) {
         <ThemeInitializer />
         <SessionProvider />
         <div className="app-container">
-          {children}
+          <PageTransition>{children}</PageTransition>
         </div>
       </body>
     </html>

@@ -15,6 +15,9 @@ import MeetingsPanel from '@/components/layout/MeetingsPanel';
 import FinancePanel from '@/components/layout/FinancePanel';
 import BusinessesPanel from '@/components/layout/BusinessesPanel';
 import ValuationPanel from '@/components/layout/ValuationPanel';
+import TeamPanel from '@/components/layout/TeamPanel';
+import ScoreboardPanel from '@/components/layout/ScoreboardPanel';
+import WeeklyReviewPanel from '@/components/layout/WeeklyReviewPanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -48,10 +51,9 @@ function WorkspaceContent() {
       if (profile) {
         await loadWorkspace(targetWorkspaceId || undefined);
       } else {
-        const { pages } = initDemoWorkspace();
-        if (pages.length > 0) {
-          setCurrentPage(pages[0]);
-        }
+        // Land on the Home dashboard, same as the real login path — don't
+        // auto-open the first demo page.
+        initDemoWorkspace();
       }
     }
     init();
@@ -149,6 +151,7 @@ function WorkspaceContent() {
           `,
           backgroundSize: '40px 40px',
         }}>
+          <div key={currentView || currentPage?.id || 'home'} className="page-enter">
           {currentView === 'acquisition' ? (
             <AcquisitionPanel />
           ) : currentView === 'meetings' ? (
@@ -159,6 +162,12 @@ function WorkspaceContent() {
             <BusinessesPanel />
           ) : currentView === 'valuation' ? (
             <ValuationPanel />
+          ) : currentView === 'team' ? (
+            <TeamPanel />
+          ) : currentView === 'scoreboard' ? (
+            <ScoreboardPanel />
+          ) : currentView === 'reviews' ? (
+            <WeeklyReviewPanel />
           ) : currentPage ? (
             <div className={`${styles.pageContainer} ${!sidebarOpen ? styles.pageContainerWide : ''}`}>
               <div className={styles.pageHeader}>
@@ -250,11 +259,29 @@ function WorkspaceContent() {
           ) : (
             <HomeDashboard />
           )}
+          </div>
         </div>
       </div>
 
       <SearchModal />
       <FloatingChat />
+
+      <style jsx>{`
+        /* No fill-mode: a lingering transform after the animation ends would
+           turn .page-enter into a containing block for position:fixed
+           descendants (the Edit-strategy modal backdrop, etc.), breaking
+           their fixed positioning. */
+        .page-enter {
+          animation: pageEnter 0.4s cubic-bezier(.22,1,.36,1);
+        }
+        @keyframes pageEnter {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .page-enter { animation: none; }
+        }
+      `}</style>
     </div>
   );
 }

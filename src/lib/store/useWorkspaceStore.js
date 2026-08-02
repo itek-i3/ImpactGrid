@@ -56,7 +56,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Page tree
   pages: [],
   currentPage: null,
-  currentView: null, // null | 'acquisition' | 'meetings' | 'finance' | 'businesses' | 'valuation' — in-shell tabs that aren't pages
+  currentView: null, // null | 'acquisition' | 'meetings' | 'finance' | 'businesses' | 'valuation' | 'team' | 'scoreboard' | 'reviews' — in-shell tabs that aren't pages
   expandedPages: new Set(),
 
   // UI state
@@ -306,10 +306,9 @@ export const useWorkspaceStore = create((set, get) => ({
 
       const pages = [...activePages, ...archivedPages].map(mapPageFromDb);
       set({ pages });
-      if (pages.length > 0 && !get().currentPage) {
-        const rootPages = pages.filter((p) => !p.parentId && !p.isArchived).sort((a, b) => a.sortOrder - b.sortOrder);
-        set({ currentPage: rootPages[0] || pages[0] });
-      }
+      // currentPage/currentView are intentionally left as-is here (both start
+      // null) so a fresh load lands on the Home dashboard rather than
+      // auto-opening whatever page happens to sort first.
     } catch (e) {
       console.error('Failed to load workspace:', e);
     } finally {
