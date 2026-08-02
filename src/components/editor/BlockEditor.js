@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Plus, GripVertical, Trash2, Copy, X } from 'lucide-react';
+import { Plus, GripVertical, Trash2, Copy, Check, X } from 'lucide-react';
 import { useEditorStore } from '@/lib/store/useEditorStore';
 import { parseClipboardToBlocks } from '@/lib/utils/pasteParser';
+import { blocksToText } from '@/lib/utils/blocksToText';
 import BlockMenu from './BlockMenu';
 import BlockToolbar from './BlockToolbar';
 import BlockActionMenu from './BlockActionMenu';
@@ -130,6 +131,18 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
     ids.forEach((id) => duplicateBlock(id));
     setSelectedBlockIds(new Set());
   }, [selectedBlockIds, duplicateBlock]);
+
+  const [justCopied, setJustCopied] = useState(false);
+  const handleCopySelected = useCallback(async () => {
+    const selected = blocks.filter((b) => selectedBlockIds.has(b.id));
+    if (selected.length === 0) return;
+    const text = blocksToText(selected);
+    try {
+      await navigator.clipboard.writeText(text);
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 1500);
+    } catch (err) { console.error('[editor] copy to clipboard failed', err); }
+  }, [selectedBlockIds, blocks]);
 
   const handleGripClick = useCallback((e, block) => {
     e.stopPropagation();
@@ -585,6 +598,14 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
               >
                 <Trash2 size={14} />
                 Delete ({selectedBlockIds.size})
+              </button>
+              <button
+                className={styles.batchActionBtn}
+                onClick={handleCopySelected}
+                title="Copy selected blocks as text"
+              >
+                {justCopied ? <Check size={14} /> : <Copy size={14} />}
+                {justCopied ? 'Copied!' : 'Copy'}
               </button>
               <button
                 className={styles.batchActionBtn}
