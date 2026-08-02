@@ -1,5 +1,13 @@
 let notifyTimer = null;
 
+// A pass-through fetch handler — no caching/offline support, just network as
+// normal. Some Android/Chrome builds only offer "Install app" for a page once
+// its service worker has a fetch handler at all, so this exists purely to
+// satisfy that installability check.
+self.addEventListener('fetch', (event) => {
+  event.respondWith(fetch(event.request));
+});
+
 self.addEventListener('message', (event) => {
   if (event.data.type === 'SESSION_START') {
     if (notifyTimer) clearTimeout(notifyTimer);
