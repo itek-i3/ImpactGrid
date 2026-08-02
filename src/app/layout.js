@@ -14,6 +14,8 @@ export const metadata = {
   title: 'ImpactGrid',
   description: 'A Notion-like workspace for organizing Impact360 community operations...',
   keywords: ['workspace', 'notion', 'impact360', 'documents', 'databases'],
+  applicationName: 'ImpactGrid',
+  appleWebApp: { title: 'ImpactGrid', statusBarStyle: 'black-translucent' },
 };
 
 export default function RootLayout({ children }) {
