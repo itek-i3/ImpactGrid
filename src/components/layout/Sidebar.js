@@ -254,6 +254,13 @@ export default function Sidebar() {
                 </button>
               )}
 
+            </nav>
+
+            {/* ── Team ── */}
+            <div className={styles.sidebarSectionLabel}>
+              <span className={styles.sidebarSectionTitle}>Team</span>
+            </div>
+            <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               <button
                 className="ig-nav"
                 onClick={() => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`)}
@@ -271,48 +278,60 @@ export default function Sidebar() {
                 <CalendarDays size={15} />
                 <span>Meetings</span>
               </button>
+            </nav>
 
-              {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr')
-                && ['manager', 'superadmin'].includes(userProfile?.role) && (
-                <>
+            {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
+              <>
+                {/* ── Business (ACR) ── */}
+                <div className={styles.sidebarSectionLabel}>
+                  <span className={styles.sidebarSectionTitle}>Business</span>
+                </div>
+                <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {['manager', 'superadmin'].includes(userProfile?.role) && (
+                    <>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('businesses'); if (pathname !== '/') router.push('/'); }}
+                        style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Building2 size={15} />
+                        <span>Businesses</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
+                        style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Wallet size={15} />
+                        <span>Daily Finance</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('valuation'); if (pathname !== '/') router.push('/'); }}
+                        style={currentView === 'valuation' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <TrendingUp size={15} />
+                        <span>Valuation</span>
+                      </button>
+                    </>
+                  )}
                   <button
                     className="ig-nav"
-                    onClick={() => { setCurrentView('businesses'); if (pathname !== '/') router.push('/'); }}
-                    style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    onClick={() => { setCurrentView('acquisition'); if (pathname !== '/') router.push('/'); }}
+                    style={currentView === 'acquisition' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                   >
-                    <Building2 size={15} />
-                    <span>Businesses</span>
+                    <Target size={15} />
+                    <span>Acquisition</span>
                   </button>
-                  <button
-                    className="ig-nav"
-                    onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
-                    style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
-                  >
-                    <Wallet size={15} />
-                    <span>Daily Finance</span>
-                  </button>
-                  <button
-                    className="ig-nav"
-                    onClick={() => { setCurrentView('valuation'); if (pathname !== '/') router.push('/'); }}
-                    style={currentView === 'valuation' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
-                  >
-                    <TrendingUp size={15} />
-                    <span>Valuation</span>
-                  </button>
-                </>
-              )}
+                </nav>
+              </>
+            )}
 
-              {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
-                <button
-                  className="ig-nav"
-                  onClick={() => { setCurrentView('acquisition'); if (pathname !== '/') router.push('/'); }}
-                  style={currentView === 'acquisition' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
-                >
-                  <Target size={15} />
-                  <span>Acquisition</span>
-                </button>
-              )}
-
+            {/* ── Personal ── */}
+            <div className={styles.sidebarSectionLabel}>
+              <span className={styles.sidebarSectionTitle}>Personal</span>
+            </div>
+            <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               <button
                 className="ig-nav"
                 onClick={openSessionModal}
@@ -334,7 +353,6 @@ export default function Sidebar() {
                   </span>
                 )}
               </button>
-
             </nav>
 
             {/* ── Favorites section (pinned in sidebar) ── */}

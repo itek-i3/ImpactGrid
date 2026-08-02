@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client';
 import { playMessageSound, playSessionCompleteSound } from '@/lib/utils/soundEffects';
 import { isDmParticipant } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
+import { fetchUnreadChannels } from '@/lib/chat/unreadState';
 
 const LS_KEY = 'impactgrid-session';
 
@@ -156,6 +157,29 @@ export default function SessionProvider() {
       active = false;
     };
   }, [workspaceId, isDemo]);
+
+  // ── 2b. Seed real unread state on load ───────────────────────────────────────
+  // The realtime listener below only catches messages that arrive while this tab
+  // is open. On a fresh load there may already be unread messages from before —
+  // fetch those from chat_reads/chat_messages so the Messages widget isn't empty
+  // just because nothing happened to arrive live this session.
+  useEffect(() => {
+    if (!userId || !workspaceId || isDemo || members.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const unread = await fetchUnreadChannels(userId, workspaceId);
+      if (cancelled) return;
+      unread.forEach(({ channel, message, senderId }) => {
+        const sender = members.find((m) => m.id === senderId);
+        addChatNotification(channel, {
+          senderName: sender?.full_name || sender?.email || 'Someone',
+          message,
+          isDm: channel.startsWith('dm:'),
+        });
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [userId, workspaceId, isDemo, members, addChatNotification]);
 
   // ── 3. Global Realtime Direct Messages Subscription ──────────────────────────
   useEffect(() => {

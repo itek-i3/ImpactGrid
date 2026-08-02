@@ -392,11 +392,11 @@ function ChatContent() {
     };
   }, [workspaceId, isDemo, currentUserId]);
 
-  // ── Read receipts (DMs only) ──────────────────────────────────────────────
-  // Acknowledge incoming DM messages: "read" when the tab is visible, else just
+  // ── Read receipts (DMs get delivered/read ticks; group channels just mark last_read_at) ──
+  // Acknowledge incoming messages: "read" when the tab is visible, else just
   // "delivered". Runs whenever the message list changes.
   useEffect(() => {
-    if (isDemo || !activeChannel.startsWith('dm:') || !messages.length) return;
+    if (isDemo || !messages.length) return;
     if (!messages.some(m => m.userId !== currentUserId)) return;
     const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
     writeReceipt(activeChannel, currentUserId, { read: visible })
@@ -404,9 +404,9 @@ function ChatContent() {
       .catch(() => {});
   }, [messages, isDemo, activeChannel, currentUserId]);
 
-  // Returning to the tab while a DM is open counts as reading it.
+  // Returning to the tab while this channel is open counts as reading it.
   useEffect(() => {
-    if (isDemo || !activeChannel.startsWith('dm:')) return;
+    if (isDemo) return;
     const onActive = () => {
       if (document.visibilityState !== 'visible') return;
       writeReceipt(activeChannel, currentUserId, { read: true })

@@ -1,14 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
 
-// Advance the caller's receipt row for a DM channel.
+// Advance the caller's receipt row for a channel (DM or group).
 //   read: true  → bump last_read_at AND last_delivered_at (they viewed it)
 //   read: false → bump last_delivered_at only (their app received it)
 // The delivered-only path never touches last_read_at, so an incoming "delivered"
-// ack can never regress an existing "read". Callers derive tick state (sent /
-// delivered / read) by comparing the OTHER participant's timestamps against each
-// message's created_at.
+// ack can never regress an existing "read". For DMs, callers derive tick state
+// (sent / delivered / read) by comparing the OTHER participant's timestamps
+// against each message's created_at. Group channels only use last_read_at, as
+// the unread-badge watermark for that user.
 export async function writeReceipt(channel, userId, { read }) {
-  if (!channel?.startsWith('dm:') || !userId) return;
+  if (!channel || !userId) return;
   const now = new Date().toISOString();
   const payload = read
     ? { channel, user_id: userId, last_read_at: now, last_delivered_at: now, updated_at: now }
