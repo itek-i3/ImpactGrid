@@ -225,6 +225,7 @@ export async function POST(request, { params }) {
     const senderName = data.profiles?.full_name || data.profiles?.email || 'Someone';
     const isDm = channel.startsWith('dm:');
     const recipients = await pushRecipients(adminPush, workspaceId, channel, user.id);
+    console.log('[push] channel=', channel, 'sender=', user.id, 'recipients=', recipients);
     const preview = text || (attachments.length ? '📎 Attachment' : 'New message');
     await sendPushToUsers(recipients, {
       title: isDm ? senderName : `${senderName} · #${GROUP_CHANNEL_NAMES[channel] || channel}`,
