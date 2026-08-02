@@ -130,7 +130,7 @@ export default function SessionProvider() {
             body: session?.taskDescription 
               ? `"${session.taskDescription}" — your focus session is complete.` 
               : 'Your focus session is complete.',
-            icon: '/logo3.png',
+            icon: '/notification-icon.png',
             tag: 'session-complete',
             requireInteraction: true,
           });
@@ -238,7 +238,7 @@ export default function SessionProvider() {
 
             const notif = new Notification(title, {
               body: row.message,
-              icon: '/logo3.png',
+              icon: '/notification-icon.png',
               tag: row.channel,
               renotify: true,
             });

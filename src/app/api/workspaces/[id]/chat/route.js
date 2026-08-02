@@ -190,12 +190,34 @@ export async function POST(request, { params }) {
       profiles:user_id (
         full_name,
         email,
-        role
+        role,
+        avatar_url
       )
     `)
     .single();
 
   if (error) return fromSupabaseError(error);
+
+  // "Daily Tasks" channel: every message becomes a task on the sender's own
+  // homepage checklist (member_missions.tasks) — best-effort, never blocks the send.
+  if (channel === 'daily_tasks' && text) {
+    try {
+      const adminTasks = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+      const { data: ws } = await adminTasks.from('workspaces').select('agency_id').eq('id', workspaceId).single();
+      if (ws?.agency_id) {
+        const { data: existing } = await adminTasks
+          .from('member_missions').select('*').eq('agency_id', ws.agency_id).eq('user_id', user.id).maybeSingle();
+        const nextTasks = [...(Array.isArray(existing?.tasks) ? existing.tasks : []), { text, done: false }];
+        await adminTasks.from('member_missions').upsert({
+          agency_id: ws.agency_id, user_id: user.id,
+          department: existing?.department ?? null, mission: existing?.mission ?? null,
+          priorities: existing?.priorities ?? [], outcomes: existing?.outcomes ?? [],
+          weekly_objectives: existing?.weekly_objectives ?? [], kpis: existing?.kpis ?? [],
+          tasks: nextTasks, updated_at: new Date().toISOString(),
+        }, { onConflict: 'agency_id,user_id' });
+      }
+    } catch (err) { console.error('[chat] daily task bridge failed', err); }
+  }
 
   // Fire push notifications to the recipients (best-effort; never blocks the send).
   try {
@@ -207,6 +229,7 @@ export async function POST(request, { params }) {
     await sendPushToUsers(recipients, {
       title: isDm ? senderName : `${senderName} · #${GROUP_CHANNEL_NAMES[channel] || channel}`,
       body: preview.length > 120 ? `${preview.slice(0, 117)}…` : preview,
+      icon: data.profiles?.avatar_url || undefined,
       tag: channel,
       url: `/os/chat?workspaceId=${workspaceId}&channel=${encodeURIComponent(channel)}`,
     });

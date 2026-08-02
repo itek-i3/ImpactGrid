@@ -8,7 +8,8 @@ self.addEventListener('message', (event) => {
     notifyTimer = setTimeout(() => {
       self.registration.showNotification("Time's up!", {
         body: event.data.task ? `"${event.data.task}" — your focus session is complete.` : 'Your focus session is complete.',
-        icon: '/logo3.png',
+        icon: '/notification-icon.png',
+        badge: '/notification-icon.png',
         tag: 'session-complete',
         requireInteraction: true,
       });
@@ -22,20 +23,30 @@ self.addEventListener('message', (event) => {
 });
 
 // ── Web Push: show notifications when a message arrives (even app closed) ──
+// Stacks same-conversation messages into one notification (WhatsApp-style)
+// instead of replacing it, so a burst of messages shows "N new messages".
 self.addEventListener('push', (event) => {
-  let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (_) {}
-  const title = data.title || 'New message';
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      icon: data.icon || '/logo3.png',
-      badge: data.badge || '/logo3.png',
-      tag: data.tag || 'chat',
+  event.waitUntil((async () => {
+    let data = {};
+    try { data = event.data ? event.data.json() : {}; } catch (_) {}
+    const tag = data.tag || 'chat';
+    const title = data.title || 'New message';
+
+    const [existing] = await self.registration.getNotifications({ tag });
+    const count = (existing?.data?.count || 0) + 1;
+    const previews = [...(existing?.data?.previews || []), data.body || ''].slice(-3);
+    const body = count === 1 ? previews[0] : count <= 3 ? previews.join('\n') : `${count} new messages`;
+
+    await self.registration.showNotification(count > 1 ? `${title} (${count})` : title, {
+      body,
+      icon: data.icon || '/notification-icon.png',
+      badge: '/notification-icon.png',
+      tag,
       renotify: true,
-      data: { url: data.url || '/os/' },
-    })
-  );
+      vibrate: [200, 100, 200],
+      data: { url: data.url || '/os/', count, previews },
+    });
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {
