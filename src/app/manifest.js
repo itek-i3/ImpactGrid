@@ -8,8 +8,10 @@ export default function manifest() {
     background_color: '#02040A',
     theme_color: '#1E4FB8',
     icons: [
-      { src: '/os/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/os/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/os/app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/os/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/os/app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: '/os/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };
 }

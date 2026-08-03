@@ -131,7 +131,7 @@ export default function SessionProvider() {
             body: session?.taskDescription 
               ? `"${session.taskDescription}" — your focus session is complete.` 
               : 'Your focus session is complete.',
-            icon: '/os/notification-icon.png',
+            icon: '/os/app-icon-512.png',
             tag: 'session-complete',
             requireInteraction: true,
           });
@@ -275,7 +275,7 @@ export default function SessionProvider() {
 
             const notif = new Notification(title, {
               body: row.message,
-              icon: '/os/notification-icon.png',
+              icon: '/os/app-icon-512.png',
               tag: row.channel,
               renotify: true,
             });
@@ -375,7 +375,7 @@ export default function SessionProvider() {
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
         const notif = new Notification('Meeting starting now', {
           body: m.title || 'You have a meeting now.',
-          icon: '/os/notification-icon.png',
+          icon: '/os/app-icon-512.png',
           tag: `meeting-${m.id}-${occ}`,
           requireInteraction: true,
         });
