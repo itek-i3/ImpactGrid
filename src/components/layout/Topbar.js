@@ -369,7 +369,14 @@ export default function Topbar() {
         </button>
 
         {showNotifMenu && (
-          <div ref={notifMenuRef} style={{
+          <div ref={notifMenuRef} style={isMobile ? {
+            // Centered on phones — anchoring to the button's edge (like desktop)
+            // pushed a fixed 300px-wide panel partly off narrow screens.
+            position: 'fixed', top: notifMenuPos.top, left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
+            boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 'min(340px, calc(100vw - 24px))', overflow: 'hidden', zIndex: 9999,
+          } : {
             position: 'fixed', top: notifMenuPos.top, right: notifMenuPos.right,
             background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
             border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
