@@ -15,9 +15,9 @@ import ImgOrFallback from '@/components/ui/ImgOrFallback';
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const STAGES = ['Launching', 'Growing', 'Scaling', 'Optimizing'];
 const STAGE_TINT = { Launching: '#EC4899', Growing: '#22C55E', Scaling: '#5B9BFF', Optimizing: '#F5A623' };
-const DEFAULT_BANNER = 'We are not building agencies. We are building an interconnected African innovation ecosystem where every company strengthens the others and creates lasting economic impact.';
+const DEFAULT_VISION = 'We are not building agencies. We are building an interconnected African innovation ecosystem where every company strengthens the others and creates lasting economic impact.';
 
-const emptyForm = () => ({ purpose: '', lead_name: '', stage: 'Growing', vision: '', mission: '', objectives_year: String(new Date().getFullYear()), objectives: [''], monthly_goals: [''], banner: '', metrics: [{ label: '', value: '' }] });
+const emptyForm = () => ({ purpose: '', lead_name: '', stage: 'Growing', vision: '', mission: '', objectives_year: String(new Date().getFullYear()), objectives: [''], monthly_goals: [''], metrics: [{ label: '', value: '' }] });
 
 export default function HomeDashboard() {
   const { userProfile, workspace, agencies, activeAgencyId, isDemo, setCurrentView, unreadChatChannels, chatNotifs, clearChatNotifications } = useWorkspaceStore();
@@ -182,7 +182,6 @@ export default function HomeDashboard() {
       objectives_year: strategy?.objectives_year || String(now.getFullYear()),
       objectives: objectives.length ? [...objectives] : [''],
       monthly_goals: monthlyGoals.length ? [...monthlyGoals] : [''],
-      banner: strategy?.banner || '',
       metrics: scoreMetrics.length ? scoreMetrics.map((m) => ({ label: m.label || '', value: m.value ?? '' })) : [{ label: '', value: '' }],
     });
     setEditing(true);
@@ -199,7 +198,6 @@ export default function HomeDashboard() {
       objectives_year: form.objectives_year.trim() || null,
       objectives: form.objectives.map((o) => o.trim()).filter(Boolean),
       monthly_goals: form.monthly_goals.map((o) => o.trim()).filter(Boolean),
-      banner: form.banner.trim() || null,
       metrics: form.metrics.map((m) => ({ label: (m.label || '').trim(), value: (m.value || '').toString().trim() })).filter((m) => m.label),
     };
     setSaving(true);
@@ -311,7 +309,7 @@ export default function HomeDashboard() {
             {cardHeader(Compass, '#5B9BFF', 'Vision')}
             <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5B9BFF', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Where are we going?</div>
             <p style={{ margin: 0, fontSize: isMobile ? 15 : 17, lineHeight: 1.4, fontWeight: 700, fontStyle: 'italic', color: strategy?.vision ? tKey : tSub }}>
-              “{strategy?.vision || (canEdit ? 'Set the long-term vision this agency is working toward, via "Edit strategy".' : DEFAULT_BANNER)}”
+              “{strategy?.vision || (canEdit ? 'Set the long-term vision this agency is working toward, via "Edit strategy".' : DEFAULT_VISION)}”
             </p>
           </div>
 
@@ -579,7 +577,6 @@ export default function HomeDashboard() {
                   <button onClick={() => setForm((f) => ({ ...f, monthly_goals: [...f.monthly_goals, ''] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add goal</button>
                 </div>
               </Field>
-              <Field label="Vision banner"><textarea className="strat-in" rows={2} value={form.banner} onChange={(e) => setForm((f) => ({ ...f, banner: e.target.value }))} placeholder={DEFAULT_BANNER} /></Field>
               <Field label="Agency scoreboard metrics">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   {form.metrics.map((m, i) => (
