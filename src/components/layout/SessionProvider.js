@@ -314,11 +314,13 @@ export default function SessionProvider() {
     let cancelled = false;
     (async () => {
       try {
-        // Register the SW — try root path first, then the /os basePath as a fallback.
+        // Scope must be "/os" (matching the manifest's start_url exactly) not
+        // "/os/" — Chrome's install check requires the SW's scope to cover
+        // start_url, and "/os" doesn't fall under a "/os/" scope by prefix
+        // rules. next.config.mjs sends Service-Worker-Allowed: /os so the
+        // browser permits widening scope beyond the script's own directory.
         let reg = null;
-        for (const path of ['/session-sw.js', '/os/session-sw.js']) {
-          try { reg = await navigator.serviceWorker.register(path, { scope: path.startsWith('/os') ? '/os/' : '/' }); if (reg) break; } catch (_) {}
-        }
+        try { reg = await navigator.serviceWorker.register('/os/session-sw.js', { scope: '/os' }); } catch (_) {}
         if (!reg || cancelled) return;
         await navigator.serviceWorker.ready;
 
