@@ -24,7 +24,7 @@ export async function fetchUnreadChannels(userId, workspaceId) {
 
   const [{ data: reads }, { data: latest }] = await Promise.all([
     sb.from('chat_reads').select('channel, last_read_at').eq('user_id', userId).in('channel', channels),
-    sb.from('chat_messages').select('channel, message, user_id, created_at').eq('workspace_id', workspaceId).in('channel', channels).order('created_at', { ascending: false }),
+    sb.from('chat_messages').select('id, channel, message, user_id, created_at').eq('workspace_id', workspaceId).in('channel', channels).order('created_at', { ascending: false }),
   ]);
 
   const readMap = new Map((reads || []).map((r) => [r.channel, r.last_read_at]));
@@ -36,7 +36,7 @@ export async function fetchUnreadChannels(userId, workspaceId) {
     if (m.user_id === userId) return; // my own last message isn't "unread"
     const readAt = readMap.get(channel);
     if (readAt && new Date(readAt) >= new Date(m.created_at)) return;
-    unread.push({ channel, message: m.message, senderId: m.user_id, createdAt: m.created_at });
+    unread.push({ channel, message: m.message, senderId: m.user_id, messageId: m.id, createdAt: m.created_at });
   });
   return unread;
 }

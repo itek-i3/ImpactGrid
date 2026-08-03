@@ -169,14 +169,27 @@ export default function SessionProvider() {
     (async () => {
       const unread = await fetchUnreadChannels(userId, workspaceId);
       if (cancelled) return;
-      unread.forEach(({ channel, message, senderId }) => {
+      await Promise.all(unread.map(async ({ channel, message, senderId, messageId }) => {
         const sender = members.find((m) => m.id === senderId);
+        let senderName = sender?.full_name || sender?.email || '';
+        // Sender may not be in `members` — RLS only lets a plain member see their
+        // own profile row directly, so a DM partner outside normal agency
+        // membership (e.g. a superadmin) won't resolve from the client-side
+        // members list. Fall back to the chat API, which resolves names
+        // server-side with the admin client.
+        if (!senderName && messageId) {
+          try {
+            const res = await fetch(`/os/api/workspaces/${workspaceId}/chat?channel=${encodeURIComponent(channel)}&messageId=${messageId}`);
+            if (res.ok) { const m = (await res.json()).data?.[0]; if (m?.userName) senderName = m.userName; }
+          } catch (_) {}
+        }
+        if (cancelled) return;
         addChatNotification(channel, {
-          senderName: sender?.full_name || sender?.email || 'Someone',
+          senderName: senderName || 'Someone',
           message,
           isDm: channel.startsWith('dm:'),
         });
-      });
+      }));
     })();
     return () => { cancelled = true; };
   }, [userId, workspaceId, isDemo, members, addChatNotification]);
