@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import PageTree from './PageTree';
 import Modal from '@/components/ui/Modal';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
@@ -62,6 +63,7 @@ export default function Sidebar() {
     setCurrentView,
     sidebarOpen,
     toggleSidebar,
+    setSidebarOpen,
     addPage,
     restorePage,
     permanentlyDeletePage,
@@ -72,8 +74,13 @@ export default function Sidebar() {
     switchAgency,
   } = useWorkspaceStore();
 
-  const { session: activeSession, teamSessions, sessionModalOpen, openSessionModal, closeSessionModal } = useSessionStore();
+  const { session: activeSession, teamSessions, openSessionModal } = useSessionStore();
   const liveTeamCount = teamSessions.filter((s) => s.status === 'active' || s.status === 'paused').length;
+
+  const isMobile = useIsMobile();
+  // On phones the sidebar is an overlay drawer — anything that navigates away
+  // or opens its own modal should close it, or it's left covering the screen.
+  const closeMobileSidebar = useCallback(() => { if (isMobile) setSidebarOpen(false); }, [isMobile, setSidebarOpen]);
 
   const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
   const agencyPickerRef = useRef(null);
@@ -167,7 +174,8 @@ export default function Sidebar() {
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);
     if (pathname !== '/') router.push('/');
-  }, [setCurrentPage, pathname, router]);
+    closeMobileSidebar();
+  }, [setCurrentPage, pathname, router, closeMobileSidebar]);
 
   const handleNewPage = useCallback(async () => {
     const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
@@ -175,12 +183,9 @@ export default function Sidebar() {
       const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
       if (freshPage) setCurrentPage(freshPage);
       if (pathname !== '/') router.push('/');
+      closeMobileSidebar();
     }
-  }, [addPage, setCurrentPage, pathname, router]);
-
-  const handleSettingsClick = () => {
-    router.push('/settings');
-  };
+  }, [addPage, setCurrentPage, pathname, router, closeMobileSidebar]);
 
   return (
     <>
@@ -233,7 +238,7 @@ export default function Sidebar() {
               {/* Home — always first */}
               <button
                 className="ig-nav"
-                onClick={() => { setCurrentPage(null); if (pathname !== '/') router.push('/'); }}
+                onClick={() => { setCurrentPage(null); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                 style={!currentPage && !currentView ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
               >
                 <Home size={15} />
@@ -243,7 +248,7 @@ export default function Sidebar() {
               {userProfile?.role === 'superadmin' && (
                 <button
                   className="ig-nav"
-                  onClick={() => router.push('/admin')}
+                  onClick={() => { router.push('/admin'); closeMobileSidebar(); }}
                   style={{
                     color: '#5B9BFF', fontWeight: 600,
                     ...(pathname.startsWith('/admin') ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}),
@@ -263,7 +268,7 @@ export default function Sidebar() {
             <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               <button
                 className="ig-nav"
-                onClick={() => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`)}
+                onClick={() => { router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`); closeMobileSidebar(); }}
                 style={pathname === '/chat' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
               >
                 <MessageSquare size={15} />
@@ -272,7 +277,7 @@ export default function Sidebar() {
 
               <button
                 className="ig-nav"
-                onClick={() => { setCurrentView('meetings'); if (pathname !== '/') router.push('/'); }}
+                onClick={() => { setCurrentView('meetings'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                 style={currentView === 'meetings' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
               >
                 <CalendarDays size={15} />
@@ -291,7 +296,7 @@ export default function Sidebar() {
                     <>
                       <button
                         className="ig-nav"
-                        onClick={() => { setCurrentView('businesses'); if (pathname !== '/') router.push('/'); }}
+                        onClick={() => { setCurrentView('businesses'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                         style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Building2 size={15} />
@@ -299,7 +304,7 @@ export default function Sidebar() {
                       </button>
                       <button
                         className="ig-nav"
-                        onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); }}
+                        onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                         style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Wallet size={15} />
@@ -307,7 +312,7 @@ export default function Sidebar() {
                       </button>
                       <button
                         className="ig-nav"
-                        onClick={() => { setCurrentView('valuation'); if (pathname !== '/') router.push('/'); }}
+                        onClick={() => { setCurrentView('valuation'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                         style={currentView === 'valuation' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <TrendingUp size={15} />
@@ -317,7 +322,7 @@ export default function Sidebar() {
                   )}
                   <button
                     className="ig-nav"
-                    onClick={() => { setCurrentView('acquisition'); if (pathname !== '/') router.push('/'); }}
+                    onClick={() => { setCurrentView('acquisition'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
                     style={currentView === 'acquisition' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                   >
                     <Target size={15} />
@@ -334,7 +339,7 @@ export default function Sidebar() {
             <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               <button
                 className="ig-nav"
-                onClick={openSessionModal}
+                onClick={() => { openSessionModal(); closeMobileSidebar(); }}
               >
                 <Timer size={15} />
                 <span>Sessions</span>
@@ -445,7 +450,7 @@ export default function Sidebar() {
                         return (
                           <button
                             key={agency.id}
-                            onClick={() => { switchAgency(agency.id); setAgencySwitcherOpen(false); }}
+                            onClick={() => { switchAgency(agency.id); setAgencySwitcherOpen(false); closeMobileSidebar(); }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 10,
                               width: '100%', padding: '8px 10px', borderRadius: 8, border: 'none',
@@ -471,7 +476,7 @@ export default function Sidebar() {
 
               <button
                 className="ig-nav"
-                onClick={() => { setTrashSearch(''); setTrashOpen(true); }}
+                onClick={() => { setTrashSearch(''); setTrashOpen(true); closeMobileSidebar(); }}
                 style={{ position: 'relative' }}
               >
                 <Trash2 size={15} />

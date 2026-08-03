@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, Plus, MoreHorizontal, Trash2, Copy, FileText, Star, Send } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import Dropdown, { DropdownItem, DropdownDivider } from '@/components/ui/Dropdown';
 import styles from '@/styles/layout.module.css';
 
@@ -26,12 +27,17 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
     toggleFavoritePage,
     workspace,
     userProfile,
+    setSidebarOpen,
   } = useWorkspaceStore();
+
+  const isMobile = useIsMobile();
 
   const handleSelect = (page) => {
     setCurrentPage(page);
     // If on a different route (e.g. /chat), navigate back to the main workspace
     if (pathname !== '/') router.push('/');
+    // On phones the sidebar is an overlay drawer — close it once a page is picked.
+    if (isMobile) setSidebarOpen(false);
   };
 
   const handleAddChild = async (parentId) => {

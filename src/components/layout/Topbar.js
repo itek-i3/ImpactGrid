@@ -529,7 +529,13 @@ export default function Topbar() {
           </button>
 
           {showProfileMenu && (
-            <div ref={profileMenuRef} style={{
+            <div ref={profileMenuRef} style={isMobile ? {
+              position: 'fixed', top: profileMenuPos.top, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 'min(280px, calc(100vw - 24px))', overflow: 'hidden',
+              zIndex: 9999,
+            } : {
               position: 'fixed', top: profileMenuPos.top, right: profileMenuPos.right,
               background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
               border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,

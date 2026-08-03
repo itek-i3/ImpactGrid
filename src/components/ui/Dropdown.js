@@ -14,20 +14,22 @@ export default function Dropdown({ trigger, children, align = 'left', className 
     if (!open || !triggerRef.current) return;
 
     const rect = triggerRef.current.getBoundingClientRect();
-    const style = {
+    // Always position via "left", clamped to stay fully on-screen — anchoring
+    // via "right: window.innerWidth - rect.right" (the previous approach) can
+    // push the menu off-screen when the trigger sits near a narrow viewport's
+    // edge, which is common on phones.
+    const margin = 8;
+    const menuWidth = menuRef.current?.offsetWidth || 200;
+    let left = align === 'right' ? rect.right - menuWidth : rect.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - menuWidth - margin));
+
+    setMenuStyle({
       position: 'fixed',
       top: rect.bottom + 4,
+      left,
       zIndex: 9999,
       minWidth: 200,
-    };
-
-    if (align === 'right') {
-      style.right = window.innerWidth - rect.right;
-    } else {
-      style.left = rect.left;
-    }
-
-    setMenuStyle(style);
+    });
   }, [open, align]);
 
   useEffect(() => {
