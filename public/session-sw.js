@@ -17,7 +17,7 @@ self.addEventListener('message', (event) => {
       self.registration.showNotification("Time's up!", {
         body: event.data.task ? `"${event.data.task}" — your focus session is complete.` : 'Your focus session is complete.',
         icon: '/os/app-icon-512.png',
-        badge: '/os/badge-icon.png',
+        badge: '/os/notification-icon.png',
         tag: 'session-complete',
         requireInteraction: true,
       });
@@ -48,7 +48,7 @@ self.addEventListener('push', (event) => {
     await self.registration.showNotification(count > 1 ? `${title} (${count})` : title, {
       body,
       icon: data.icon || '/os/app-icon-512.png',
-      badge: '/os/badge-icon.png',
+      badge: '/os/notification-icon.png',
       tag,
       renotify: true,
       vibrate: [200, 100, 200],
@@ -63,7 +63,16 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of all) {
-      if ('focus' in c) { try { if (c.navigate) await c.navigate(url); } catch (_) {} return c.focus(); }
+      if ('focus' in c) {
+        // WindowClient.navigate() isn't reliably supported/successful across
+        // browsers — if it silently fails, also message the app so it can
+        // navigate with its own router as a guaranteed fallback (a client
+        // that's already open otherwise just gets focused on whatever page
+        // it happened to be showing, not the chat).
+        try { if (c.navigate) await c.navigate(url); } catch (_) {}
+        try { c.postMessage({ type: 'NOTIFICATION_NAVIGATE', url }); } catch (_) {}
+        return c.focus();
+      }
     }
     if (self.clients.openWindow) return self.clients.openWindow(url);
   })());

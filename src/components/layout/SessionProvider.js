@@ -339,6 +339,20 @@ export default function SessionProvider() {
     return () => { cancelled = true; };
   }, [userId, isDemo]);
 
+  // ── 4c. Navigate when a notification is clicked ──────────────────────────────
+  // The service worker's own client.navigate() attempt isn't reliably supported
+  // everywhere; this is the guaranteed fallback via the app's own router.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (event) => {
+      if (event.data?.type === 'NOTIFICATION_NAVIGATE' && event.data.url) {
+        router.push(event.data.url.replace(/^\/os(?=\/|$)/, '') || '/');
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [router]);
+
   // ── 5. Meeting reminders — fire the moment a meeting I'm part of starts ──────
   useEffect(() => {
     const uid = userId || (isDemo ? 'demo-current-user' : null);
