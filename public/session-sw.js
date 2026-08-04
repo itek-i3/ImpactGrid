@@ -65,23 +65,45 @@ self.addEventListener('push', (event) => {
   })());
 });
 
+// Temporary — pings a server endpoint so we can see in Vercel logs whether
+// notificationclick is firing at all on a device we can't get console
+// access to, and how far it gets. Remove once click-through is confirmed
+// working reliably.
+function swLog(step, extra) {
+  try {
+    fetch('/os/api/push/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step, ...extra, at: new Date().toISOString() }),
+    }).catch(() => {});
+  } catch (_) {}
+}
+
 self.addEventListener('notificationclick', (event) => {
+  swLog('click-received', { tag: event.notification?.tag, data: event.notification?.data });
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/os/';
+
+  // Deliberately defensive: every step is isolated so a failure anywhere
+  // (matchAll, navigate, focus — any of which could throw on a given
+  // browser/OS) still falls through to openWindow rather than silently
+  // doing nothing, which is worse than opening a redundant window.
   event.waitUntil((async () => {
-    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of all) {
-      if ('focus' in c) {
-        // WindowClient.navigate() isn't reliably supported/successful across
-        // browsers — if it silently fails, also message the app so it can
-        // navigate with its own router as a guaranteed fallback (a client
-        // that's already open otherwise just gets focused on whatever page
-        // it happened to be showing, not the chat).
-        try { if (c.navigate) await c.navigate(url); } catch (_) {}
-        try { c.postMessage({ type: 'NOTIFICATION_NAVIGATE', url }); } catch (_) {}
-        return c.focus();
+    let handled = false;
+    try {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      swLog('clients-found', { count: all.length });
+      for (const c of all) {
+        if (!('focus' in c)) continue;
+        try { if (c.navigate) await c.navigate(url); swLog('navigate-ok'); } catch (e) { swLog('navigate-failed', { err: String(e) }); }
+        try { c.postMessage({ type: 'NOTIFICATION_NAVIGATE', url }); swLog('postmessage-ok'); } catch (e) { swLog('postmessage-failed', { err: String(e) }); }
+        try { await c.focus(); handled = true; swLog('focus-ok'); } catch (e) { swLog('focus-failed', { err: String(e) }); }
+        if (handled) break;
       }
+    } catch (e) { swLog('matchall-failed', { err: String(e) }); }
+
+    if (!handled) {
+      try { await self.clients.openWindow(url); swLog('openwindow-ok', { url }); } catch (e) { swLog('openwindow-failed', { err: String(e) }); }
     }
-    if (self.clients.openWindow) return self.clients.openWindow(url);
   })());
 });

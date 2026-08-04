@@ -53,6 +53,7 @@ export async function updateSession(request) {
     pathname.startsWith('/public') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/agencies') ||
+    pathname.startsWith('/api/push/log') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon');
 
