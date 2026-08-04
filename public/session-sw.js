@@ -1,5 +1,13 @@
 let notifyTimer = null;
 
+// Without this, a newly deployed SW version sits "waiting" until every tab
+// is fully closed and reopened before it takes over — meaning fixes to this
+// file (like the notification-click handler below) wouldn't actually apply
+// on a phone until a full close+reopen, not just a refresh. skipWaiting +
+// clients.claim make a new version take control immediately.
+self.addEventListener('install', () => { self.skipWaiting(); });
+self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
+
 // A pass-through fetch handler — no caching/offline support, just network as
 // normal. Some Android/Chrome builds only offer "Install app" for a page once
 // its service worker has a fetch handler at all, so this exists purely to
