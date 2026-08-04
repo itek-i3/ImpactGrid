@@ -24,7 +24,7 @@ self.addEventListener('message', (event) => {
     notifyTimer = setTimeout(() => {
       self.registration.showNotification("Time's up!", {
         body: event.data.task ? `"${event.data.task}" — your focus session is complete.` : 'Your focus session is complete.',
-        icon: '/os/app-icon-512.png',
+        icon: '/os/app-icon-grey-512.png',
         badge: '/os/notification-icon.png',
         tag: 'session-complete',
         requireInteraction: true,
@@ -55,7 +55,7 @@ self.addEventListener('push', (event) => {
 
     await self.registration.showNotification(count > 1 ? `${title} (${count})` : title, {
       body,
-      icon: data.icon || '/os/app-icon-512.png',
+      icon: data.icon || '/os/app-icon-grey-512.png',
       badge: '/os/notification-icon.png',
       tag,
       renotify: true,
