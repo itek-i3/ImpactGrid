@@ -689,19 +689,24 @@ export const useWorkspaceStore = create((set, get) => ({
             parent_block_id: b.parent_block_id ? idMap[b.parent_block_id] || b.parent_block_id : null,
           }));
 
-          for (const b of duplicatedBlocks) {
-            await fetch(`/os/api/pages/${newPage.id}/blocks`, {
+          const createResults = await Promise.all(duplicatedBlocks.map((b) =>
+            fetch(`/os/api/pages/${newPage.id}/blocks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                id: b.id, // must match idMap's remapped parent_block_id refs above,
+                          // or child blocks end up pointing at an id the server
+                          // never actually created — orphaned and invisible.
                 type: b.type,
                 content: b.content,
                 properties: b.properties,
                 parentBlockId: b.parent_block_id,
                 sortOrder: b.sort_order,
               }),
-            });
-          }
+            })
+          ));
+          const failed = createResults.filter((r) => !r.ok).length;
+          if (failed > 0) console.error(`[duplicatePage] ${failed}/${duplicatedBlocks.length} blocks failed to create`);
 
           const editorStore = require('./useEditorStore').useEditorStore.getState();
           if (editorStore) {
