@@ -673,7 +673,11 @@ export const useWorkspaceStore = create((set, get) => ({
       try {
         const blocksRes = await fetch(`/os/api/pages/${pageId}/blocks`);
         if (blocksRes.ok) {
-          const oldBlocks = await blocksRes.json();
+          // GET /blocks wraps the array as { data: [...] } — this was calling
+          // .map() on that envelope object instead of its .data, which threw
+          // immediately and silently (caught below), meaning no page ever
+          // actually duplicated any blocks at all.
+          const oldBlocks = (await blocksRes.json()).data || [];
           const idMap = {};
           
           const duplicatedBlocks = oldBlocks.map((b) => {
