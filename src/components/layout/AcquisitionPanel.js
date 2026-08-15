@@ -16,18 +16,22 @@ import Modal from '@/components/ui/Modal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
 
+// Order here drives display order (numbered by array position, not id — ids
+// stay fixed since scores/notes state is keyed by id). The two criteria that
+// involve keying in capital figures (financial-inputs / investment-inputs)
+// are grouped together at the end, after every other criterion.
 const CRITERIA = [
   { id: 0,  title: 'Industry Focus',           short: 'Industry',    Icon: Factory,     inputType: 'industry-select',   desc: 'Operates within a target industry — services, FMCG, real estate, or agriculture' },
   { id: 1,  title: 'Years in Operation',        short: 'Operating age', Icon: Calendar,  inputType: 'months-input',      desc: 'At least 2 years of stable, documented operating history' },
-  { id: 2,  title: 'Revenue & Profitability',   short: 'Revenue',     Icon: DollarSign,  inputType: 'financial-inputs',   desc: 'Enter revenue and total operating spend to calculate net profit and net margin' },
   { id: 3,  title: 'Cash Flow Quality',         short: 'Cash flow',   Icon: Droplets,    inputType: 'toggle',            desc: 'Recurring revenue, operating cash flow, seasonality, and customer concentration' },
   { id: 4,  title: 'Legal & Tax Compliance',    short: 'Compliance',  Icon: Scale,       inputType: 'legal-checks',      desc: 'Registration, tax compliance, licenses/permits, and no active disputes' },
   { id: 5,  title: 'Growth Potential',          short: 'Growth',      Icon: TrendingUp,  inputType: 'toggle',            desc: 'Expansion opportunities, new products/locations, technology leverage' },
   { id: 6,  title: 'Management Capability',     short: 'Management',  Icon: Users,       inputType: 'toggle',            desc: 'Competent team, documented processes, limited owner-dependence' },
   { id: 7,  title: 'Market Position',           short: 'Market',      Icon: Crosshair,   inputType: 'toggle',            desc: 'Competitive advantage, brand strength, location, and barriers to entry' },
   { id: 8,  title: 'Owner Motivation',          short: 'Motivation',  Icon: UserCheck,   inputType: 'motivation-select', desc: 'Reason for sale — indicates deal risk and transition quality' },
-  { id: 9,  title: 'Investment Size & Returns', short: 'Returns',     Icon: BarChart3,   inputType: 'investment-inputs',  desc: 'Enter acquisition cost and monthly profit to calculate the payback period' },
   { id: 10, title: 'Risk Assessment',           short: 'Risk',        Icon: ShieldAlert, inputType: 'toggle',            desc: 'Financial, operational, regulatory, supplier, and competitive risks' },
+  { id: 2,  title: 'Revenue & Profitability',   short: 'Revenue',     Icon: DollarSign,  inputType: 'financial-inputs',   desc: 'Enter revenue and total operating spend to calculate net profit and net margin' },
+  { id: 9,  title: 'Investment Size & Returns', short: 'Returns',     Icon: BarChart3,   inputType: 'investment-inputs',  desc: 'Enter acquisition cost and monthly profit to calculate the payback period' },
 ];
 
 const TARGET_INDUSTRIES = [
@@ -404,8 +408,14 @@ export default function AcquisitionPanel() {
   const initScores = Object.fromEntries(CRITERIA.map(c => [c.id, null]));
 
   const [businessName,    setBusinessName]    = useState('');
+  const [ownerName,       setOwnerName]       = useState('');
+  const [registrationDetails, setRegistrationDetails] = useState('');
+  const [businessLocation, setBusinessLocation] = useState('');
+  const [productsServices, setProductsServices] = useState('');
+  const [numStaff,        setNumStaff]        = useState('');
   const [businessSector,  setBusinessSector]  = useState('');
   const [evalDate,        setEvalDate]        = useState(today);
+  const [assets,          setAssets]          = useState([]); // [{ id, name, worth }]
   const [scores,          setScores]          = useState(initScores);
   const [notes,           setNotes]           = useState(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
   const [notesOpen,       setNotesOpen]       = useState({});
@@ -419,7 +429,7 @@ export default function AcquisitionPanel() {
   const [customMotivations, setCustomMotivations] = useState([]); // [{ value, label, score, custom }]
   const [newMotivationLabel, setNewMotivationLabel] = useState('');
   const [newMotivationScore, setNewMotivationScore] = useState(75);
-  const [revenueMetrics,  setRevenueMetrics]  = useState({ revenue: '', totalExpenses: '' });
+  const [revenueMetrics,  setRevenueMetrics]  = useState({ revenue: '', totalExpenses: '', grossProfit: '' });
   const [investmentMetrics, setInvestmentMetrics] = useState({ acquisitionCost: '', monthlyProfit: '' });
   const [valuation,       setValuation]       = useState(EMPTY_VALUATION);
   const [valuationOpen,   setValuationOpen]   = useState(false);
@@ -542,11 +552,13 @@ export default function AcquisitionPanel() {
   // evaluatedCount alone is not a reliable signal of "started".)
   const hasDraft =
     businessName.trim() !== '' ||
+    ownerName.trim() !== '' || registrationDetails.trim() !== '' ||
+    businessLocation.trim() !== '' || productsServices.trim() !== '' || numStaff !== '' ||
     Object.values(scores).some(v => v !== null) ||
     industryValue !== '' || monthsInOp !== '' || ownerMotivation !== '' ||
     Object.values(legalChecks).some(Boolean) ||
-    customLegalItems.length > 0 || customMotivations.length > 0 ||
-    revenueMetrics.revenue !== '' || revenueMetrics.totalExpenses !== '' ||
+    customLegalItems.length > 0 || customMotivations.length > 0 || assets.length > 0 ||
+    revenueMetrics.revenue !== '' || revenueMetrics.totalExpenses !== '' || revenueMetrics.grossProfit !== '' ||
     investmentMetrics.acquisitionCost !== '' || investmentMetrics.monthlyProfit !== '';
 
   // Snapshot source: a business picked from the table wins; else the live draft
@@ -745,6 +757,9 @@ export default function AcquisitionPanel() {
       const obj = {
         id,
         businessName: businessName.trim(), sector: businessSector, date: evalDate,
+        ownerName: ownerName.trim(), registrationDetails: registrationDetails.trim(),
+        businessLocation: businessLocation.trim(), productsServices: productsServices.trim(),
+        numStaff, assets: assets.map(a => ({ ...a })),
         agencyId: activeAgencyId,
         evaluator: existing?.evaluator || {
           id: userProfile?.id || null,
@@ -783,6 +798,10 @@ export default function AcquisitionPanel() {
   function handleLoadEval(ev) {
     setBusinessName(ev.businessName || ''); setBusinessSector(ev.sector || '');
     setEvalDate(ev.date || today);
+    setOwnerName(ev.ownerName || ''); setRegistrationDetails(ev.registrationDetails || '');
+    setBusinessLocation(ev.businessLocation || ''); setProductsServices(ev.productsServices || '');
+    setNumStaff(ev.numStaff || '');
+    setAssets(Array.isArray(ev.assets) ? ev.assets.map(a => ({ ...a })) : []);
     const raw = Object.fromEntries(CRITERIA.map(c => [c.id, null]));
     [2,3,5,6,7,9,10].forEach(id => { raw[id] = ev.scores?.[id] ?? null; });
     setScores(raw);
@@ -792,7 +811,7 @@ export default function AcquisitionPanel() {
     setCustomLegalItems(Array.isArray(ev.customLegalItems) ? ev.customLegalItems.map(i => ({ ...i })) : []);
     setOwnerMotivation(ev.ownerMotivation || '');
     setCustomMotivations(Array.isArray(ev.customMotivations) ? ev.customMotivations.map(m => ({ ...m })) : []);
-    setRevenueMetrics(ev.revenueMetrics || { revenue: '', totalExpenses: '' });
+    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '', ...(ev.revenueMetrics || {}) });
     setInvestmentMetrics(ev.investmentMetrics || { acquisitionCost: '', monthlyProfit: '' });
     setValuation(ev.valuation ? { ...EMPTY_VALUATION, ...ev.valuation } : EMPTY_VALUATION);
     setEditingEvalId(ev.id); // saving will REPLACE this record, not create a duplicate
@@ -809,6 +828,8 @@ export default function AcquisitionPanel() {
 
   function handleReset() {
     setBusinessName(''); setBusinessSector(''); setEvalDate(today);
+    setOwnerName(''); setRegistrationDetails(''); setBusinessLocation('');
+    setProductsServices(''); setNumStaff(''); setAssets([]);
     setScores(initScores);
     setNotes(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
     setNotesOpen({}); setIndustryValue(''); setMonthsInOp(''); setOpUnit('months');
@@ -816,7 +837,7 @@ export default function AcquisitionPanel() {
     setCustomLegalItems([]); setNewLegalLabel('');
     setOwnerMotivation('');
     setCustomMotivations([]); setNewMotivationLabel(''); setNewMotivationScore(75);
-    setRevenueMetrics({ revenue: '', totalExpenses: '' });
+    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '' });
     setInvestmentMetrics({ acquisitionCost: '', monthlyProfit: '' });
     setValuation(EMPTY_VALUATION);
     setViewedEvalId(null);
@@ -826,17 +847,29 @@ export default function AcquisitionPanel() {
   function handleCopy() {
     const lines = [
       'ACQUISITION EVALUATION SUMMARY', '================================',
-      `Business : ${businessName || '(unnamed)'}`, `Sector   : ${businessSector || '—'}`,
-      `Date     : ${evalDate}`,
-      `Score    : ${totalScore}%  (${evaluatedCount}/11 criteria evaluated)`,
-      `Result   : ${scoreLabel(totalScore, evaluatedCount)}`, '',
+      `Business     : ${businessName || '(unnamed)'}`,
+      `Owner        : ${ownerName || '—'}`,
+      `Registration : ${registrationDetails || '—'}`,
+      `Location     : ${businessLocation || '—'}`,
+      `Products/services : ${productsServices || '—'}`,
+      `Staff        : ${numStaff || '—'}`,
+      `Sector       : ${businessSector || '—'}`,
+      `Date         : ${evalDate}`,
+      `Score        : ${totalScore}%  (${evaluatedCount}/11 criteria evaluated)`,
+      `Result       : ${scoreLabel(totalScore, evaluatedCount)}`, '',
       'CRITERIA BREAKDOWN', '------------------',
-      ...CRITERIA.map(c => {
+      ...CRITERIA.map((c, idx) => {
         const s = derivedScores[c.id];
         const n = notes[c.id]?.trim() ? `\n         Note: ${notes[c.id].trim()}` : '';
-        return `${String(c.id + 1).padStart(2, '0')}. ${c.title}: ${s === null ? 'Not evaluated' : `${s}%`}${n}`;
+        return `${String(idx + 1).padStart(2, '0')}. ${c.title}: ${s === null ? 'Not evaluated' : `${s}%`}${n}`;
       }),
     ];
+    if (assets.length > 0) {
+      lines.push('', 'ASSETS OWNED', '------------',
+        ...assets.map(a => `- ${a.name || '(unnamed)'}: ${a.worth ? formatCurrency(parseFinancialNumber(a.worth)) : '—'}`),
+        `Total assets worth: ${formatCurrency(assets.reduce((sum, a) => sum + (parseFinancialNumber(a.worth) || 0), 0))}`,
+      );
+    }
     const val = calculateValuation(valuation, { score: totalScore, monthlyProfit: parseFinancialNumber(investmentMetrics.monthlyProfit) });
     if (val.recommended !== null) {
       lines.push('', 'VALUATION', '---------',
@@ -892,7 +925,7 @@ export default function AcquisitionPanel() {
       const metrics = calculateRevenueMetrics(revenueMetrics);
       return (
         <div style={{ display:'flex', flexDirection:'column', gap:12, maxWidth:640 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:10 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             <div>
               <label className="acqp-lbl">Revenue</label>
               <input
@@ -906,7 +939,7 @@ export default function AcquisitionPanel() {
               />
             </div>
             <div>
-              <label className="acqp-lbl">Total operating spend / expenses</label>
+              <label className="acqp-lbl">Operational cost</label>
               <input
                 className="acqp-input"
                 type="number"
@@ -915,6 +948,18 @@ export default function AcquisitionPanel() {
                 value={revenueMetrics.totalExpenses}
                 onChange={e => setRevenueMetrics(prev => ({ ...prev, totalExpenses: e.target.value }))}
                 placeholder="e.g. 400000"
+              />
+            </div>
+            <div>
+              <label className="acqp-lbl">Gross profit</label>
+              <input
+                className="acqp-input"
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                value={revenueMetrics.grossProfit}
+                onChange={e => setRevenueMetrics(prev => ({ ...prev, grossProfit: e.target.value }))}
+                placeholder="e.g. 250000"
               />
             </div>
           </div>
@@ -931,7 +976,33 @@ export default function AcquisitionPanel() {
           </div>
 
           <div style={{ fontSize:12, color:'var(--color-text-secondary)', lineHeight:1.5 }}>
-            Net profit = revenue − all operating spend/expenses. The score is banded by net margin: below 25% is poor, 25%–50% is average, 50%–75% is good, and above 75% is excellent.
+            Net profit = revenue − operational cost. The score is banded by net margin: below 25% is poor, 25%–50% is average, 50%–75% is good, and above 75% is excellent.
+          </div>
+
+          {/* Assets owned & worth */}
+          <div style={{ borderTop:'1px solid var(--color-border-subtle)', paddingTop:12, display:'flex', flexDirection:'column', gap:8 }}>
+            <label className="acqp-lbl">Assets owned & worth</label>
+            {assets.map((a, i) => (
+              <div key={a.id} style={{ display:'grid', gridTemplateColumns:'2fr 1fr 32px', gap:8 }}>
+                <input className="acqp-input" value={a.name} placeholder="e.g. Delivery van"
+                  onChange={e => setAssets(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}/>
+                <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={a.worth} placeholder="Worth (KES)"
+                  onChange={e => setAssets(prev => prev.map((x, j) => j === i ? { ...x, worth: e.target.value } : x))}/>
+                <button onClick={() => setAssets(prev => prev.filter((_, j) => j !== i))}
+                  style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--color-border)', background:'transparent', color:'var(--color-text-tertiary)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <X size={13}/>
+                </button>
+              </div>
+            ))}
+            <button onClick={() => setAssets(prev => [...prev, { id: crypto.randomUUID(), name: '', worth: '' }])}
+              style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:8, border:'1px dashed var(--color-border)', background:'transparent', color:'var(--color-text-secondary)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+              <Plus size={13}/> Add asset
+            </button>
+            {assets.length > 0 && (
+              <div style={{ fontSize:12, color:'var(--color-text-secondary)' }}>
+                Total assets worth: <strong style={{ color:'var(--color-text-primary)' }}>{formatCurrency(assets.reduce((sum, a) => sum + (parseFinancialNumber(a.worth) || 0), 0))}</strong>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -941,7 +1012,7 @@ export default function AcquisitionPanel() {
       const metrics = calculateInvestmentMetrics(investmentMetrics);
       return (
         <div style={{ display:'flex', flexDirection:'column', gap:12, maxWidth:640 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:10 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             <div>
               <label className="acqp-lbl">Acquisition cost</label>
               <input
@@ -1088,7 +1159,7 @@ export default function AcquisitionPanel() {
       );
       return (
         <div style={{ maxWidth:540, display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'9px 18px' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
             {rows.map(({ key, label }) => {
               const on = legalChecks[key];
               return (
@@ -1289,7 +1360,7 @@ export default function AcquisitionPanel() {
         }
         .acqp-select:focus { border-color:var(--color-border-active); box-shadow:0 0 0 3px rgba(48,108,236,.15); }
         .acqp-lbl {
-          font-size:9.5px; font-weight:700; color:var(--color-text-tertiary); text-transform:uppercase;
+          font-size:9.5px; font-weight:700; color:var(--color-text-primary); text-transform:uppercase;
           letter-spacing:.1em; display:block; margin-bottom:6px;
         }
         .acqp-ghost:hover { color:var(--color-text-primary); border-color:var(--color-border-hover); background:var(--color-bg-hover); }
@@ -1303,7 +1374,6 @@ export default function AcquisitionPanel() {
         @media (max-width: 768px) {
           .acqp-root { padding: 16px 12px 80px !important; }
           .acqp-kpirow { grid-template-columns: 1fr 1fr !important; }
-          .acqp-header3 { grid-template-columns: 1fr !important; }
           .acqp-2col { grid-template-columns: 1fr !important; }
         }
       `}</style>
@@ -1673,11 +1743,31 @@ export default function AcquisitionPanel() {
                 Name the business, then answer each question below. The score and verdict update automatically — nothing else to set.
               </p>
 
-              {/* Business details */}
-              <div className="acqp-header3" style={{ display:'grid', gridTemplateColumns:'2fr 1.3fr 1fr', gap:14, alignItems:'end' }}>
+              {/* Business details — one field per row, easier to scan and fill in order */}
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <div>
                   <label className="acqp-lbl">Business Name *</label>
                   <input className="acqp-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Sunshine Laundromat"/>
+                </div>
+                <div>
+                  <label className="acqp-lbl">Name of the owner</label>
+                  <input className="acqp-input" value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="e.g. Jane Wanjiru"/>
+                </div>
+                <div>
+                  <label className="acqp-lbl">Business registration details</label>
+                  <input className="acqp-input" value={registrationDetails} onChange={e => setRegistrationDetails(e.target.value)} placeholder="Registration / certificate no."/>
+                </div>
+                <div>
+                  <label className="acqp-lbl">Location</label>
+                  <input className="acqp-input" value={businessLocation} onChange={e => setBusinessLocation(e.target.value)} placeholder="e.g. Eldoret"/>
+                </div>
+                <div>
+                  <label className="acqp-lbl">Products / services</label>
+                  <input className="acqp-input" value={productsServices} onChange={e => setProductsServices(e.target.value)} placeholder="What the business sells"/>
+                </div>
+                <div>
+                  <label className="acqp-lbl">Number of staff</label>
+                  <input className="acqp-input" type="number" inputMode="numeric" min="0" value={numStaff} onChange={e => setNumStaff(e.target.value)} placeholder="e.g. 6"/>
                 </div>
                 <div>
                   <label className="acqp-lbl">Sector</label>
@@ -1722,7 +1812,7 @@ export default function AcquisitionPanel() {
                 {/* Content */}
                 <div style={{ minWidth:0 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(c.id + 1).padStart(2, '0')}</span>
+                    <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
                     <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
                   </div>
                   <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:3, lineHeight:1.5 }}>{c.desc}</div>
