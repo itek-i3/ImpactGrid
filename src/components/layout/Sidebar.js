@@ -23,6 +23,7 @@ import {
   CalendarDays,
   Wallet,
   TrendingUp,
+  PiggyBank,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -357,6 +358,14 @@ export default function Sidebar() {
                     {liveTeamCount}
                   </span>
                 )}
+              </button>
+              <button
+                className="ig-nav"
+                onClick={() => { setCurrentView('personalFinance'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                style={currentView === 'personalFinance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+              >
+                <PiggyBank size={15} />
+                <span>Finance</span>
               </button>
             </nav>
 
