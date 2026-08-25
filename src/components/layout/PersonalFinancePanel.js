@@ -278,6 +278,13 @@ export default function PersonalFinancePanel() {
   const overBudgetCategories = useMemo(() => categoryStatus.filter(c => c.over > 0).sort((a, b) => b.over - a.over), [categoryStatus]);
   const overallOver = totalBudget > 0 ? Math.max(0, totalSpent - totalBudget) : 0;
 
+  // "Near" = 80%+ of a budget used but not over yet — a heads-up before the
+  // over-budget alert, using the same 80% threshold the budget bars turn amber at.
+  const NEAR_BUDGET_PCT = 80;
+  const nearBudgetCategories = useMemo(() => categoryStatus.filter(c => c.budget > 0 && c.over === 0 && c.pct >= NEAR_BUDGET_PCT).sort((a, b) => b.pct - a.pct), [categoryStatus]);
+  const overallPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+  const overallNear = totalBudget > 0 && overallOver === 0 && overallPct >= NEAR_BUDGET_PCT;
+
   const prevMonthKey = addMonthsToKey(selectedMonthKey, -1);
   const prevMonthBudgets = useMemo(() => budgetState.rows.filter(r => r.month_key === prevMonthKey && num(r.amount) > 0), [budgetState.rows, prevMonthKey]);
 
@@ -289,29 +296,41 @@ export default function PersonalFinancePanel() {
   };
 
   // Reminder — fires a toast the moment a category (or the month overall)
-  // crosses into over-budget, and again on page load if it's already over.
+  // crosses 80% of its budget (a heads-up) and again when it crosses into
+  // over-budget, plus again on page load if either is already true.
   // Switching months just resyncs the baseline silently, no toast.
   const lastMonthRef = useRef(selectedMonthKey);
   const prevOverRef = useRef(new Map());
   const prevOverallRef = useRef(false);
+  const prevNearRef = useRef(new Set());
+  const prevOverallNearRef = useRef(false);
   useEffect(() => {
     if (loading) return;
     if (lastMonthRef.current !== selectedMonthKey) {
       lastMonthRef.current = selectedMonthKey;
       prevOverRef.current = new Map(overBudgetCategories.map(c => [c.category, c.over]));
       prevOverallRef.current = overallOver > 0;
+      prevNearRef.current = new Set(nearBudgetCategories.map(c => c.category));
+      prevOverallNearRef.current = overallNear;
       return;
     }
     const prev = prevOverRef.current;
     const worsened = overBudgetCategories.find(c => !prev.has(c.category) || c.over > prev.get(c.category) + 0.5);
+    const newlyNear = nearBudgetCategories.find(c => !prevNearRef.current.has(c.category));
     if (worsened) {
       toast.warning('Over budget', `${worsened.category} is now ${money(worsened.over)} over its ${money(worsened.budget)} budget for ${monthLabel(selectedMonthKey)}.`);
     } else if (overallOver > 0 && !prevOverallRef.current) {
       toast.warning('Over budget', `You've spent ${money(totalSpent)} against a ${money(totalBudget)} budget for ${monthLabel(selectedMonthKey)} — ${money(overallOver)} over.`);
+    } else if (newlyNear) {
+      toast.warning('Approaching budget', `${newlyNear.category} is at ${newlyNear.pct}% of its ${money(newlyNear.budget)} budget for ${monthLabel(selectedMonthKey)}.`);
+    } else if (overallNear && !prevOverallNearRef.current) {
+      toast.warning('Approaching budget', `You've used ${overallPct}% of your ${money(totalBudget)} budget for ${monthLabel(selectedMonthKey)}.`);
     }
     prevOverRef.current = new Map(overBudgetCategories.map(c => [c.category, c.over]));
     prevOverallRef.current = overallOver > 0;
-  }, [overBudgetCategories, overallOver, selectedMonthKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+    prevNearRef.current = new Set(nearBudgetCategories.map(c => c.category));
+    prevOverallNearRef.current = overallNear;
+  }, [overBudgetCategories, overallOver, nearBudgetCategories, overallNear, overallPct, selectedMonthKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cleanLines = (items) => items.filter(it => it.label.trim() && num(it.amount) > 0).map(it => ({ label: it.label.trim(), amount: num(it.amount) }));
   const canAdd = cleanLines(nIncomeItems).length > 0 || cleanLines(nExpenseItems).length > 0;
@@ -409,9 +428,9 @@ export default function PersonalFinancePanel() {
         <button className="pfin-monthnav-btn" onClick={() => setSelectedMonthKey(k => addMonthsToKey(k, 1))} aria-label="Next month"><ChevronRight size={16} /></button>
       </div>
 
-      {/* Over-budget reminder banner */}
-      {(overBudgetCategories.length > 0 || overallOver > 0) && (
-        <div className="pfin-fadeup pfin-banner" style={{ animationDelay: '60ms' }}>
+      {/* Over-budget / approaching-budget reminder banner */}
+      {overBudgetCategories.length > 0 || overallOver > 0 ? (
+        <div className="pfin-fadeup pfin-banner pfin-banner-danger" style={{ animationDelay: '60ms' }}>
           <div className="pfin-banner-icon"><AlertTriangle size={16} /></div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 13 }}>Over budget for {monthLabel(selectedMonthKey)}</div>
@@ -420,6 +439,19 @@ export default function PersonalFinancePanel() {
                 <span>{overBudgetCategories.map(c => `${c.category} (+${money(c.over)})`).join(' · ')}</span>
               )}
               {overallOver > 0 && <span>{overBudgetCategories.length > 0 ? ' — ' : ''}Overall {money(overallOver)} over your {money(totalBudget)} budget.</span>}
+            </div>
+          </div>
+        </div>
+      ) : (nearBudgetCategories.length > 0 || overallNear) && (
+        <div className="pfin-fadeup pfin-banner pfin-banner-warn" style={{ animationDelay: '60ms' }}>
+          <div className="pfin-banner-icon"><AlertTriangle size={16} /></div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 13 }}>Approaching budget for {monthLabel(selectedMonthKey)}</div>
+            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+              {nearBudgetCategories.length > 0 && (
+                <span>{nearBudgetCategories.map(c => `${c.category} (${c.pct}%)`).join(' · ')}</span>
+              )}
+              {overallNear && <span>{nearBudgetCategories.length > 0 ? ' — ' : ''}Overall {overallPct}% of your {money(totalBudget)} budget used.</span>}
             </div>
           </div>
         </div>
@@ -661,13 +693,15 @@ export default function PersonalFinancePanel() {
 
         .pfin-banner {
           display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; margin-bottom: 18px;
-          background: rgba(224,72,90,0.10); border: 1px solid rgba(224,72,90,0.35); color: #F4A6AE;
         }
+        .pfin-banner-danger { background: rgba(224,72,90,0.10); border: 1px solid rgba(224,72,90,0.35); color: #F4A6AE; }
+        .pfin-banner-warn { background: rgba(245,166,35,0.10); border: 1px solid rgba(245,166,35,0.35); color: #F5C177; }
         .pfin-banner-icon {
           width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-          background: rgba(224,72,90,0.18); color: #E0485A;
           display: flex; align-items: center; justify-content: center;
         }
+        .pfin-banner-danger .pfin-banner-icon { background: rgba(224,72,90,0.18); color: #E0485A; }
+        .pfin-banner-warn .pfin-banner-icon { background: rgba(245,166,35,0.18); color: #F5A623; }
 
         .pfin-hero {
           display: flex; align-items: center; gap: 20px; padding: 20px;
