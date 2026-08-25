@@ -448,26 +448,28 @@ export default function PersonalFinancePanel() {
               </button>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               {categoryStatus.map((c) => {
                 const value = budgetDraft[c.category] ?? (monthBudgetMap.get(c.category) ? String(monthBudgetMap.get(c.category)) : '');
                 const barColor = c.over > 0 ? '#E0485A' : c.pct >= 80 ? '#F5A623' : c.color;
                 return (
                   <div key={c.category} className="pfin-budgetrow">
-                    <span className="pfin-budgetrow-dot" style={{ background: c.color }} />
-                    <span className="pfin-budgetrow-label">{c.category}</span>
-                    {!isMobile && (
+                    <div className="pfin-budgetrow-top">
+                      <span className="pfin-budgetrow-dot" style={{ background: c.color }} />
+                      <span className="pfin-budgetrow-label">{c.category}</span>
+                      <span className="pfin-budgetrow-spent" style={{ color: c.over > 0 ? '#E0485A' : 'var(--color-text-secondary)' }}>
+                        {c.spent > 0 ? `${money(c.spent)} spent` : 'Nothing spent yet'}
+                      </span>
+                    </div>
+                    <div className="pfin-budgetrow-bottom">
                       <div className="pfin-budgetrow-bar">
                         <div className="pfin-bar" style={{ width: `${c.budget > 0 ? Math.max(c.pct, c.spent > 0 ? 3 : 0) : 0}%`, height: '100%', borderRadius: 6, background: barColor }} />
                       </div>
-                    )}
-                    <span className="pfin-budgetrow-spent" style={{ color: c.over > 0 ? '#E0485A' : 'var(--color-text-secondary)' }}>
-                      {c.spent > 0 ? money(c.spent) : '—'}
-                    </span>
-                    <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="0"
-                      value={value}
-                      onChange={e => setBudgetDraft(d => ({ ...d, [c.category]: e.target.value }))}
-                      onBlur={e => { saveBudget(c.category, e.target.value); setBudgetDraft(d => { const n = { ...d }; delete n[c.category]; return n; }); }} />
+                      <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Budget"
+                        value={value}
+                        onChange={e => setBudgetDraft(d => ({ ...d, [c.category]: e.target.value }))}
+                        onBlur={e => { saveBudget(c.category, e.target.value); setBudgetDraft(d => { const n = { ...d }; delete n[c.category]; return n; }); }} />
+                    </div>
                   </div>
                 );
               })}
@@ -674,15 +676,20 @@ export default function PersonalFinancePanel() {
         }
 
         .pfin-budgetrow {
-          display: grid; grid-template-columns: 8px 1fr 100px 90px; gap: 10px; align-items: center; padding: 4px 0;
+          display: flex; flex-direction: column; gap: 7px; padding: 10px 0;
+          border-bottom: 1px solid var(--color-border-subtle);
         }
+        .pfin-budgetrow:last-child { border-bottom: none; padding-bottom: 4px; }
+        .pfin-budgetrow:first-child { padding-top: 4px; }
+        .pfin-budgetrow-top { display: flex; align-items: center; gap: 8px; }
         .pfin-budgetrow-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
-        .pfin-budgetrow-label { font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pfin-budgetrow-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
-        .pfin-budgetrow-spent { font-size: 11.5px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .pfin-budgetrow-input { height: 30px; text-align: right; }
-        @media (max-width: 640px) {
-          .pfin-budgetrow { grid-template-columns: 8px 1fr 80px; }
+        .pfin-budgetrow-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pfin-budgetrow-spent { flex-shrink: 0; font-size: 11px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--color-text-tertiary); }
+        .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
+        .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
+        .pfin-budgetrow-input { width: 96px; flex-shrink: 0; height: 30px; text-align: right; }
+        @media (max-width: 480px) {
+          .pfin-budgetrow-input { width: 80px; }
         }
 
         .pfin-entrylist { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
