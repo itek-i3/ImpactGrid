@@ -332,7 +332,7 @@ export default function PersonalFinancePanel() {
       setItems(next);
     };
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="pfin-formgroup">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {chipOptions.map((opt, i) => {
             const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
@@ -371,7 +371,7 @@ export default function PersonalFinancePanel() {
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '8px 4px 40px' }}>
       {/* Header */}
       <div className="pfin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-        <div className="pfin-icon-badge" style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E' }}>
+        <div className="pfin-icon-badge" style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E' }}>
           <PiggyBank size={22} />
         </div>
         <div>
@@ -395,7 +395,7 @@ export default function PersonalFinancePanel() {
       {/* Over-budget reminder banner */}
       {(overBudgetCategories.length > 0 || overallOver > 0) && (
         <div className="pfin-fadeup pfin-banner" style={{ animationDelay: '60ms' }}>
-          <AlertTriangle size={17} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div className="pfin-banner-icon"><AlertTriangle size={16} /></div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 13 }}>Over budget for {monthLabel(selectedMonthKey)}</div>
             <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
@@ -416,8 +416,8 @@ export default function PersonalFinancePanel() {
           { label: 'Spent', value: spentDisplay, Icon: TrendingDown, tint: '#E0485A' },
           { label: 'Remaining', value: remainingDisplay, Icon: Sigma, tint: remainingColor(remaining) },
         ].map(({ label, value, Icon, tint }, i) => (
-          <div key={label} className="pfin-tile pfin-fadeup" style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, animationDelay: `${i * 50 + 80}ms` }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={16} /></div>
+          <div key={label} className="pfin-tile pfin-fadeup" style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, animationDelay: `${i * 50 + 80}ms`, borderLeft: label === 'Remaining' ? `3px solid ${tint}` : card.border }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={16} /></div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{money(value)}</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{label}</div>
@@ -611,14 +611,16 @@ export default function PersonalFinancePanel() {
         .pfin-bar { transition: width .6s cubic-bezier(.22,1,.36,1); }
 
         .pfin-monthnav {
-          display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 14px;
+          display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 auto 14px;
+          width: fit-content; padding: 6px; border-radius: 999px;
+          background: var(--color-bg-elevated); border: 1px solid var(--color-border);
         }
         .pfin-monthnav-btn {
-          width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--color-border); background: var(--color-bg-elevated);
+          width: 30px; height: 30px; border-radius: 50%; border: none; background: transparent;
           color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: .15s; flex-shrink: 0;
         }
-        .pfin-monthnav-btn:hover { border-color: rgba(91,155,255,0.55); color: var(--color-text-primary); transform: translateY(-1px); }
-        .pfin-monthnav-label { font-size: 16px; font-weight: 800; color: var(--color-text-primary); letter-spacing: -.01em; min-width: 160px; }
+        .pfin-monthnav-btn:hover { background: rgba(91,155,255,0.14); color: #5B9BFF; }
+        .pfin-monthnav-label { font-size: 15px; font-weight: 800; color: var(--color-text-primary); letter-spacing: -.01em; min-width: 150px; }
         .pfin-monthnav-jump {
           background: none; border: none; cursor: pointer; color: #5B9BFF; font-size: 11px; font-weight: 700;
           font-family: inherit; padding: 2px 0; margin-top: 1px;
@@ -628,6 +630,11 @@ export default function PersonalFinancePanel() {
         .pfin-banner {
           display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; margin-bottom: 18px;
           background: rgba(224,72,90,0.10); border: 1px solid rgba(224,72,90,0.35); color: #F4A6AE;
+        }
+        .pfin-banner-icon {
+          width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+          background: rgba(224,72,90,0.18); color: #E0485A;
+          display: flex; align-items: center; justify-content: center;
         }
 
         .pfin-budgetgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -645,6 +652,11 @@ export default function PersonalFinancePanel() {
         .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
         .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
         .pfin-budgetrow-input { width: 88px; flex-shrink: 0; height: 30px; text-align: right; }
+
+        .pfin-formgroup {
+          display: flex; flex-direction: column; gap: 8px; padding: 12px;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle); border-radius: 12px;
+        }
 
         .pfin-sourcechip {
           padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
