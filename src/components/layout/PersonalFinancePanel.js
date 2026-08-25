@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
 import {
-  PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, Sigma, X,
+  PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, X,
   Loader2, Sparkles, ChevronLeft, ChevronRight, AlertTriangle, Wallet,
   Receipt, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
@@ -75,6 +75,20 @@ function useCountUp(value, duration = 550) {
   return display;
 }
 
+// Circular budget-used gauge — SVG stroke-dashoffset ring, no chart library.
+function RadialProgress({ pct, size, stroke, color, track }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (Math.min(100, Math.max(0, pct)) / 100) * c;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" className="pfin-ring-arc" />
+    </svg>
+  );
+}
+
 // Loads + realtime-subscribes one of the three personal-finance tables, with
 // a localStorage-backed mirror for demo mode. Called once per table — same
 // hook, same order, every render, so the Rules of Hooks stay satisfied.
@@ -130,6 +144,7 @@ export default function PersonalFinancePanel() {
   const budgetState = useLiveTable('personal_budgets', 'demo-personal-budgets', currentUserId, isDemo, 'month_key');
   const loading = incomeState.loading || expenseState.loading || budgetState.loading;
 
+  const [tab, setTab] = useState('budget');
   const [showAdd, setShowAdd] = useState(false);
   const [nDate, setNDate] = useState(today);
   const [nIncomeItems, setNIncomeItems] = useState([{ ...EMPTY_LINE }]);
@@ -228,6 +243,8 @@ export default function PersonalFinancePanel() {
   }, [monthExpenseRows]);
   const totalSpent = useMemo(() => [...spentByCategory.values()].reduce((s, v) => s + v, 0), [spentByCategory]);
   const remaining = totalBudget - totalSpent;
+  const budgetUsedPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+  const ringColor = totalBudget === 0 ? 'var(--color-text-tertiary)' : totalSpent > totalBudget ? '#E0485A' : budgetUsedPct >= 80 ? '#F5A623' : '#5B9BFF';
 
   const incomeBySource = useMemo(() => {
     const m = new Map();
@@ -408,22 +425,35 @@ export default function PersonalFinancePanel() {
         </div>
       )}
 
-      {/* Summary tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 18 }}>
-        {[
-          { label: 'Income', value: incomeDisplay, Icon: TrendingUp, tint: '#22C55E' },
-          { label: 'Budget', value: budgetDisplay, Icon: Wallet, tint: '#5B9BFF' },
-          { label: 'Spent', value: spentDisplay, Icon: TrendingDown, tint: '#E0485A' },
-          { label: 'Remaining', value: remainingDisplay, Icon: Sigma, tint: remainingColor(remaining) },
-        ].map(({ label, value, Icon, tint }, i) => (
-          <div key={label} className="pfin-tile pfin-fadeup" style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, animationDelay: `${i * 50 + 80}ms`, borderLeft: label === 'Remaining' ? `3px solid ${tint}` : card.border }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={16} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{money(value)}</div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{label}</div>
-            </div>
+      {/* Hero: remaining balance + budget-used ring */}
+      <div className="pfin-fadeup pfin-hero" style={{ animationDelay: '80ms' }}>
+        <div className="pfin-hero-ringwrap">
+          <RadialProgress pct={budgetUsedPct} size={isMobile ? 74 : 92} stroke={isMobile ? 7 : 9} color={ringColor} track="rgba(255,255,255,0.08)" />
+          <div className="pfin-hero-ringlabel">
+            <span className="pfin-hero-ringpct">{totalBudget > 0 ? `${budgetUsedPct}%` : '—'}</span>
+            <span className="pfin-hero-ringsub">used</span>
           </div>
-        ))}
+        </div>
+        <div className="pfin-hero-main">
+          <div className="pfin-hero-eyebrow">Remaining this month</div>
+          <div className="pfin-hero-amount" style={{ color: remainingColor(remaining) }}>{money(remainingDisplay)}</div>
+          <div className="pfin-hero-stats">
+            <span><TrendingUp size={12} style={{ color: '#22C55E' }} /> {money(incomeDisplay)}</span>
+            <span><Wallet size={12} style={{ color: '#5B9BFF' }} /> {money(budgetDisplay)}</span>
+            <span><TrendingDown size={12} style={{ color: '#E0485A' }} /> {money(spentDisplay)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="pfin-fadeup pfin-tabs" style={{ animationDelay: '100ms' }}>
+        <button className={`pfin-tab ${tab === 'budget' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('budget')}>
+          <Wallet size={14} /> Budget
+        </button>
+        <button className={`pfin-tab ${tab === 'transactions' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('transactions')}>
+          <Receipt size={14} /> Transactions
+          {monthTransactions.length > 0 && <span className="pfin-tab-count">{monthTransactions.length}</span>}
+        </button>
       </div>
 
       {loading ? (
@@ -434,6 +464,7 @@ export default function PersonalFinancePanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
           {/* Budget allocation */}
+          {tab === 'budget' && (
           <div className="pfin-fadeup" style={{ ...card, animationDelay: '220ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Wallet size={16} /></div>
@@ -482,8 +513,10 @@ export default function PersonalFinancePanel() {
               <button className="pfin-additem" onClick={() => { if (newCatName.trim()) { setPendingCategories(p => [...p, newCatName.trim()]); setNewCatName(''); } }}><Plus size={13} /> Add category</button>
             </div>
           </div>
+          )}
 
           {/* Log entry */}
+          {tab === 'transactions' && (<>
           {showAdd ? (
             <div className="pfin-pop" style={{ ...card, border: '1px solid rgba(34,197,94,0.35)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -554,6 +587,7 @@ export default function PersonalFinancePanel() {
               </div>
             )}
           </div>
+          </>)}
         </div>
       )}
 
@@ -600,8 +634,6 @@ export default function PersonalFinancePanel() {
         }
         .pfin-chip:hover { transform: translateY(-1px) scale(1.02); }
         .pfin-chip:active { transform: translateY(0) scale(.96); }
-        .pfin-tile { transition: transform .18s, box-shadow .18s; }
-        .pfin-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.18); }
         .pfin-icon-badge { animation: pfinIconPulse 3.2s ease-in-out infinite; }
         .pfin-del {
           width: 28px; height: 28px; border-radius: 7px; border: none; background: transparent; cursor: pointer;
@@ -635,6 +667,40 @@ export default function PersonalFinancePanel() {
           width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
           background: rgba(224,72,90,0.18); color: #E0485A;
           display: flex; align-items: center; justify-content: center;
+        }
+
+        .pfin-hero {
+          display: flex; align-items: center; gap: 20px; padding: 20px;
+          border-radius: 18px; margin-bottom: 14px;
+          background: linear-gradient(135deg, rgba(48,108,236,0.14), rgba(34,197,94,0.08));
+          border: 1px solid var(--color-border);
+        }
+        .pfin-hero-ringwrap { position: relative; width: 92px; height: 92px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .pfin-hero-ringlabel { position: absolute; display: flex; flex-direction: column; align-items: center; }
+        .pfin-hero-ringpct { font-size: 17px; font-weight: 800; color: var(--color-text-primary); }
+        .pfin-hero-ringsub { font-size: 9px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .06em; }
+        .pfin-hero-main { min-width: 0; flex: 1; }
+        .pfin-hero-eyebrow { font-size: 11px; font-weight: 700; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+        .pfin-hero-amount { font-size: 30px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+        .pfin-hero-stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+        .pfin-hero-stats span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+        .pfin-ring-arc { transition: stroke-dashoffset .6s cubic-bezier(.22,1,.36,1); }
+        @media (max-width: 420px) {
+          .pfin-hero { gap: 14px; padding: 16px; }
+          .pfin-hero-amount { font-size: 24px; }
+        }
+
+        .pfin-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); margin-bottom: 18px; }
+        .pfin-tab {
+          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+          height: 34px; border-radius: 9px; border: none; background: transparent; cursor: pointer;
+          font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--color-text-tertiary); transition: .15s;
+        }
+        .pfin-tab:hover { color: var(--color-text-secondary); }
+        .pfin-tab-active { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
+        .pfin-tab-count {
+          display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;
+          border-radius: 999px; background: rgba(91,155,255,0.2); color: #5B9BFF; font-size: 10px; font-weight: 800;
         }
 
         .pfin-budgetgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -693,7 +759,7 @@ export default function PersonalFinancePanel() {
 
         @media (prefers-reduced-motion: reduce) {
           .pfin-fadeup, .pfin-pop, .pfin-icon-badge, .pfin-spin { animation: none; }
-          .pfin-bar, .pfin-tile, .pfin-input, .pfin-save, .pfin-newbtn, .pfin-monthnav-btn { transition: none; }
+          .pfin-bar, .pfin-ring-arc, .pfin-input, .pfin-save, .pfin-newbtn, .pfin-monthnav-btn { transition: none; }
         }
       `}</style>
     </div>
