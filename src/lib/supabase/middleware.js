@@ -1,6 +1,28 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 
+// De-dupes concurrent supabase.auth.getUser() calls that carry the exact
+// same cookies. getUser() always round-trips to Supabase and can rotate the
+// refresh token; a single page load fires several requests in parallel
+// (profile, workspaces, pages, ...), each hitting this middleware, and
+// independent calls race on the SAME refresh token — Supabase's reuse-
+// detection then revokes the whole session as a precaution. Sharing one
+// in-flight call per cookie state avoids the race instead of just retrying
+// after the damage (a logged-out session) is already done. Module-level
+// state is fine here: one Node process per dev server / server instance.
+const inFlightAuthChecks = new Map();
+
+function getUserDeduped(supabase, cookieKey) {
+  if (!cookieKey) return supabase.auth.getUser();
+  const existing = inFlightAuthChecks.get(cookieKey);
+  if (existing) return existing;
+  const promise = supabase.auth.getUser().finally(() => {
+    inFlightAuthChecks.delete(cookieKey);
+  });
+  inFlightAuthChecks.set(cookieKey, promise);
+  return promise;
+}
+
 /**
  * Refreshes the Supabase auth session on every request via middleware.
  * Redirects unauthenticated users away from protected routes.
@@ -45,7 +67,7 @@ export async function updateSession(request) {
   // affects the redirect-to-login UX, not actual authorization.
   let user = null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await getUserDeduped(supabase, request.headers.get('cookie'));
     user = data.user;
   } catch (err) {
     console.error('[middleware] supabase.auth.getUser() failed —', err.message);

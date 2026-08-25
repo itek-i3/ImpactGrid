@@ -246,7 +246,16 @@ export const useWorkspaceStore = create((set, get) => ({
       const url = effectiveAgencyId
         ? `/os/api/workspaces?agencyId=${effectiveAgencyId}`
         : '/os/api/workspaces';
-      const wsRes = await fetch(url);
+      // A handful of requests fire in parallel on page load (profile, workspaces,
+      // pages, ...); each independently refreshes the Supabase session in
+      // middleware, and Supabase rotates the refresh token on use — when two
+      // land at once, the loser of that race gets a genuine 401. Retry with
+      // backoff clears it without masking a real auth failure.
+      let wsRes = await fetch(url);
+      for (let attempt = 0; !wsRes.ok && attempt < 2; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        wsRes = await fetch(url);
+      }
       if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
       const wsJson = await wsRes.json();
       let workspaces = wsJson.data || [];
