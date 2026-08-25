@@ -6,10 +6,10 @@ import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
 import {
-  PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, Sigma, X, BarChart2,
-  Loader2, Sparkles, ChevronLeft, ChevronRight, AlertTriangle, Wallet, Coins,
+  PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, Sigma, X,
+  Loader2, Sparkles, ChevronLeft, ChevronRight, AlertTriangle, Wallet,
+  Receipt, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -235,6 +235,12 @@ export default function PersonalFinancePanel() {
     return m;
   }, [monthIncomeRows]);
 
+  const monthTransactions = useMemo(() => {
+    const income = monthIncomeRows.map(r => ({ id: r.id, type: 'income', label: r.source, amount: num(r.amount), date: r.entry_date }));
+    const expense = monthExpenseRows.map(r => ({ id: r.id, type: 'expense', label: r.category, amount: num(r.amount), date: r.entry_date }));
+    return [...income, ...expense].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  }, [monthIncomeRows, monthExpenseRows]);
+
   const budgetCategoryList = useMemo(() => {
     const custom = new Set();
     monthBudgetMap.forEach((_, cat) => { if (!EXPENSE_CATEGORIES.includes(cat)) custom.add(cat); });
@@ -254,12 +260,6 @@ export default function PersonalFinancePanel() {
 
   const overBudgetCategories = useMemo(() => categoryStatus.filter(c => c.over > 0).sort((a, b) => b.over - a.over), [categoryStatus]);
   const overallOver = totalBudget > 0 ? Math.max(0, totalSpent - totalBudget) : 0;
-
-  const chartData = useMemo(() => categoryStatus
-    .filter(c => c.budget > 0 || c.spent > 0)
-    .sort((a, b) => (b.budget + b.spent) - (a.budget + a.spent))
-    .slice(0, 8)
-    .map(c => ({ label: c.category, Budget: c.budget, Spent: c.spent })), [categoryStatus]);
 
   const prevMonthKey = addMonthsToKey(selectedMonthKey, -1);
   const prevMonthBudgets = useMemo(() => budgetState.rows.filter(r => r.month_key === prevMonthKey && num(r.amount) > 0), [budgetState.rows, prevMonthKey]);
@@ -448,7 +448,7 @@ export default function PersonalFinancePanel() {
               </button>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="pfin-budgetgrid">
               {categoryStatus.map((c) => {
                 const value = budgetDraft[c.category] ?? (monthBudgetMap.get(c.category) ? String(monthBudgetMap.get(c.category)) : '');
                 const barColor = c.over > 0 ? '#E0485A' : c.pct >= 80 ? '#F5A623' : c.color;
@@ -483,27 +483,6 @@ export default function PersonalFinancePanel() {
             </div>
           </div>
 
-          {/* Budget vs Actual chart */}
-          {chartData.length > 0 && (
-            <div className="pfin-fadeup" style={{ ...card, animationDelay: '260ms' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(48,108,236,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Budget vs actual</span>
-              </div>
-              <ResponsiveContainer width="100%" height={isMobile ? 220 : 260}>
-                <BarChart data={chartData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={isMobile ? -35 : 0} textAnchor={isMobile ? 'end' : 'middle'} height={isMobile ? 50 : 24} />
-                  <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
-                  <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
-                  <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                  <Bar dataKey="Budget" fill="#5B9BFF" radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive animationDuration={500} animationEasing="ease-out" />
-                  <Bar dataKey="Spent" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive animationDuration={500} animationEasing="ease-out" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
           {/* Log entry */}
           {showAdd ? (
             <div className="pfin-pop" style={{ ...card, border: '1px solid rgba(34,197,94,0.35)' }}>
@@ -531,69 +510,45 @@ export default function PersonalFinancePanel() {
             <button className="pfin-newbtn" onClick={() => setShowAdd(true)}><Plus size={16} /> Log entry</button>
           )}
 
-          {/* Income this month */}
+          {/* Transactions this month */}
           <div className="pfin-fadeup" style={{ ...card, animationDelay: '300ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(34,197,94,0.16)', color: '#22C55E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Coins size={16} /></div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Income this month</span>
-              <span style={{ marginLeft: 'auto' }}>{chip(money(totalIncome), '#22C55E')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Receipt size={16} /></div>
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Transactions this month</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                {chip(`+${money(totalIncome)}`, '#22C55E')}
+                {chip(`−${money(totalSpent)}`, '#E0485A')}
+              </span>
             </div>
 
             {incomeBySource.size > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--color-border-subtle)' }}>
-                {[...incomeBySource.entries()].filter(([, amt]) => amt > 0).sort((a, b) => b[1] - a[1]).map(([source, amt], i) => {
-                  const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
-                  const max = Math.max(...incomeBySource.values());
-                  const pct = totalIncome > 0 ? Math.round((amt / totalIncome) * 100) : 0;
-                  return (
-                    <div key={source} style={{ display: 'grid', gridTemplateColumns: isMobile ? '80px 1fr' : '120px 1fr', gap: 10, alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ flex: 1, height: 14, borderRadius: 6, background: 'rgba(255,255,255,0.05)', overflow: 'hidden', minWidth: 0 }}>
-                          <div className="pfin-bar" style={{ width: `${Math.max(3, (amt / max) * 100)}%`, height: '100%', borderRadius: 6, background: color, opacity: 0.9 }} />
-                        </div>
-                        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(amt)}</span>
-                        <span style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', flexShrink: 0, width: 28, textAlign: 'right' }}>{pct}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {monthIncomeRows.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No income logged for {monthLabel(selectedMonthKey)} yet.</div>
-            ) : (
-              <div className="pfin-entrylist">
-                {monthIncomeRows.map(r => (
-                  <div key={r.id} className="pfin-entryrow">
-                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 44, flexShrink: 0 }}>{fmtShort(r.entry_date)}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.source}</span>
-                    {chip(money(r.amount), '#22C55E')}
-                    <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_income', incomeState, r.id)}><Trash2 size={13} /></button>
-                  </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--color-border-subtle)' }}>
+                {[...incomeBySource.entries()].filter(([, amt]) => amt > 0).sort((a, b) => b[1] - a[1]).map(([source, amt]) => (
+                  <span key={source} className="pfin-sourcechip">{source} <strong>{money(amt)}</strong></span>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Expenses this month */}
-          <div className="pfin-fadeup" style={{ ...card, animationDelay: '340ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(224,72,90,0.16)', color: '#E0485A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrendingDown size={16} /></div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Expenses this month</span>
-              <span style={{ marginLeft: 'auto' }}>{chip(money(totalSpent), '#E0485A')}</span>
-            </div>
-            {monthExpenseRows.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No expenses logged for {monthLabel(selectedMonthKey)} yet.</div>
+            {monthTransactions.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No transactions logged for {monthLabel(selectedMonthKey)} yet.</div>
             ) : (
               <div className="pfin-entrylist">
-                {monthExpenseRows.map(r => (
-                  <div key={r.id} className="pfin-entryrow">
-                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 44, flexShrink: 0 }}>{fmtShort(r.entry_date)}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.category}</span>
-                    {chip(`−${money(r.amount)}`, '#E0485A')}
-                    <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_expenses', expenseState, r.id)}><Trash2 size={13} /></button>
+                {monthTransactions.map(t => (
+                  <div key={`${t.type}-${t.id}`} className="pfin-txnrow">
+                    <div className={t.type === 'income' ? 'pfin-txnicon pfin-txnicon-in' : 'pfin-txnicon pfin-txnicon-out'}>
+                      {t.type === 'income' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                    </div>
+                    <div className="pfin-txnmeta">
+                      <span className="pfin-txnlabel">{t.label}</span>
+                      <span className="pfin-txndate">{fmtShort(t.date)}</span>
+                    </div>
+                    <span className={t.type === 'income' ? 'pfin-txnamount pfin-txnamount-in' : 'pfin-txnamount pfin-txnamount-out'}>
+                      {t.type === 'income' ? '+' : '−'}{money(t.amount)}
+                    </span>
+                    <button className="pfin-del" title="Delete"
+                      onClick={() => deleteRow(t.type === 'income' ? 'personal_income' : 'personal_expenses', t.type === 'income' ? incomeState : expenseState, t.id)}>
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -675,28 +630,45 @@ export default function PersonalFinancePanel() {
           background: rgba(224,72,90,0.10); border: 1px solid rgba(224,72,90,0.35); color: #F4A6AE;
         }
 
-        .pfin-budgetrow {
-          display: flex; flex-direction: column; gap: 7px; padding: 10px 0;
-          border-bottom: 1px solid var(--color-border-subtle);
+        .pfin-budgetgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        @media (max-width: 560px) {
+          .pfin-budgetgrid { grid-template-columns: 1fr; }
         }
-        .pfin-budgetrow:last-child { border-bottom: none; padding-bottom: 4px; }
-        .pfin-budgetrow:first-child { padding-top: 4px; }
+        .pfin-budgetrow {
+          display: flex; flex-direction: column; gap: 8px; padding: 12px;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle); border-radius: 12px;
+        }
         .pfin-budgetrow-top { display: flex; align-items: center; gap: 8px; }
         .pfin-budgetrow-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
         .pfin-budgetrow-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .pfin-budgetrow-spent { flex-shrink: 0; font-size: 11px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--color-text-tertiary); }
         .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
-        .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
-        .pfin-budgetrow-input { width: 96px; flex-shrink: 0; height: 30px; text-align: right; }
-        @media (max-width: 480px) {
-          .pfin-budgetrow-input { width: 80px; }
-        }
+        .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .pfin-budgetrow-input { width: 88px; flex-shrink: 0; height: 30px; text-align: right; }
 
-        .pfin-entrylist { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
-        .pfin-entryrow {
+        .pfin-sourcechip {
+          padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+          color: var(--color-text-secondary); background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle);
+        }
+        .pfin-sourcechip strong { color: var(--color-text-primary); font-weight: 700; margin-left: 4px; }
+
+        .pfin-entrylist { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+        .pfin-txnrow {
           display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; transition: background .15s;
         }
-        .pfin-entryrow:hover { background: rgba(255,255,255,0.03); }
+        .pfin-txnrow:hover { background: rgba(255,255,255,0.03); }
+        .pfin-txnicon {
+          width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .pfin-txnicon-in { background: rgba(34,197,94,0.16); color: #22C55E; }
+        .pfin-txnicon-out { background: rgba(224,72,90,0.16); color: #E0485A; }
+        .pfin-txnmeta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .pfin-txnlabel { font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pfin-txndate { font-size: 10.5px; color: var(--color-text-tertiary); }
+        .pfin-txnamount { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+        .pfin-txnamount-in { color: #22C55E; }
+        .pfin-txnamount-out { color: #E0485A; }
 
         .pfin-fadeup { animation: pfinFadeUp .5s cubic-bezier(.22,1,.36,1) both; }
         .pfin-pop { animation: pfinPop .28s cubic-bezier(.22,1,.36,1) both; }
