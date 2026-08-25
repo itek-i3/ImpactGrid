@@ -38,9 +38,19 @@ export async function updateSession(request) {
   );
 
   // IMPORTANT: Do not remove. Refreshes the auth token.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Wrapped because a transient network failure reaching Supabase's auth
+  // server otherwise throws uncaught here and fails the request outright
+  // (surfacing to the client as e.g. "Failed to fetch workspaces") — data
+  // routes independently re-check auth via RLS, so failing open here only
+  // affects the redirect-to-login UX, not actual authorization.
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (err) {
+    console.error('[middleware] supabase.auth.getUser() failed —', err.message);
+    return supabaseResponse;
+  }
 
   const { pathname } = request.nextUrl;
 
