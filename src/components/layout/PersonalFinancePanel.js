@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, X,
   Loader2, Sparkles, ChevronLeft, ChevronRight, AlertTriangle, Wallet,
-  Receipt, ArrowUpRight, ArrowDownRight,
+  Receipt, ArrowUpRight, ArrowDownRight, Pencil, Check,
 } from 'lucide-react';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
@@ -41,7 +41,6 @@ const addMonthsToKey = (key, delta) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 };
 
-const EXPENSE_CATEGORIES = ['Rent / Mortgage', 'Groceries', 'Transport', 'Utilities', 'Subscriptions', 'Entertainment', 'Health', 'Debt Repayment', 'Savings', 'Shopping', 'Education', 'Miscellaneous'];
 const INCOME_SOURCES = ['Salary', 'Business', 'Freelance', 'Side Hustle', 'Investments', 'Rental', 'Gift', 'Other'];
 const CATEGORY_PALETTE = ['#E0485A', '#F97316', '#F5A623', '#EAB308', '#84CC16', '#EC4899', '#5B9BFF', '#0EA5E9', '#14B8A6', '#F472B6', '#A78BFA', '#94A3B8'];
 const EMPTY_LINE = { label: '', amount: '' };
@@ -151,8 +150,10 @@ export default function PersonalFinancePanel() {
   const [nExpenseItems, setNExpenseItems] = useState([{ ...EMPTY_LINE }]);
   const [saving, setSaving] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState({});
-  const [pendingCategories, setPendingCategories] = useState([]);
   const [newCatName, setNewCatName] = useState('');
+  const [newCatAmount, setNewCatAmount] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editDraft, setEditDraft] = useState({ name: '', amount: '' });
   const dateInputRef = useRef(null);
 
   // Reset per-month editing state during render (not in an Effect) when the
@@ -162,7 +163,7 @@ export default function PersonalFinancePanel() {
   if (draftMonthKey !== selectedMonthKey) {
     setDraftMonthKey(selectedMonthKey);
     setBudgetDraft({});
-    setPendingCategories([]);
+    setEditingCategory(null);
   }
 
   useEffect(() => {
@@ -218,6 +219,65 @@ export default function PersonalFinancePanel() {
     } catch (err) { console.error('[personal-finance] budget insert threw:', err); toast.error('Could not save budget', 'Something went wrong.'); return false; }
   };
 
+  // Adds a user-defined budget category with its name and starting amount
+  // together, saved immediately so it survives a refresh.
+  const addBudgetCategory = async (rawName, amountRaw) => {
+    const category = rawName.trim();
+    if (!category) return;
+    const already = budgetState.rows.some(r => r.month_key === selectedMonthKey && r.category === category);
+    if (already) { toast.error('Could not add', 'That category already exists this month.'); return; }
+    await insertRow('personal_budgets', budgetState, { month_key: selectedMonthKey, category, amount: num(amountRaw) });
+  };
+
+  // Removes a budget category entirely: deletes its saved row so it stops
+  // showing up in the grid at all.
+  const removeBudgetCategory = async (category) => {
+    const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === category);
+    if (existing) await deleteRow('personal_budgets', budgetState, existing.id);
+  };
+
+  // Renames a category and/or updates its amount in one save. Renames
+  // cascade to every expense already logged under the old name (any month),
+  // so past spending stays attached to the category instead of orphaning.
+  const editBudgetCategory = async (oldName, rawName, amountRaw) => {
+    const newName = rawName.trim();
+    if (!newName) return;
+    const amt = num(amountRaw);
+    const renamed = newName !== oldName;
+    if (renamed && budgetState.rows.some(r => r.month_key === selectedMonthKey && r.category === newName)) {
+      toast.error('Could not rename', 'That category name is already in use.');
+      return;
+    }
+    const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === oldName);
+    if (isDemo) {
+      const nextBudgets = existing
+        ? budgetState.rows.map(r => (r.id === existing.id ? { ...r, category: newName, amount: amt } : r))
+        : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, created_at: new Date().toISOString() }, ...budgetState.rows];
+      budgetState.persistDemo(nextBudgets);
+      if (renamed) expenseState.persistDemo(expenseState.rows.map(r => (r.category === oldName ? { ...r, category: newName } : r)));
+      return;
+    }
+    if (!currentUserId) return;
+    try {
+      if (existing) {
+        budgetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, category: newName, amount: amt } : r)));
+        const { error } = await createClient().from('personal_budgets').update({ category: newName, amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
+        if (error) { console.error('[personal-finance] budget rename failed —', error.message); toast.error('Could not save', error.message); return; }
+      } else {
+        const { data, error } = await createClient().from('personal_budgets')
+          .insert({ user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt }).select('*').maybeSingle();
+        if (error) { console.error('[personal-finance] budget insert failed —', error.message); toast.error('Could not save', error.message); return; }
+        if (data) budgetState.setRows(prev => [data, ...prev]);
+      }
+      if (renamed) {
+        expenseState.setRows(prev => prev.map(r => (r.category === oldName ? { ...r, category: newName } : r)));
+        const { error: expErr } = await createClient().from('personal_expenses')
+          .update({ category: newName, updated_at: new Date().toISOString() }).eq('user_id', currentUserId).eq('category', oldName);
+        if (expErr) console.error('[personal-finance] expense category rename failed —', expErr.message);
+      }
+    } catch (err) { console.error('[personal-finance] budget edit threw:', err); toast.error('Could not save', 'Something went wrong.'); }
+  };
+
   // ---- Month-scoped derived data ----
   const monthBudgetMap = useMemo(() => {
     const map = new Map();
@@ -258,13 +318,24 @@ export default function PersonalFinancePanel() {
     return [...income, ...expense].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }, [monthIncomeRows, monthExpenseRows]);
 
+  // Budget categories are entirely user-defined — no fixed starter list, so
+  // everyone builds their own criteria from a blank slate via "Add budget".
   const budgetCategoryList = useMemo(() => {
-    const custom = new Set();
-    monthBudgetMap.forEach((_, cat) => { if (!EXPENSE_CATEGORIES.includes(cat)) custom.add(cat); });
-    spentByCategory.forEach((_, cat) => { if (!EXPENSE_CATEGORIES.includes(cat)) custom.add(cat); });
-    pendingCategories.forEach(cat => { if (!EXPENSE_CATEGORIES.includes(cat)) custom.add(cat); });
-    return [...EXPENSE_CATEGORIES, ...[...custom].sort()];
-  }, [monthBudgetMap, spentByCategory, pendingCategories]);
+    const cats = new Set();
+    monthBudgetMap.forEach((_, cat) => cats.add(cat));
+    spentByCategory.forEach((_, cat) => cats.add(cat));
+    return [...cats].sort();
+  }, [monthBudgetMap, spentByCategory]);
+
+  // Every category the user has ever created (any month, via budget or past
+  // spending) — offered as a quick-fill chip in Log entry so a category you
+  // added under Budget doesn't disappear when you go to log a transaction.
+  const allExpenseChipOptions = useMemo(() => {
+    const cats = new Set();
+    budgetState.rows.forEach(r => cats.add(r.category));
+    expenseState.rows.forEach(r => cats.add(r.category));
+    return [...cats].sort();
+  }, [budgetState.rows, expenseState.rows]);
 
   const categoryStatus = useMemo(() => budgetCategoryList.map((cat, i) => {
     const budget = monthBudgetMap.get(cat) || 0;
@@ -406,14 +477,17 @@ export default function PersonalFinancePanel() {
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '8px 4px 40px' }}>
       {/* Header */}
-      <div className="pfin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-        <div className="pfin-icon-badge" style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E' }}>
+      <div className="pfin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <div className="pfin-icon-badge" style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E', flexShrink: 0 }}>
           <PiggyBank size={22} />
         </div>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Personal Finance</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Allocate a monthly budget, track where your income comes from, and get warned the moment you overspend — private to you</div>
         </div>
+        <button className="pfin-save" style={isMobile ? { width: '100%', justifyContent: 'center' } : { marginLeft: 'auto', flexShrink: 0 }} onClick={() => { setTab('transactions'); setShowAdd(true); }}>
+          <Plus size={15} /> Log entry
+        </button>
       </div>
 
       {/* Month switcher */}
@@ -505,45 +579,86 @@ export default function PersonalFinancePanel() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>Set what you plan to spend per category this month — the bar fills as you spend, and turns red once you go over.</div>
 
-            {totalBudget === 0 && prevMonthBudgets.length > 0 && (
-              <button className="pfin-additem" style={{ marginBottom: 12 }} onClick={copyPrevBudget}>
-                <Sparkles size={13} /> Copy budget from {monthLabel(prevMonthKey)}
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <input className="pfin-input" style={{ maxWidth: 200 }} type="text" placeholder="Category name" value={newCatName}
+                onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newCatName.trim()) { addBudgetCategory(newCatName, newCatAmount); setNewCatName(''); setNewCatAmount(''); } }} />
+              <input className="pfin-input" style={{ maxWidth: 120 }} type="number" inputMode="decimal" placeholder="Amount" value={newCatAmount}
+                onChange={e => setNewCatAmount(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newCatName.trim()) { addBudgetCategory(newCatName, newCatAmount); setNewCatName(''); setNewCatAmount(''); } }} />
+              <button className="pfin-additem" onClick={() => { if (newCatName.trim()) { addBudgetCategory(newCatName, newCatAmount); setNewCatName(''); setNewCatAmount(''); } }}><Plus size={13} /> Add budget</button>
+              {totalBudget === 0 && prevMonthBudgets.length > 0 && (
+                <button className="pfin-additem" onClick={copyPrevBudget}>
+                  <Sparkles size={13} /> Copy budget from {monthLabel(prevMonthKey)}
+                </button>
+              )}
+            </div>
 
+            {categoryStatus.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>
+                No budget categories yet — add one above to start building your own budget.
+              </div>
+            ) : (
             <div className="pfin-budgetgrid">
               {categoryStatus.map((c) => {
                 const value = budgetDraft[c.category] ?? (monthBudgetMap.get(c.category) ? String(monthBudgetMap.get(c.category)) : '');
                 const barColor = c.over > 0 ? '#E0485A' : c.pct >= 80 ? '#F5A623' : c.color;
+                const isEditing = editingCategory === c.category;
+                const commitEdit = () => { editBudgetCategory(c.category, editDraft.name, editDraft.amount); setEditingCategory(null); };
                 return (
                   <div key={c.category} className="pfin-budgetrow">
                     <div className="pfin-budgetrow-top">
                       <span className="pfin-budgetrow-dot" style={{ background: c.color }} />
-                      <span className="pfin-budgetrow-label">{c.category}</span>
-                      <span className="pfin-budgetrow-spent" style={{ color: c.over > 0 ? '#E0485A' : 'var(--color-text-secondary)' }}>
-                        {c.spent > 0 ? `${money(c.spent)} spent` : 'Nothing spent yet'}
-                      </span>
+                      {isEditing ? (
+                        <input className="pfin-input pfin-budgetrow-nameinput" type="text" value={editDraft.name} autoFocus
+                          onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingCategory(null); }} />
+                      ) : (
+                        <>
+                          <span className="pfin-budgetrow-label">{c.category}</span>
+                          <span className="pfin-budgetrow-spent" style={{ color: c.over > 0 ? '#E0485A' : 'var(--color-text-secondary)' }}>
+                            {c.spent > 0 ? `${money(c.spent)} spent` : 'Nothing spent yet'}
+                          </span>
+                        </>
+                      )}
+                      {isEditing ? (
+                        <>
+                          <button className="pfin-del" title="Save" onClick={commitEdit}><Check size={13} /></button>
+                          <button className="pfin-del" title="Cancel" onClick={() => setEditingCategory(null)}><X size={13} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <button className="pfin-del" title="Edit category"
+                            onClick={() => { setEditingCategory(c.category); setEditDraft({ name: c.category, amount: value }); }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button className="pfin-del" title="Delete category" onClick={() => removeBudgetCategory(c.category)}>
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                     <div className="pfin-budgetrow-bottom">
                       <div className="pfin-budgetrow-bar">
                         <div className="pfin-bar" style={{ width: `${c.budget > 0 ? Math.max(c.pct, c.spent > 0 ? 3 : 0) : 0}%`, height: '100%', borderRadius: 6, background: barColor }} />
                       </div>
-                      <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Budget"
-                        value={value}
-                        onChange={e => setBudgetDraft(d => ({ ...d, [c.category]: e.target.value }))}
-                        onBlur={e => { saveBudget(c.category, e.target.value); setBudgetDraft(d => { const n = { ...d }; delete n[c.category]; return n; }); }} />
+                      {isEditing ? (
+                        <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Budget"
+                          value={editDraft.amount}
+                          onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingCategory(null); }} />
+                      ) : (
+                        <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Budget"
+                          value={value}
+                          onChange={e => setBudgetDraft(d => ({ ...d, [c.category]: e.target.value }))}
+                          onBlur={e => { saveBudget(c.category, e.target.value); setBudgetDraft(d => { const n = { ...d }; delete n[c.category]; return n; }); }} />
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-              <input className="pfin-input" style={{ maxWidth: 220 }} type="text" placeholder="Custom category…" value={newCatName}
-                onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && newCatName.trim()) { setPendingCategories(p => [...p, newCatName.trim()]); setNewCatName(''); } }} />
-              <button className="pfin-additem" onClick={() => { if (newCatName.trim()) { setPendingCategories(p => [...p, newCatName.trim()]); setNewCatName(''); } }}><Plus size={13} /> Add category</button>
-            </div>
+            )}
           </div>
           )}
 
@@ -563,7 +678,7 @@ export default function PersonalFinancePanel() {
               <label style={lbl}>Income — where it came from</label>
               {lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES)}
               <label style={{ ...lbl, marginTop: 16 }}>Expenses — what was spent</label>
-              {lineEditor(nExpenseItems, setNExpenseItems, EXPENSE_CATEGORIES)}
+              {lineEditor(nExpenseItems, setNExpenseItems, allExpenseChipOptions)}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
                 <button className="pfin-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
                 <button className="pfin-save" onClick={saveEntry} disabled={!canAdd || saving}>
@@ -597,25 +712,57 @@ export default function PersonalFinancePanel() {
             {monthTransactions.length === 0 ? (
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>No transactions logged for {monthLabel(selectedMonthKey)} yet.</div>
             ) : (
-              <div className="pfin-entrylist">
-                {monthTransactions.map(t => (
-                  <div key={`${t.type}-${t.id}`} className="pfin-txnrow">
-                    <div className={t.type === 'income' ? 'pfin-txnicon pfin-txnicon-in' : 'pfin-txnicon pfin-txnicon-out'}>
-                      {t.type === 'income' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                    </div>
-                    <div className="pfin-txnmeta">
-                      <span className="pfin-txnlabel">{t.label}</span>
-                      <span className="pfin-txndate">{fmtShort(t.date)}</span>
-                    </div>
-                    <span className={t.type === 'income' ? 'pfin-txnamount pfin-txnamount-in' : 'pfin-txnamount pfin-txnamount-out'}>
-                      {t.type === 'income' ? '+' : '−'}{money(t.amount)}
-                    </span>
-                    <button className="pfin-del" title="Delete"
-                      onClick={() => deleteRow(t.type === 'income' ? 'personal_income' : 'personal_expenses', t.type === 'income' ? incomeState : expenseState, t.id)}>
-                      <Trash2 size={13} />
-                    </button>
+              <div className="pfin-txncols">
+                <div className="pfin-txncol">
+                  <div className="pfin-txncol-head">
+                    <span className="pfin-txncol-title">Income</span>
+                    <span className="pfin-txncol-total pfin-txncol-total-in">+{money(totalIncome)}</span>
                   </div>
-                ))}
+                  {monthIncomeRows.length === 0 ? (
+                    <div className="pfin-txncol-empty">No income logged yet.</div>
+                  ) : (
+                    <div className="pfin-entrylist">
+                      {monthIncomeRows.map(r => (
+                        <div key={r.id} className="pfin-txnrow">
+                          <div className="pfin-txnicon pfin-txnicon-in"><ArrowUpRight size={14} /></div>
+                          <div className="pfin-txnmeta">
+                            <span className="pfin-txnlabel">{r.source}</span>
+                            <span className="pfin-txndate">{fmtShort(r.entry_date)}</span>
+                          </div>
+                          <span className="pfin-txnamount pfin-txnamount-in">+{money(r.amount)}</span>
+                          <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_income', incomeState, r.id)}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="pfin-txncol">
+                  <div className="pfin-txncol-head">
+                    <span className="pfin-txncol-title">Expenses</span>
+                    <span className="pfin-txncol-total pfin-txncol-total-out">−{money(totalSpent)}</span>
+                  </div>
+                  {monthExpenseRows.length === 0 ? (
+                    <div className="pfin-txncol-empty">No expenses logged yet.</div>
+                  ) : (
+                    <div className="pfin-entrylist">
+                      {monthExpenseRows.map(r => (
+                        <div key={r.id} className="pfin-txnrow">
+                          <div className="pfin-txnicon pfin-txnicon-out"><ArrowDownRight size={14} /></div>
+                          <div className="pfin-txnmeta">
+                            <span className="pfin-txnlabel">{r.category}</span>
+                            <span className="pfin-txndate">{fmtShort(r.entry_date)}</span>
+                          </div>
+                          <span className="pfin-txnamount pfin-txnamount-out">−{money(r.amount)}</span>
+                          <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_expenses', expenseState, r.id)}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -748,6 +895,7 @@ export default function PersonalFinancePanel() {
         .pfin-budgetrow-top { display: flex; align-items: center; gap: 8px; }
         .pfin-budgetrow-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
         .pfin-budgetrow-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pfin-budgetrow-nameinput { flex: 1; min-width: 0; height: 26px; font-size: 12.5px; font-weight: 600; }
         .pfin-budgetrow-spent { flex-shrink: 0; font-size: 11px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--color-text-tertiary); }
         .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
         .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
@@ -763,6 +911,21 @@ export default function PersonalFinancePanel() {
           color: var(--color-text-secondary); background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle);
         }
         .pfin-sourcechip strong { color: var(--color-text-primary); font-weight: 700; margin-left: 4px; }
+
+        .pfin-txncols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 560px) {
+          .pfin-txncols { grid-template-columns: 1fr; gap: 18px; }
+        }
+        .pfin-txncol { min-width: 0; }
+        .pfin-txncol-head {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border-subtle);
+        }
+        .pfin-txncol-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-tertiary); }
+        .pfin-txncol-total { font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .pfin-txncol-total-in { color: #22C55E; }
+        .pfin-txncol-total-out { color: #E0485A; }
+        .pfin-txncol-empty { font-size: 11.5px; color: var(--color-text-muted); font-style: italic; padding: 4px 0; }
 
         .pfin-entrylist { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
         .pfin-txnrow {
