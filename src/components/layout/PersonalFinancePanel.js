@@ -7,9 +7,12 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
 import {
   PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, X,
-  Loader2, Sparkles, ChevronLeft, ChevronRight, AlertTriangle, Wallet,
-  Receipt, ArrowUpRight, ArrowDownRight, Pencil, Check,
+  Loader2, Sparkles, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Wallet,
+  Receipt, ArrowUpRight, ArrowDownRight, Pencil, Check, PieChart,
 } from 'lucide-react';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -43,7 +46,51 @@ const addMonthsToKey = (key, delta) => {
 
 const INCOME_SOURCES = ['Salary', 'Business', 'Freelance', 'Side Hustle', 'Investments', 'Rental', 'Gift', 'Other'];
 const CATEGORY_PALETTE = ['#E0485A', '#F97316', '#F5A623', '#EAB308', '#84CC16', '#EC4899', '#5B9BFF', '#0EA5E9', '#14B8A6', '#F472B6', '#A78BFA', '#94A3B8'];
-const EMPTY_LINE = { label: '', amount: '' };
+const EMPTY_LINE = { label: '', detail: '', amount: '' };
+
+// Validated categorical palette (color-formula skill, dark-surface steps) used
+// for the Insights breakdown bars — a fixed hue per income source, and a
+// stable hash-to-slot assignment for user-defined expense categories, so a
+// given name always renders the same color regardless of sort order or which
+// other entries exist that month.
+const CHART_PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+const OTHER_COLOR = '#6B7A99';
+const hashPaletteIndex = (str) => {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h % CHART_PALETTE.length;
+};
+const sourceColorOf = (name) => {
+  const idx = INCOME_SOURCES.indexOf(name);
+  return idx !== -1 ? CHART_PALETTE[idx] : CHART_PALETTE[hashPaletteIndex(name)];
+};
+const categoryColorOf = (name) => CHART_PALETTE[hashPaletteIndex(name)];
+
+// Groups rows by a name field into { total, details: Map(detail -> amount) },
+// then folds anything past the top 7 (by total) into an "Other" bucket whose
+// own "details" are the folded names — past ~7-8 categorical slots, adjacent
+// colors stop being tellable apart, so the tail gets aggregated instead of a
+// 9th generated hue.
+const buildBreakdown = (rows, keyField) => {
+  const map = new Map();
+  rows.forEach(r => {
+    const name = (r[keyField] || '').trim() || 'Unspecified';
+    const amt = num(r.amount);
+    if (!map.has(name)) map.set(name, { total: 0, details: new Map() });
+    const entry = map.get(name);
+    entry.total += amt;
+    const d = (r.detail || '').trim();
+    if (d) entry.details.set(d, (entry.details.get(d) || 0) + amt);
+  });
+  const arr = [...map.entries()].map(([name, v]) => ({ name, total: v.total, details: v.details })).sort((a, b) => b.total - a.total);
+  const CAP = 7;
+  if (arr.length <= CAP) return arr;
+  const top = arr.slice(0, CAP);
+  const rest = arr.slice(CAP);
+  const otherTotal = rest.reduce((s, r) => s + r.total, 0);
+  const otherDetails = new Map(rest.map(r => [r.name, r.total]));
+  return [...top, { name: 'Other', total: otherTotal, details: otherDetails, isOther: true }];
+};
 
 const chip = (text, tint) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, background: `${tint}20`, color: tint, fontWeight: 800, fontSize: 11.5, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{text}</span>
@@ -123,7 +170,18 @@ function useLiveTable(table, demoKey, currentUserId, isDemo, orderCol) {
     return () => { cancelled = true; sb.removeChannel(ch); };
   }, [table, demoKey, currentUserId, isDemo, orderCol]);
 
-  const persistDemo = (next) => { setRows(next); try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {} };
+  // Accepts either a next array or an updater(prev) => next — the updater
+  // form is what makes concurrent saves (e.g. two income lines in one
+  // Promise.all) safe: each call resolves against React's queued prev state
+  // instead of a shared stale snapshot, so the second call can't clobber
+  // what the first just added.
+  const persistDemo = (updater) => {
+    setRows(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+  };
 
   return { rows, setRows, loading, persistDemo };
 }
@@ -154,6 +212,7 @@ export default function PersonalFinancePanel() {
   const [newCatAmount, setNewCatAmount] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', amount: '' });
+  const [expandedInsight, setExpandedInsight] = useState(null);
   const dateInputRef = useRef(null);
 
   // Reset per-month editing state during render (not in an Effect) when the
@@ -164,6 +223,7 @@ export default function PersonalFinancePanel() {
     setDraftMonthKey(selectedMonthKey);
     setBudgetDraft({});
     setEditingCategory(null);
+    setExpandedInsight(null);
   }
 
   useEffect(() => {
@@ -172,7 +232,7 @@ export default function PersonalFinancePanel() {
 
   // ---- Insert / delete helpers shared across the three tables ----
   const insertRow = async (table, state, base) => {
-    if (isDemo) { state.persistDemo([{ ...base, id: crypto.randomUUID(), user_id: currentUserId, created_at: new Date().toISOString() }, ...state.rows]); return true; }
+    if (isDemo) { state.persistDemo(prev => [{ ...base, id: crypto.randomUUID(), user_id: currentUserId, created_at: new Date().toISOString() }, ...prev]); return true; }
     if (!currentUserId) return false;
     try {
       const { data, error } = await createClient().from(table).insert({ ...base, user_id: currentUserId }).select('*').maybeSingle();
@@ -183,7 +243,7 @@ export default function PersonalFinancePanel() {
   };
 
   const deleteRow = async (table, state, id) => {
-    if (isDemo) { state.persistDemo(state.rows.filter(r => r.id !== id)); toast.success('Deleted'); return; }
+    if (isDemo) { state.persistDemo(prev => prev.filter(r => r.id !== id)); toast.success('Deleted'); return; }
     state.setRows(prev => prev.filter(r => r.id !== id));
     try {
       const { error } = await createClient().from(table).delete().eq('id', id);
@@ -197,10 +257,12 @@ export default function PersonalFinancePanel() {
     const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === category);
     if (!existing && amt <= 0) return true;
     if (isDemo) {
-      const next = existing
-        ? budgetState.rows.map(r => (r.id === existing.id ? { ...r, amount: amt } : r))
-        : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category, amount: amt, created_at: new Date().toISOString() }, ...budgetState.rows];
-      budgetState.persistDemo(next);
+      budgetState.persistDemo(prev => {
+        const match = prev.find(r => r.month_key === selectedMonthKey && r.category === category);
+        return match
+          ? prev.map(r => (r.id === match.id ? { ...r, amount: amt } : r))
+          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category, amount: amt, created_at: new Date().toISOString() }, ...prev];
+      });
       return true;
     }
     if (!currentUserId) return false;
@@ -250,11 +312,13 @@ export default function PersonalFinancePanel() {
     }
     const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === oldName);
     if (isDemo) {
-      const nextBudgets = existing
-        ? budgetState.rows.map(r => (r.id === existing.id ? { ...r, category: newName, amount: amt } : r))
-        : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, created_at: new Date().toISOString() }, ...budgetState.rows];
-      budgetState.persistDemo(nextBudgets);
-      if (renamed) expenseState.persistDemo(expenseState.rows.map(r => (r.category === oldName ? { ...r, category: newName } : r)));
+      budgetState.persistDemo(prev => {
+        const match = prev.find(r => r.month_key === selectedMonthKey && r.category === oldName);
+        return match
+          ? prev.map(r => (r.id === match.id ? { ...r, category: newName, amount: amt } : r))
+          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, created_at: new Date().toISOString() }, ...prev];
+      });
+      if (renamed) expenseState.persistDemo(prev => prev.map(r => (r.category === oldName ? { ...r, category: newName } : r)));
       return;
     }
     if (!currentUserId) return;
@@ -311,6 +375,42 @@ export default function PersonalFinancePanel() {
     monthIncomeRows.forEach(r => m.set(r.source, (m.get(r.source) || 0) + num(r.amount)));
     return m;
   }, [monthIncomeRows]);
+
+  // Insights: income-by-source and expense-by-category, each broken down
+  // further into the free-text "detail" logged against that entry (e.g. a
+  // specific employer or vendor under a source/category). Scoped to the
+  // selected month, same as the rest of the panel.
+  const incomeInsights = useMemo(() => buildBreakdown(monthIncomeRows, 'source'), [monthIncomeRows]);
+  const expenseInsights = useMemo(() => buildBreakdown(monthExpenseRows, 'category'), [monthExpenseRows]);
+
+  // Every detail ever logged, keyed by its source/category — offered as
+  // datalist suggestions in Log entry so a past detail autocompletes the next
+  // time you log the same source/category, without forcing a fixed sub-category list.
+  const detailHistoryByLabel = useMemo(() => {
+    const map = new Map();
+    const collect = (rows, keyField) => rows.forEach(r => {
+      const key = (r[keyField] || '').trim().toLowerCase();
+      const d = (r.detail || '').trim();
+      if (!key || !d) return;
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(d);
+    });
+    collect(incomeState.rows, 'source');
+    collect(expenseState.rows, 'category');
+    return map;
+  }, [incomeState.rows, expenseState.rows]);
+
+  // 6-month income vs expense trend, ending at the selected month.
+  const trendData = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) months.push(addMonthsToKey(selectedMonthKey, -i));
+    return months.map(key => {
+      const inc = incomeState.rows.filter(r => monthKeyOf(r.entry_date) === key).reduce((s, r) => s + num(r.amount), 0);
+      const exp = expenseState.rows.filter(r => monthKeyOf(r.entry_date) === key).reduce((s, r) => s + num(r.amount), 0);
+      const [y, m] = key.split('-');
+      return { key, label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'short' }), Income: inc, Expenses: exp };
+    });
+  }, [incomeState.rows, expenseState.rows, selectedMonthKey]);
 
   const monthTransactions = useMemo(() => {
     const income = monthIncomeRows.map(r => ({ id: r.id, type: 'income', label: r.source, amount: num(r.amount), date: r.entry_date }));
@@ -403,7 +503,7 @@ export default function PersonalFinancePanel() {
     prevOverallNearRef.current = overallNear;
   }, [overBudgetCategories, overallOver, nearBudgetCategories, overallNear, overallPct, selectedMonthKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const cleanLines = (items) => items.filter(it => it.label.trim() && num(it.amount) > 0).map(it => ({ label: it.label.trim(), amount: num(it.amount) }));
+  const cleanLines = (items) => items.filter(it => it.label.trim() && num(it.amount) > 0).map(it => ({ label: it.label.trim(), detail: (it.detail || '').trim() || null, amount: num(it.amount) }));
   const canAdd = cleanLines(nIncomeItems).length > 0 || cleanLines(nExpenseItems).length > 0;
 
   const saveEntry = async () => {
@@ -414,8 +514,8 @@ export default function PersonalFinancePanel() {
     setSaving(true);
     const date = nDate || today;
     const results = await Promise.all([
-      ...incomeLines.map(l => insertRow('personal_income', incomeState, { entry_date: date, source: l.label, amount: l.amount })),
-      ...expenseLines.map(l => insertRow('personal_expenses', expenseState, { entry_date: date, category: l.label, amount: l.amount })),
+      ...incomeLines.map(l => insertRow('personal_income', incomeState, { entry_date: date, source: l.label, detail: l.detail, amount: l.amount })),
+      ...expenseLines.map(l => insertRow('personal_expenses', expenseState, { entry_date: date, category: l.label, detail: l.detail, amount: l.amount })),
     ]);
     setSaving(false);
     if (results.every(ok => !ok)) return; // nothing saved — leave the form as-is, each failure already toasted
@@ -431,11 +531,11 @@ export default function PersonalFinancePanel() {
 
   const remainingColor = (n) => (n > 0 ? '#22C55E' : n < 0 ? '#E0485A' : 'var(--color-text-tertiary)');
 
-  const lineEditor = (items, setItems, chipOptions) => {
+  const lineEditor = (items, setItems, chipOptions, groupId) => {
     const change = (i, patch) => setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
     const quickFill = (val) => {
       const idx = items.findIndex(it => !it.label.trim());
-      const next = idx !== -1 ? items.map((it, i) => (i === idx ? { ...it, label: val } : it)) : [...items, { label: val, amount: '' }];
+      const next = idx !== -1 ? items.map((it, i) => (i === idx ? { ...it, label: val } : it)) : [...items, { ...EMPTY_LINE, label: val }];
       setItems(next);
     };
     return (
@@ -455,18 +555,83 @@ export default function PersonalFinancePanel() {
           })}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {items.map((it, i) => (
-            <div key={i} className="pfin-item-row" style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8, alignItems: 'center' }}>
-              <input className="pfin-input" type="text" placeholder="Label" value={it.label} onChange={e => change(i, { label: e.target.value })} />
-              <input className="pfin-input" type="number" inputMode="decimal" placeholder="Amount" value={it.amount} onChange={e => change(i, { amount: e.target.value })} />
-              <button className="pfin-del" title="Remove line"
-                onClick={() => { const next = items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_LINE }]; setItems(next); }}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+          {items.map((it, i) => {
+            const listId = `pfin-detail-${groupId}-${i}`;
+            const detailOptions = [...(detailHistoryByLabel.get(it.label.trim().toLowerCase()) || [])];
+            return (
+              <div key={i} className="pfin-item-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <input className="pfin-input" style={{ flex: '1 1 130px' }} type="text" placeholder="Label" value={it.label} onChange={e => change(i, { label: e.target.value })} />
+                <input className="pfin-input" style={{ flex: '1 1 130px' }} type="text" list={detailOptions.length ? listId : undefined}
+                  placeholder="Detail (optional)" value={it.detail || ''} onChange={e => change(i, { detail: e.target.value })} />
+                {detailOptions.length > 0 && (
+                  <datalist id={listId}>
+                    {detailOptions.map(opt => <option key={opt} value={opt} />)}
+                  </datalist>
+                )}
+                <input className="pfin-input" style={{ flex: '0 1 110px', minWidth: 90 }} type="number" inputMode="decimal" placeholder="Amount" value={it.amount} onChange={e => change(i, { amount: e.target.value })} />
+                <button className="pfin-del" title="Remove line"
+                  onClick={() => { const next = items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_LINE }]; setItems(next); }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })}
         </div>
         <button className="pfin-additem" style={{ alignSelf: 'flex-start' }} onClick={() => setItems([...items, { ...EMPTY_LINE }])}><Plus size={13} /> Add line</button>
+      </div>
+    );
+  };
+
+  // Renders one Insights breakdown card: a bar per source/category, sized by
+  // share of the section's own max, with a click-to-expand drill-down into
+  // that row's logged "detail" specifics.
+  const insightSection = (title, Icon, tint, rows, sectionKey, colorFn) => {
+    const max = rows.length ? Math.max(...rows.map(r => r.total)) : 0;
+    return (
+      <div className="pfin-fadeup" style={{ ...card }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={16} /></div>
+          <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{title}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Total <strong style={{ color: 'var(--color-text-primary)' }}>{money(rows.reduce((s, r) => s + r.total, 0))}</strong></span>
+        </div>
+        {rows.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>Nothing logged for {monthLabel(selectedMonthKey)} yet.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {rows.map(r => {
+              const color = r.isOther ? OTHER_COLOR : colorFn(r.name);
+              const rowKey = `${sectionKey}:${r.name}`;
+              const isOpen = expandedInsight === rowKey;
+              const detailRows = [...r.details.entries()].map(([name, amt]) => ({ name, amt })).sort((a, b) => b.amt - a.amt);
+              const hasDetails = detailRows.length > 0;
+              return (
+                <div key={r.name}>
+                  <button type="button" className="pfin-insightrow" disabled={!hasDetails}
+                    onClick={() => setExpandedInsight(isOpen ? null : rowKey)}>
+                    <span className="pfin-budgetrow-dot" style={{ background: color }} />
+                    <span className="pfin-insightrow-label">{r.name}</span>
+                    <span className="pfin-insightrow-amount">{money(r.total)}</span>
+                    {hasDetails ? (isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : <span style={{ width: 13 }} />}
+                  </button>
+                  <div className="pfin-insightbar-track"><div className="pfin-insightbar" style={{ width: `${max > 0 ? Math.max(3, (r.total / max) * 100) : 0}%`, background: color }} /></div>
+                  {isOpen && hasDetails && (
+                    <div className="pfin-insight-detail-list">
+                      {detailRows.map(d => (
+                        <div key={d.name} className="pfin-insight-detail-row">
+                          <span className="pfin-insight-detail-label">{d.name}</span>
+                          <span className="pfin-insight-detail-amount">{money(d.amt)}</span>
+                          <div className="pfin-insightbar-track pfin-insightbar-track-sm">
+                            <div className="pfin-insightbar" style={{ width: `${r.total > 0 ? Math.max(4, (d.amt / r.total) * 100) : 0}%`, background: color, opacity: 0.55 }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -559,6 +724,9 @@ export default function PersonalFinancePanel() {
         <button className={`pfin-tab ${tab === 'transactions' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('transactions')}>
           <Receipt size={14} /> Transactions
           {monthTransactions.length > 0 && <span className="pfin-tab-count">{monthTransactions.length}</span>}
+        </button>
+        <button className={`pfin-tab ${tab === 'insights' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('insights')}>
+          <PieChart size={14} /> Insights
         </button>
       </div>
 
@@ -676,9 +844,9 @@ export default function PersonalFinancePanel() {
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{fmtNice(nDate)}</div>
               </div>
               <label style={lbl}>Income — where it came from</label>
-              {lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES)}
+              {lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES, 'income')}
               <label style={{ ...lbl, marginTop: 16 }}>Expenses — what was spent</label>
-              {lineEditor(nExpenseItems, setNExpenseItems, allExpenseChipOptions)}
+              {lineEditor(nExpenseItems, setNExpenseItems, allExpenseChipOptions, 'expense')}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
                 <button className="pfin-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
                 <button className="pfin-save" onClick={saveEntry} disabled={!canAdd || saving}>
@@ -727,7 +895,7 @@ export default function PersonalFinancePanel() {
                           <div className="pfin-txnicon pfin-txnicon-in"><ArrowUpRight size={14} /></div>
                           <div className="pfin-txnmeta">
                             <span className="pfin-txnlabel">{r.source}</span>
-                            <span className="pfin-txndate">{fmtShort(r.entry_date)}</span>
+                            <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
                           </div>
                           <span className="pfin-txnamount pfin-txnamount-in">+{money(r.amount)}</span>
                           <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_income', incomeState, r.id)}>
@@ -752,7 +920,7 @@ export default function PersonalFinancePanel() {
                           <div className="pfin-txnicon pfin-txnicon-out"><ArrowDownRight size={14} /></div>
                           <div className="pfin-txnmeta">
                             <span className="pfin-txnlabel">{r.category}</span>
-                            <span className="pfin-txndate">{fmtShort(r.entry_date)}</span>
+                            <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
                           </div>
                           <span className="pfin-txnamount pfin-txnamount-out">−{money(r.amount)}</span>
                           <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_expenses', expenseState, r.id)}>
@@ -766,6 +934,30 @@ export default function PersonalFinancePanel() {
               </div>
             )}
           </div>
+          </>)}
+
+          {/* Insights */}
+          {tab === 'insights' && (<>
+            {insightSection('Income by source', TrendingUp, '#22C55E', incomeInsights, 'income', sourceColorOf)}
+            {insightSection('Expenses by category', TrendingDown, '#E0485A', expenseInsights, 'expense', categoryColorOf)}
+
+            <div className="pfin-fadeup" style={{ ...card }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PieChart size={16} /></div>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>6-month trend</span>
+              </div>
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
+                <BarChart data={trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                  <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                  <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                  <Bar dataKey="Income" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </>)}
         </div>
       )}
@@ -900,6 +1092,23 @@ export default function PersonalFinancePanel() {
         .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
         .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
         .pfin-budgetrow-input { width: 88px; flex-shrink: 0; height: 30px; text-align: right; }
+
+        .pfin-insightrow {
+          width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px;
+          border: none; background: transparent; cursor: pointer; font-family: inherit; text-align: left; transition: background .15s;
+        }
+        .pfin-insightrow:not(:disabled):hover { background: rgba(255,255,255,0.04); }
+        .pfin-insightrow:disabled { cursor: default; }
+        .pfin-insightrow-label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pfin-insightrow-amount { flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+        .pfin-insightbar-track { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); overflow: hidden; margin: 2px 4px 6px; }
+        .pfin-insightbar-track-sm { height: 5px; margin: 2px 0 0; }
+        .pfin-insightbar { height: 100%; border-radius: 3px; transition: width .6s cubic-bezier(.22,1,.36,1); }
+        .pfin-insight-detail-list { display: flex; flex-direction: column; gap: 6px; padding: 4px 4px 10px 22px; }
+        .pfin-insight-detail-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; }
+        .pfin-insight-detail-label { font-size: 11.5px; font-weight: 600; color: var(--color-text-secondary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pfin-insight-detail-amount { font-size: 11.5px; font-weight: 700; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+        .pfin-insight-detail-row .pfin-insightbar-track { flex-basis: 100%; margin: 0; }
 
         .pfin-formgroup {
           display: flex; flex-direction: column; gap: 8px; padding: 12px;
