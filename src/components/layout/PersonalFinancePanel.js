@@ -199,7 +199,8 @@ export default function PersonalFinancePanel() {
   const incomeState = useLiveTable('personal_income', 'demo-personal-income', currentUserId, isDemo, 'entry_date');
   const expenseState = useLiveTable('personal_expenses', 'demo-personal-expenses', currentUserId, isDemo, 'entry_date');
   const budgetState = useLiveTable('personal_budgets', 'demo-personal-budgets', currentUserId, isDemo, 'month_key');
-  const loading = incomeState.loading || expenseState.loading || budgetState.loading;
+  const revenueTargetState = useLiveTable('personal_revenue_targets', 'demo-personal-revenue-targets', currentUserId, isDemo, 'month_key');
+  const loading = incomeState.loading || expenseState.loading || budgetState.loading || revenueTargetState.loading;
 
   const [tab, setTab] = useState('budget');
   const [showAdd, setShowAdd] = useState(false);
@@ -213,6 +214,11 @@ export default function PersonalFinancePanel() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', amount: '' });
   const [expandedInsight, setExpandedInsight] = useState(null);
+  const [revenueTargetDraft, setRevenueTargetDraft] = useState(null);
+  const [editingTxn, setEditingTxn] = useState(null); // { type: 'income'|'expense', id }
+  const [editTxnDraft, setEditTxnDraft] = useState({ label: '', detail: '', amount: '', date: '' });
+  const [insightScope, setInsightScope] = useState('month'); // 'month' | 'year'
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const dateInputRef = useRef(null);
 
   // Reset per-month editing state during render (not in an Effect) when the
@@ -224,6 +230,8 @@ export default function PersonalFinancePanel() {
     setBudgetDraft({});
     setEditingCategory(null);
     setExpandedInsight(null);
+    setRevenueTargetDraft(null);
+    setEditingTxn(null);
   }
 
   useEffect(() => {
@@ -250,6 +258,36 @@ export default function PersonalFinancePanel() {
       if (error) { console.error(`[personal-finance] ${table} delete failed —`, error.message, '| code:', error.code); toast.error('Could not delete', error.message); return; }
       toast.success('Deleted');
     } catch (err) { console.error(`[personal-finance] ${table} delete threw:`, err); toast.error('Could not delete', 'Something went wrong.'); }
+  };
+
+  const updateRow = async (table, state, id, patch) => {
+    if (isDemo) { state.persistDemo(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r))); return true; }
+    state.setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+    try {
+      const { error } = await createClient().from(table).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) { console.error(`[personal-finance] ${table} update failed —`, error.message, '| code:', error.code); toast.error('Could not save', error.message); return false; }
+      return true;
+    } catch (err) { console.error(`[personal-finance] ${table} update threw:`, err); toast.error('Could not save', 'Something went wrong.'); return false; }
+  };
+
+  // Edits an existing income/expense entry in place (label, detail, amount,
+  // date) instead of forcing a delete-and-relog.
+  const startEditTxn = (type, r) => {
+    setEditingTxn({ type, id: r.id });
+    setEditTxnDraft({ label: type === 'income' ? r.source : r.category, detail: r.detail || '', amount: String(r.amount), date: r.entry_date });
+  };
+
+  const commitEditTxn = async () => {
+    if (!editingTxn) return;
+    const { type, id } = editingTxn;
+    const label = editTxnDraft.label.trim();
+    if (!label) return;
+    const table = type === 'income' ? 'personal_income' : 'personal_expenses';
+    const state = type === 'income' ? incomeState : expenseState;
+    const labelField = type === 'income' ? 'source' : 'category';
+    const patch = { [labelField]: label, detail: editTxnDraft.detail.trim() || null, amount: num(editTxnDraft.amount), entry_date: editTxnDraft.date || today };
+    const ok = await updateRow(table, state, id, patch);
+    if (ok) { setEditingTxn(null); toast.success('Updated'); }
   };
 
   const saveBudget = async (category, amountRaw) => {
@@ -279,6 +317,37 @@ export default function PersonalFinancePanel() {
       if (data) budgetState.setRows(prev => [data, ...prev]);
       return true;
     } catch (err) { console.error('[personal-finance] budget insert threw:', err); toast.error('Could not save budget', 'Something went wrong.'); return false; }
+  };
+
+  // A single monthly revenue goal (not per-source, unlike budgets) — tracks
+  // progress the same way budget-vs-spend does, just in the other direction.
+  const saveRevenueTarget = async (amountRaw) => {
+    const amt = num(amountRaw);
+    const existing = revenueTargetState.rows.find(r => r.month_key === selectedMonthKey);
+    if (!existing && amt <= 0) return true;
+    if (isDemo) {
+      revenueTargetState.persistDemo(prev => {
+        const match = prev.find(r => r.month_key === selectedMonthKey);
+        return match
+          ? prev.map(r => (r.id === match.id ? { ...r, target_amount: amt } : r))
+          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, target_amount: amt, created_at: new Date().toISOString() }, ...prev];
+      });
+      return true;
+    }
+    if (!currentUserId) return false;
+    if (existing) {
+      revenueTargetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, target_amount: amt } : r)));
+      const { error } = await createClient().from('personal_revenue_targets').update({ target_amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      if (error) { console.error('[personal-finance] revenue target update failed —', error.message); toast.error('Could not save target', error.message); return false; }
+      return true;
+    }
+    try {
+      const { data, error } = await createClient().from('personal_revenue_targets')
+        .insert({ user_id: currentUserId, month_key: selectedMonthKey, target_amount: amt }).select('*').maybeSingle();
+      if (error) { console.error('[personal-finance] revenue target insert failed —', error.message); toast.error('Could not save target', error.message); return false; }
+      if (data) revenueTargetState.setRows(prev => [data, ...prev]);
+      return true;
+    } catch (err) { console.error('[personal-finance] revenue target insert threw:', err); toast.error('Could not save target', 'Something went wrong.'); return false; }
   };
 
   // Adds a user-defined budget category with its name and starting amount
@@ -370,6 +439,9 @@ export default function PersonalFinancePanel() {
   const budgetUsedPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
   const ringColor = totalBudget === 0 ? 'var(--color-text-tertiary)' : totalSpent > totalBudget ? '#E0485A' : budgetUsedPct >= 80 ? '#F5A623' : '#5B9BFF';
 
+  const monthRevenueTarget = useMemo(() => num(revenueTargetState.rows.find(r => r.month_key === selectedMonthKey)?.target_amount), [revenueTargetState.rows, selectedMonthKey]);
+  const revenueTargetPct = monthRevenueTarget > 0 ? Math.round((totalIncome / monthRevenueTarget) * 100) : 0;
+
   const incomeBySource = useMemo(() => {
     const m = new Map();
     monthIncomeRows.forEach(r => m.set(r.source, (m.get(r.source) || 0) + num(r.amount)));
@@ -411,6 +483,25 @@ export default function PersonalFinancePanel() {
       return { key, label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'short' }), Income: inc, Expenses: exp };
     });
   }, [incomeState.rows, expenseState.rows, selectedMonthKey]);
+
+  // ---- Year-scoped data (Insights → "This year") ----
+  const yearIncomeRows = useMemo(() => incomeState.rows.filter(r => (r.entry_date || '').slice(0, 4) === String(selectedYear)), [incomeState.rows, selectedYear]);
+  const yearExpenseRows = useMemo(() => expenseState.rows.filter(r => (r.entry_date || '').slice(0, 4) === String(selectedYear)), [expenseState.rows, selectedYear]);
+  const yearTotalIncome = useMemo(() => yearIncomeRows.reduce((s, r) => s + num(r.amount), 0), [yearIncomeRows]);
+  const yearTotalExpense = useMemo(() => yearExpenseRows.reduce((s, r) => s + num(r.amount), 0), [yearExpenseRows]);
+  const yearNet = yearTotalIncome - yearTotalExpense;
+  const yearIncomeInsights = useMemo(() => buildBreakdown(yearIncomeRows, 'source'), [yearIncomeRows]);
+  const yearExpenseInsights = useMemo(() => buildBreakdown(yearExpenseRows, 'category'), [yearExpenseRows]);
+
+  // All 12 months of the selected year, Jan → Dec, income vs expense per month.
+  const yearTrendData = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const key = `${selectedYear}-${pad2(i + 1)}`;
+      const inc = incomeState.rows.filter(r => monthKeyOf(r.entry_date) === key).reduce((s, r) => s + num(r.amount), 0);
+      const exp = expenseState.rows.filter(r => monthKeyOf(r.entry_date) === key).reduce((s, r) => s + num(r.amount), 0);
+      return { key, label: new Date(selectedYear, i, 1).toLocaleDateString('en-GB', { month: 'short' }), Income: inc, Expenses: exp };
+    });
+  }, [incomeState.rows, expenseState.rows, selectedYear]);
 
   const monthTransactions = useMemo(() => {
     const income = monthIncomeRows.map(r => ({ id: r.id, type: 'income', label: r.source, amount: num(r.amount), date: r.entry_date }));
@@ -585,7 +676,7 @@ export default function PersonalFinancePanel() {
   // Renders one Insights breakdown card: a bar per source/category, sized by
   // share of the section's own max, with a click-to-expand drill-down into
   // that row's logged "detail" specifics.
-  const insightSection = (title, Icon, tint, rows, sectionKey, colorFn) => {
+  const insightSection = (title, Icon, tint, rows, sectionKey, colorFn, periodLabel = monthLabel(selectedMonthKey)) => {
     const max = rows.length ? Math.max(...rows.map(r => r.total)) : 0;
     return (
       <div className="pfin-fadeup" style={{ ...card }}>
@@ -595,7 +686,7 @@ export default function PersonalFinancePanel() {
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Total <strong style={{ color: 'var(--color-text-primary)' }}>{money(rows.reduce((s, r) => s + r.total, 0))}</strong></span>
         </div>
         {rows.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>Nothing logged for {monthLabel(selectedMonthKey)} yet.</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '4px 0' }}>Nothing logged for {periodLabel} yet.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {rows.map(r => {
@@ -638,6 +729,59 @@ export default function PersonalFinancePanel() {
 
   const card = { background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 14, padding: 16 };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5, display: 'block' };
+
+  // Renders one row in the Transactions list — either its normal display, or
+  // (when it's the row being edited) an inline form editing label/detail/
+  // amount/date in place, so fixing a typo doesn't mean delete-and-relog.
+  const renderTxnRow = (r, type) => {
+    const isEditing = editingTxn?.type === type && editingTxn?.id === r.id;
+    const label = type === 'income' ? r.source : r.category;
+    const sign = type === 'income' ? '+' : '−';
+    const iconClass = type === 'income' ? 'pfin-txnicon-in' : 'pfin-txnicon-out';
+    const amountClass = type === 'income' ? 'pfin-txnamount-in' : 'pfin-txnamount-out';
+    const Icon = type === 'income' ? ArrowUpRight : ArrowDownRight;
+    const table = type === 'income' ? 'personal_income' : 'personal_expenses';
+    const state = type === 'income' ? incomeState : expenseState;
+
+    if (isEditing) {
+      return (
+        <div key={r.id} className="pfin-txnrow-edit">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <input className="pfin-input" style={{ flex: '1 1 90px' }} type="text" placeholder="Label" value={editTxnDraft.label}
+              onChange={e => setEditTxnDraft(d => ({ ...d, label: e.target.value }))} autoFocus />
+            <input className="pfin-input" style={{ flex: '1 1 90px' }} type="text" placeholder="Detail (optional)" value={editTxnDraft.detail}
+              onChange={e => setEditTxnDraft(d => ({ ...d, detail: e.target.value }))} />
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+            <input className="pfin-input" style={{ flex: '1 1 110px' }} type="date" value={editTxnDraft.date}
+              onChange={e => setEditTxnDraft(d => ({ ...d, date: e.target.value }))} />
+            <input className="pfin-input" style={{ flex: '0 1 100px' }} type="number" inputMode="decimal" placeholder="Amount" value={editTxnDraft.amount}
+              onChange={e => setEditTxnDraft(d => ({ ...d, amount: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') commitEditTxn(); if (e.key === 'Escape') setEditingTxn(null); }} />
+            <button className="pfin-del" title="Save" onClick={commitEditTxn}><Check size={13} /></button>
+            <button className="pfin-del" title="Cancel" onClick={() => setEditingTxn(null)}><X size={13} /></button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={r.id} className="pfin-txnrow">
+        <div className={`pfin-txnicon ${iconClass}`}><Icon size={14} /></div>
+        <div className="pfin-txnmeta">
+          <span className="pfin-txnlabel">{label}</span>
+          <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
+        </div>
+        <span className={`pfin-txnamount ${amountClass}`}>{sign}{money(r.amount)}</span>
+        <button className="pfin-del" title="Edit" onClick={() => startEditTxn(type, r)}>
+          <Pencil size={13} />
+        </button>
+        <button className="pfin-del" title="Delete" onClick={() => deleteRow(table, state, r.id)}>
+          <Trash2 size={13} />
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '8px 4px 40px' }}>
@@ -736,6 +880,36 @@ export default function PersonalFinancePanel() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Revenue target */}
+          {tab === 'budget' && (
+          <div className="pfin-fadeup" style={{ ...card, animationDelay: '200ms' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(34,197,94,0.16)', color: '#22C55E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrendingUp size={16} /></div>
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Revenue target</span>
+              {monthRevenueTarget > 0 && (
+                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>{revenueTargetPct}% of <strong style={{ color: 'var(--color-text-primary)' }}>{money(monthRevenueTarget)}</strong></span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>Set what you aim to earn this month — the bar fills as income comes in.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="pfin-budgetrow-bar" style={{ flex: 1 }}>
+                <div className="pfin-bar" style={{ width: `${monthRevenueTarget > 0 ? Math.min(100, Math.max(totalIncome > 0 ? 3 : 0, revenueTargetPct)) : 0}%`, height: '100%', borderRadius: 6, background: revenueTargetPct >= 100 ? '#22C55E' : '#5B9BFF' }} />
+              </div>
+              <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Target"
+                value={revenueTargetDraft ?? (monthRevenueTarget ? String(monthRevenueTarget) : '')}
+                onChange={e => setRevenueTargetDraft(e.target.value)}
+                onBlur={e => { saveRevenueTarget(e.target.value); setRevenueTargetDraft(null); }} />
+            </div>
+            {monthRevenueTarget > 0 && (
+              <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+                {totalIncome >= monthRevenueTarget
+                  ? `Target reached — ${money(totalIncome - monthRevenueTarget)} over.`
+                  : `${money(monthRevenueTarget - totalIncome)} to go.`}
+              </div>
+            )}
+          </div>
+          )}
 
           {/* Budget allocation */}
           {tab === 'budget' && (
@@ -890,19 +1064,7 @@ export default function PersonalFinancePanel() {
                     <div className="pfin-txncol-empty">No income logged yet.</div>
                   ) : (
                     <div className="pfin-entrylist">
-                      {monthIncomeRows.map(r => (
-                        <div key={r.id} className="pfin-txnrow">
-                          <div className="pfin-txnicon pfin-txnicon-in"><ArrowUpRight size={14} /></div>
-                          <div className="pfin-txnmeta">
-                            <span className="pfin-txnlabel">{r.source}</span>
-                            <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
-                          </div>
-                          <span className="pfin-txnamount pfin-txnamount-in">+{money(r.amount)}</span>
-                          <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_income', incomeState, r.id)}>
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))}
+                      {monthIncomeRows.map(r => renderTxnRow(r, 'income'))}
                     </div>
                   )}
                 </div>
@@ -915,19 +1077,7 @@ export default function PersonalFinancePanel() {
                     <div className="pfin-txncol-empty">No expenses logged yet.</div>
                   ) : (
                     <div className="pfin-entrylist">
-                      {monthExpenseRows.map(r => (
-                        <div key={r.id} className="pfin-txnrow">
-                          <div className="pfin-txnicon pfin-txnicon-out"><ArrowDownRight size={14} /></div>
-                          <div className="pfin-txnmeta">
-                            <span className="pfin-txnlabel">{r.category}</span>
-                            <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
-                          </div>
-                          <span className="pfin-txnamount pfin-txnamount-out">−{money(r.amount)}</span>
-                          <button className="pfin-del" title="Delete" onClick={() => deleteRow('personal_expenses', expenseState, r.id)}>
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))}
+                      {monthExpenseRows.map(r => renderTxnRow(r, 'expense'))}
                     </div>
                   )}
                 </div>
@@ -938,16 +1088,61 @@ export default function PersonalFinancePanel() {
 
           {/* Insights */}
           {tab === 'insights' && (<>
-            {insightSection('Income by source', TrendingUp, '#22C55E', incomeInsights, 'income', sourceColorOf)}
-            {insightSection('Expenses by category', TrendingDown, '#E0485A', expenseInsights, 'expense', categoryColorOf)}
+            <div className="pfin-fadeup pfin-tabs" style={{ marginBottom: 4 }}>
+              <button className={`pfin-tab ${insightScope === 'month' ? 'pfin-tab-active' : ''}`} onClick={() => setInsightScope('month')}>This month</button>
+              <button className={`pfin-tab ${insightScope === 'year' ? 'pfin-tab-active' : ''}`} onClick={() => setInsightScope('year')}>This year</button>
+            </div>
+
+            {insightScope === 'year' && (
+              <div className="pfin-fadeup pfin-monthnav">
+                <button className="pfin-monthnav-btn" onClick={() => setSelectedYear(y => y - 1)} aria-label="Previous year"><ChevronLeft size={16} /></button>
+                <div style={{ textAlign: 'center' }}>
+                  <div className="pfin-monthnav-label">{selectedYear}</div>
+                  {selectedYear !== new Date().getFullYear() && (
+                    <button className="pfin-monthnav-jump" onClick={() => setSelectedYear(new Date().getFullYear())}>Jump to this year</button>
+                  )}
+                </div>
+                <button className="pfin-monthnav-btn" onClick={() => setSelectedYear(y => y + 1)} aria-label="Next year"><ChevronRight size={16} /></button>
+              </div>
+            )}
+
+            {insightScope === 'year' && (
+              <div className="pfin-fadeup" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 10 : 14 }}>
+                {[
+                  { label: 'Total revenue', value: yearTotalIncome, Icon: TrendingUp, tint: '#22C55E' },
+                  { label: 'Total expenses', value: yearTotalExpense, Icon: TrendingDown, tint: '#E0485A' },
+                  { label: 'Net', value: yearNet, Icon: Wallet, tint: '#5B9BFF' },
+                ].map(({ label, value, Icon, tint }) => (
+                  <div key={label} style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={18} /></div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{money(value)}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)' }}>{label}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {insightScope === 'month' ? (
+              <>
+                {insightSection('Income by source', TrendingUp, '#22C55E', incomeInsights, 'income', sourceColorOf)}
+                {insightSection('Expenses by category', TrendingDown, '#E0485A', expenseInsights, 'expense', categoryColorOf)}
+              </>
+            ) : (
+              <>
+                {insightSection('Income by source', TrendingUp, '#22C55E', yearIncomeInsights, 'year-income', sourceColorOf, String(selectedYear))}
+                {insightSection('Expenses by category', TrendingDown, '#E0485A', yearExpenseInsights, 'year-expense', categoryColorOf, String(selectedYear))}
+              </>
+            )}
 
             <div className="pfin-fadeup" style={{ ...card }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PieChart size={16} /></div>
-                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>6-month trend</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{insightScope === 'year' ? `${selectedYear} trend` : '6-month trend'}</span>
               </div>
               <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
-                <BarChart data={trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                <BarChart data={insightScope === 'year' ? yearTrendData : trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
                   <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
@@ -1141,6 +1336,10 @@ export default function PersonalFinancePanel() {
           display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; transition: background .15s;
         }
         .pfin-txnrow:hover { background: rgba(255,255,255,0.03); }
+        .pfin-txnrow-edit {
+          padding: 8px; margin: 2px 0; border-radius: 8px;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border-active);
+        }
         .pfin-txnicon {
           width: 30px; height: 30px; border-radius: 999px; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
