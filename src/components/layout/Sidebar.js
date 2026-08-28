@@ -234,6 +234,9 @@ export default function Sidebar() {
 
         {sidebarOpen && (
           <>
+            {/* Scrolls as one region so header/footer stay pinned no matter
+                how much nav + page-tree content there is. */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {/* ── Quick Actions ── */}
             <nav style={{ padding: '8px 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               {/* Home — always first */}
@@ -403,10 +406,11 @@ export default function Sidebar() {
               )}
             </div>
 
-            <div className={styles.pageTree}>
+            <div className={styles.pageTree} style={{ flex: 'none', overflow: 'visible' }}>
               <PageTree
                 onCopyTo={userProfile?.role !== 'member' ? (page) => setCopyModal({ open: true, page }) : null}
               />
+            </div>
             </div>
 
             {/* ── Footer ── */}
