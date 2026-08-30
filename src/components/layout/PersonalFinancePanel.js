@@ -8,19 +8,18 @@ import { useToast } from '@/components/ui/Toast';
 import {
   PiggyBank, Plus, Trash2, TrendingUp, TrendingDown, X,
   Loader2, Sparkles, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Wallet,
-  Receipt, ArrowUpRight, ArrowDownRight, Pencil, Check, PieChart,
+  Receipt, ArrowUpRight, ArrowDownRight, Pencil, Check, PieChart, Repeat, Target,
+  BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon,
 } from 'lucide-react';
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
-
-const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
-const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
-const hexToRgba = (hex, a) => {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
-  return `rgba(${r},${g},${b},${a})`;
-};
+import GoalsSavingsPanel from '@/components/layout/GoalsSavingsPanel';
+import {
+  money, num, hexToRgba, monthKeyOf, monthLabel, pad2, addMonthsToKey,
+  useLiveTable, useCountUp, RadialProgress,
+  insertRow as insertRowShared, deleteRow as deleteRowShared, updateRow as updateRowShared,
+} from '@/lib/personalFinance/shared';
 
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const parseDay = (dateStr) => new Date(`${dateStr}T00:00:00`);
@@ -32,16 +31,36 @@ const fmtShort = (dateStr) => {
   const d = parseDay(dateStr);
   return `${ordinal(d.getDate())} ${d.toLocaleDateString('en-GB', { month: 'short' })}`;
 };
-const monthKeyOf = (dateStr) => (dateStr || '').slice(0, 7);
-const monthLabel = (key) => {
-  const [y, m] = (key || '').split('-');
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-};
-const pad2 = (n) => String(n).padStart(2, '0');
-const addMonthsToKey = (key, delta) => {
-  const [y, m] = key.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+
+// Resolves each budget category's effective amount for `monthKey`: an exact
+// row for that month wins outright (even a $0 row — that's how a "stop
+// recurring" marker renders); otherwise the most recent earlier row marked
+// `recurring` carries its amount forward, so a category set-and-forget once
+// keeps applying to every later month until an explicit row overrides it.
+// Returns a plain array (not a Map) — find a category with
+// `.find(x => x.category === name)`.
+const resolveMonthBudgets = (rows, monthKey) => {
+  const exactByCategory = new Map();
+  const bestCarryByCategory = new Map();
+  rows.forEach(r => {
+    if (r.month_key === monthKey) { exactByCategory.set(r.category, r); return; }
+    if (r.month_key < monthKey && r.recurring) {
+      const prevBest = bestCarryByCategory.get(r.category);
+      if (!prevBest || r.month_key > prevBest.month_key) bestCarryByCategory.set(r.category, r);
+    }
+  });
+  const categories = new Set([...exactByCategory.keys(), ...bestCarryByCategory.keys()]);
+  const out = [];
+  categories.forEach(category => {
+    const exact = exactByCategory.get(category);
+    if (exact) {
+      out.push({ category, amount: num(exact.amount), recurring: !!exact.recurring, rowId: exact.id, sourceMonthKey: monthKey, isCarried: false });
+      return;
+    }
+    const r = bestCarryByCategory.get(category);
+    out.push({ category, amount: num(r.amount), recurring: true, rowId: null, sourceMonthKey: r.month_key, isCarried: true });
+  });
+  return out;
 };
 
 const INCOME_SOURCES = ['Salary', 'Business', 'Freelance', 'Side Hustle', 'Investments', 'Rental', 'Gift', 'Other'];
@@ -96,96 +115,6 @@ const chip = (text, tint) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999, background: `${tint}20`, color: tint, fontWeight: 800, fontSize: 11.5, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{text}</span>
 );
 
-// Smoothly eases a displayed number toward `value` whenever it changes —
-// summary tiles count up/down instead of jumping, so edits feel alive.
-function useCountUp(value, duration = 550) {
-  const [display, setDisplay] = useState(value);
-  const fromRef = useRef(value);
-  useEffect(() => {
-    const from = fromRef.current;
-    const to = value;
-    if (Math.abs(to - from) < 0.5) { setDisplay(to); fromRef.current = to; return; }
-    let raf;
-    const start = performance.now();
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const current = from + (to - from) * eased;
-      setDisplay(current);
-      if (t < 1) { raf = requestAnimationFrame(tick); }
-      else { fromRef.current = to; }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value, duration]);
-  return display;
-}
-
-// Circular budget-used gauge — SVG stroke-dashoffset ring, no chart library.
-function RadialProgress({ pct, size, stroke, color, track }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const offset = c - (Math.min(100, Math.max(0, pct)) / 100) * c;
-  return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" className="pfin-ring-arc" />
-    </svg>
-  );
-}
-
-// Loads + realtime-subscribes one of the three personal-finance tables, with
-// a localStorage-backed mirror for demo mode. Called once per table — same
-// hook, same order, every render, so the Rules of Hooks stay satisfied.
-function useLiveTable(table, demoKey, currentUserId, isDemo, orderCol) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (isDemo) {
-        const raw = typeof window !== 'undefined' ? localStorage.getItem(demoKey) : null;
-        if (!cancelled) { setRows(raw ? JSON.parse(raw) : []); setLoading(false); }
-        return;
-      }
-      if (!currentUserId) { if (!cancelled) { setRows([]); setLoading(false); } return; }
-      const { data, error } = await createClient()
-        .from(table).select('*').eq('user_id', currentUserId)
-        .order(orderCol, { ascending: false }).order('created_at', { ascending: false });
-      if (error) console.error(`[personal-finance] ${table} load failed —`, error.message, '| code:', error.code);
-      if (!cancelled) { setRows(data || []); setLoading(false); }
-    }
-    load();
-    if (isDemo || !currentUserId) return () => { cancelled = true; };
-    const sb = createClient();
-    const ch = sb.channel(`${table}:${currentUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${currentUserId}` }, () => {
-        const el = typeof document !== 'undefined' ? document.activeElement : null;
-        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
-        load();
-      })
-      .subscribe();
-    return () => { cancelled = true; sb.removeChannel(ch); };
-  }, [table, demoKey, currentUserId, isDemo, orderCol]);
-
-  // Accepts either a next array or an updater(prev) => next — the updater
-  // form is what makes concurrent saves (e.g. two income lines in one
-  // Promise.all) safe: each call resolves against React's queued prev state
-  // instead of a shared stale snapshot, so the second call can't clobber
-  // what the first just added.
-  const persistDemo = (updater) => {
-    setRows(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {}
-      return next;
-    });
-  };
-
-  return { rows, setRows, loading, persistDemo };
-}
-
 export default function PersonalFinancePanel() {
   const { userProfile, isDemo } = useWorkspaceStore();
   const isMobile = useIsMobile();
@@ -199,25 +128,29 @@ export default function PersonalFinancePanel() {
   const incomeState = useLiveTable('personal_income', 'demo-personal-income', currentUserId, isDemo, 'entry_date');
   const expenseState = useLiveTable('personal_expenses', 'demo-personal-expenses', currentUserId, isDemo, 'entry_date');
   const budgetState = useLiveTable('personal_budgets', 'demo-personal-budgets', currentUserId, isDemo, 'month_key');
-  const revenueTargetState = useLiveTable('personal_revenue_targets', 'demo-personal-revenue-targets', currentUserId, isDemo, 'month_key');
-  const loading = incomeState.loading || expenseState.loading || budgetState.loading || revenueTargetState.loading;
+  const incomeTargetState = useLiveTable('personal_income_targets', 'demo-personal-income-targets', currentUserId, isDemo, 'month_key');
+  const loading = incomeState.loading || expenseState.loading || budgetState.loading || incomeTargetState.loading;
 
   const [tab, setTab] = useState('budget');
-  const [showAdd, setShowAdd] = useState(false);
+  const [addFormType, setAddFormType] = useState(null); // null | 'income' | 'expense'
   const [nDate, setNDate] = useState(today);
   const [nIncomeItems, setNIncomeItems] = useState([{ ...EMPTY_LINE }]);
   const [nExpenseItems, setNExpenseItems] = useState([{ ...EMPTY_LINE }]);
   const [saving, setSaving] = useState(false);
-  const [budgetDraft, setBudgetDraft] = useState({});
   const [newCatName, setNewCatName] = useState('');
   const [newCatAmount, setNewCatAmount] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', amount: '' });
   const [expandedInsight, setExpandedInsight] = useState(null);
-  const [revenueTargetDraft, setRevenueTargetDraft] = useState(null);
+  // Amounts are never typed directly in-place — clicking the figure opens
+  // this prompt (a small modal) to enter/confirm a new value instead, so a
+  // stray click or tab-away can never silently change a saved number.
+  const [amountPrompt, setAmountPrompt] = useState(null); // null | { type: 'incomeTarget' } | { type: 'budget', category }
+  const [amountPromptValue, setAmountPromptValue] = useState('');
   const [editingTxn, setEditingTxn] = useState(null); // { type: 'income'|'expense', id }
   const [editTxnDraft, setEditTxnDraft] = useState({ label: '', detail: '', amount: '', date: '' });
   const [insightScope, setInsightScope] = useState('month'); // 'month' | 'year'
+  const [chartType, setChartType] = useState('bar'); // 'bar' | 'line' | 'area'
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const dateInputRef = useRef(null);
 
@@ -227,48 +160,21 @@ export default function PersonalFinancePanel() {
   const [draftMonthKey, setDraftMonthKey] = useState(selectedMonthKey);
   if (draftMonthKey !== selectedMonthKey) {
     setDraftMonthKey(selectedMonthKey);
-    setBudgetDraft({});
     setEditingCategory(null);
     setExpandedInsight(null);
-    setRevenueTargetDraft(null);
+    setAmountPrompt(null);
     setEditingTxn(null);
   }
 
   useEffect(() => {
-    if (showAdd) { const t = setTimeout(() => dateInputRef.current?.focus(), 60); return () => clearTimeout(t); }
-  }, [showAdd]);
+    if (addFormType) { const t = setTimeout(() => dateInputRef.current?.focus(), 60); return () => clearTimeout(t); }
+  }, [addFormType]);
 
-  // ---- Insert / delete helpers shared across the three tables ----
-  const insertRow = async (table, state, base) => {
-    if (isDemo) { state.persistDemo(prev => [{ ...base, id: crypto.randomUUID(), user_id: currentUserId, created_at: new Date().toISOString() }, ...prev]); return true; }
-    if (!currentUserId) return false;
-    try {
-      const { data, error } = await createClient().from(table).insert({ ...base, user_id: currentUserId }).select('*').maybeSingle();
-      if (error) { console.error(`[personal-finance] ${table} insert failed —`, error.message, '| code:', error.code); toast.error('Could not save', error.message); return false; }
-      if (data) state.setRows(prev => (prev.some(r => r.id === data.id) ? prev : [data, ...prev]));
-      return true;
-    } catch (err) { console.error(`[personal-finance] ${table} insert threw:`, err); toast.error('Could not save', 'Something went wrong.'); return false; }
-  };
-
-  const deleteRow = async (table, state, id) => {
-    if (isDemo) { state.persistDemo(prev => prev.filter(r => r.id !== id)); toast.success('Deleted'); return; }
-    state.setRows(prev => prev.filter(r => r.id !== id));
-    try {
-      const { error } = await createClient().from(table).delete().eq('id', id);
-      if (error) { console.error(`[personal-finance] ${table} delete failed —`, error.message, '| code:', error.code); toast.error('Could not delete', error.message); return; }
-      toast.success('Deleted');
-    } catch (err) { console.error(`[personal-finance] ${table} delete threw:`, err); toast.error('Could not delete', 'Something went wrong.'); }
-  };
-
-  const updateRow = async (table, state, id, patch) => {
-    if (isDemo) { state.persistDemo(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r))); return true; }
-    state.setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
-    try {
-      const { error } = await createClient().from(table).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
-      if (error) { console.error(`[personal-finance] ${table} update failed —`, error.message, '| code:', error.code); toast.error('Could not save', error.message); return false; }
-      return true;
-    } catch (err) { console.error(`[personal-finance] ${table} update threw:`, err); toast.error('Could not save', 'Something went wrong.'); return false; }
-  };
+  // ---- Insert / delete / update helpers shared across the tables ----
+  const crudCtx = { isDemo, currentUserId, toast };
+  const insertRow = (table, state, base) => insertRowShared(table, state, base, crudCtx);
+  const deleteRow = (table, state, id) => deleteRowShared(table, state, id, crudCtx);
+  const updateRow = (table, state, id, patch) => updateRowShared(table, state, id, patch, crudCtx);
 
   // Edits an existing income/expense entry in place (label, detail, amount,
   // date) instead of forcing a delete-and-relog.
@@ -290,43 +196,60 @@ export default function PersonalFinancePanel() {
     if (ok) { setEditingTxn(null); toast.success('Updated'); }
   };
 
-  const saveBudget = async (category, amountRaw) => {
-    const amt = num(amountRaw);
+  // Upserts the exact-month row for a category with a given amount + recurring
+  // flag — the one place that actually writes to personal_budgets, shared by
+  // plain amount edits, the recurring toggle, and the "stop recurring" stopper.
+  const upsertBudgetRow = async (category, amount, recurring) => {
     const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === category);
-    if (!existing && amt <= 0) return true;
     if (isDemo) {
       budgetState.persistDemo(prev => {
         const match = prev.find(r => r.month_key === selectedMonthKey && r.category === category);
         return match
-          ? prev.map(r => (r.id === match.id ? { ...r, amount: amt } : r))
-          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category, amount: amt, created_at: new Date().toISOString() }, ...prev];
+          ? prev.map(r => (r.id === match.id ? { ...r, amount, recurring } : r))
+          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category, amount, recurring, created_at: new Date().toISOString() }, ...prev];
       });
       return true;
     }
     if (!currentUserId) return false;
     if (existing) {
-      budgetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, amount: amt } : r)));
-      const { error } = await createClient().from('personal_budgets').update({ amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      budgetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, amount, recurring } : r)));
+      const { error } = await createClient().from('personal_budgets').update({ amount, recurring, updated_at: new Date().toISOString() }).eq('id', existing.id);
       if (error) { console.error('[personal-finance] budget update failed —', error.message); toast.error('Could not save budget', error.message); return false; }
       return true;
     }
     try {
       const { data, error } = await createClient().from('personal_budgets')
-        .insert({ user_id: currentUserId, month_key: selectedMonthKey, category, amount: amt }).select('*').maybeSingle();
+        .insert({ user_id: currentUserId, month_key: selectedMonthKey, category, amount, recurring }).select('*').maybeSingle();
       if (error) { console.error('[personal-finance] budget insert failed —', error.message); toast.error('Could not save budget', error.message); return false; }
       if (data) budgetState.setRows(prev => [data, ...prev]);
       return true;
     } catch (err) { console.error('[personal-finance] budget insert threw:', err); toast.error('Could not save budget', 'Something went wrong.'); return false; }
   };
 
-  // A single monthly revenue goal (not per-source, unlike budgets) — tracks
-  // progress the same way budget-vs-spend does, just in the other direction.
-  const saveRevenueTarget = async (amountRaw) => {
+  // recurringOverride stays null for every plain amount edit, which preserves
+  // whatever recurring flag this category already resolved to for the viewed
+  // month — so tweaking the number never silently cancels a recurring budget.
+  // Passing an explicit boolean (from the "repeat monthly" toggle) freezes the
+  // currently-resolved amount into an exact row for this month with the new
+  // flag, which is how both turning recurrence on and off take effect.
+  const saveBudget = async (category, amountRaw, recurringOverride = null) => {
     const amt = num(amountRaw);
-    const existing = revenueTargetState.rows.find(r => r.month_key === selectedMonthKey);
+    const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === category);
+    const resolved = monthBudgetResolved.find(x => x.category === category);
+    if (!existing && recurringOverride === null && resolved && amt === resolved.amount) return true;
+    if (!existing && !resolved && amt <= 0) return true;
+    const recurring = recurringOverride !== null ? recurringOverride : (resolved?.recurring ?? false);
+    return upsertBudgetRow(category, amt, recurring);
+  };
+
+  // A single monthly income goal (not per-source, unlike budgets) — tracks
+  // progress the same way budget-vs-spend does, just in the other direction.
+  const saveIncomeTarget = async (amountRaw) => {
+    const amt = num(amountRaw);
+    const existing = incomeTargetState.rows.find(r => r.month_key === selectedMonthKey);
     if (!existing && amt <= 0) return true;
     if (isDemo) {
-      revenueTargetState.persistDemo(prev => {
+      incomeTargetState.persistDemo(prev => {
         const match = prev.find(r => r.month_key === selectedMonthKey);
         return match
           ? prev.map(r => (r.id === match.id ? { ...r, target_amount: amt } : r))
@@ -336,18 +259,31 @@ export default function PersonalFinancePanel() {
     }
     if (!currentUserId) return false;
     if (existing) {
-      revenueTargetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, target_amount: amt } : r)));
-      const { error } = await createClient().from('personal_revenue_targets').update({ target_amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
-      if (error) { console.error('[personal-finance] revenue target update failed —', error.message); toast.error('Could not save target', error.message); return false; }
+      incomeTargetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, target_amount: amt } : r)));
+      const { error } = await createClient().from('personal_income_targets').update({ target_amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      if (error) { console.error('[personal-finance] income target update failed —', error.message); toast.error('Could not save target', error.message); return false; }
       return true;
     }
     try {
-      const { data, error } = await createClient().from('personal_revenue_targets')
+      const { data, error } = await createClient().from('personal_income_targets')
         .insert({ user_id: currentUserId, month_key: selectedMonthKey, target_amount: amt }).select('*').maybeSingle();
-      if (error) { console.error('[personal-finance] revenue target insert failed —', error.message); toast.error('Could not save target', error.message); return false; }
-      if (data) revenueTargetState.setRows(prev => [data, ...prev]);
+      if (error) { console.error('[personal-finance] income target insert failed —', error.message); toast.error('Could not save target', error.message); return false; }
+      if (data) incomeTargetState.setRows(prev => [data, ...prev]);
       return true;
-    } catch (err) { console.error('[personal-finance] revenue target insert threw:', err); toast.error('Could not save target', 'Something went wrong.'); return false; }
+    } catch (err) { console.error('[personal-finance] income target insert threw:', err); toast.error('Could not save target', 'Something went wrong.'); return false; }
+  };
+
+  // Opens the amount prompt for the income target or a budget category's
+  // amount — the only way either figure gets entered, so a save always
+  // requires an explicit "Save" click rather than a stray blur.
+  const openIncomeTargetPrompt = () => { setAmountPromptValue(monthIncomeTarget ? String(monthIncomeTarget) : ''); setAmountPrompt({ type: 'incomeTarget' }); };
+  const openBudgetPrompt = (category, currentAmount) => { setAmountPromptValue(currentAmount ? String(currentAmount) : ''); setAmountPrompt({ type: 'budget', category }); };
+  const closeAmountPrompt = () => { setAmountPrompt(null); setAmountPromptValue(''); };
+  const confirmAmountPrompt = async () => {
+    if (!amountPrompt) return;
+    if (amountPrompt.type === 'incomeTarget') await saveIncomeTarget(amountPromptValue);
+    else await saveBudget(amountPrompt.category, amountPromptValue);
+    closeAmountPrompt();
   };
 
   // Adds a user-defined budget category with its name and starting amount
@@ -360,32 +296,45 @@ export default function PersonalFinancePanel() {
     await insertRow('personal_budgets', budgetState, { month_key: selectedMonthKey, category, amount: num(amountRaw) });
   };
 
-  // Removes a budget category entirely: deletes its saved row so it stops
-  // showing up in the grid at all.
+  // Removes a budget category. If it has ever been marked recurring at or
+  // before the viewed month, a hard delete wouldn't stick — an older
+  // recurring row would just resurface for this month on the next resolve —
+  // so instead we freeze a $0, non-recurring stopper row here to end the
+  // carry-forward. Categories with no recurring history are hard-deleted,
+  // same as before.
   const removeBudgetCategory = async (category) => {
+    const hasRecurringHistory = budgetState.rows.some(r => r.category === category && r.recurring && r.month_key <= selectedMonthKey);
+    if (hasRecurringHistory) { await upsertBudgetRow(category, 0, false); return; }
     const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === category);
     if (existing) await deleteRow('personal_budgets', budgetState, existing.id);
   };
 
-  // Renames a category and/or updates its amount in one save. Renames
+  // Renames a category and/or updates its amount in one save, preserving
+  // whatever recurring flag the category already resolved to. Renames
   // cascade to every expense already logged under the old name (any month),
   // so past spending stays attached to the category instead of orphaning.
+  // Note: a rename only rewrites *this* month's row — an older row that
+  // originated a recurrence stays behind under the old name, but it's inert
+  // (nothing looks it up again) since this month's row, now under the new
+  // name, becomes the newest recurring row any future month will resolve to.
   const editBudgetCategory = async (oldName, rawName, amountRaw) => {
     const newName = rawName.trim();
     if (!newName) return;
     const amt = num(amountRaw);
     const renamed = newName !== oldName;
-    if (renamed && budgetState.rows.some(r => r.month_key === selectedMonthKey && r.category === newName)) {
+    if (renamed && budgetCategoryList.includes(newName)) {
       toast.error('Could not rename', 'That category name is already in use.');
       return;
     }
+    const resolvedOld = monthBudgetResolved.find(x => x.category === oldName);
+    const recurring = resolvedOld?.recurring ?? false;
     const existing = budgetState.rows.find(r => r.month_key === selectedMonthKey && r.category === oldName);
     if (isDemo) {
       budgetState.persistDemo(prev => {
         const match = prev.find(r => r.month_key === selectedMonthKey && r.category === oldName);
         return match
-          ? prev.map(r => (r.id === match.id ? { ...r, category: newName, amount: amt } : r))
-          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, created_at: new Date().toISOString() }, ...prev];
+          ? prev.map(r => (r.id === match.id ? { ...r, category: newName, amount: amt, recurring } : r))
+          : [{ id: crypto.randomUUID(), user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, recurring, created_at: new Date().toISOString() }, ...prev];
       });
       if (renamed) expenseState.persistDemo(prev => prev.map(r => (r.category === oldName ? { ...r, category: newName } : r)));
       return;
@@ -393,12 +342,12 @@ export default function PersonalFinancePanel() {
     if (!currentUserId) return;
     try {
       if (existing) {
-        budgetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, category: newName, amount: amt } : r)));
-        const { error } = await createClient().from('personal_budgets').update({ category: newName, amount: amt, updated_at: new Date().toISOString() }).eq('id', existing.id);
+        budgetState.setRows(prev => prev.map(r => (r.id === existing.id ? { ...r, category: newName, amount: amt, recurring } : r)));
+        const { error } = await createClient().from('personal_budgets').update({ category: newName, amount: amt, recurring, updated_at: new Date().toISOString() }).eq('id', existing.id);
         if (error) { console.error('[personal-finance] budget rename failed —', error.message); toast.error('Could not save', error.message); return; }
       } else {
         const { data, error } = await createClient().from('personal_budgets')
-          .insert({ user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt }).select('*').maybeSingle();
+          .insert({ user_id: currentUserId, month_key: selectedMonthKey, category: newName, amount: amt, recurring }).select('*').maybeSingle();
         if (error) { console.error('[personal-finance] budget insert failed —', error.message); toast.error('Could not save', error.message); return; }
         if (data) budgetState.setRows(prev => [data, ...prev]);
       }
@@ -412,11 +361,13 @@ export default function PersonalFinancePanel() {
   };
 
   // ---- Month-scoped derived data ----
-  const monthBudgetMap = useMemo(() => {
-    const map = new Map();
-    budgetState.rows.forEach(r => { if (r.month_key === selectedMonthKey) map.set(r.category, num(r.amount)); });
-    return map;
-  }, [budgetState.rows, selectedMonthKey]);
+  // Plain consts (not useMemo) from here through categoryStatus: the React
+  // Compiler's memoization-preservation check can't trace a Map built from
+  // an external function call's return value once another memo consumes it,
+  // and bails out across the whole component when it can't. Budget rows are
+  // few enough (personal-scale data) that recomputing each render is free.
+  const monthBudgetResolved = resolveMonthBudgets(budgetState.rows, selectedMonthKey);
+  const monthBudgetMap = new Map(monthBudgetResolved.map(v => [v.category, v.amount]));
 
   const monthIncomeRows = useMemo(() => incomeState.rows
     .filter(r => monthKeyOf(r.entry_date) === selectedMonthKey)
@@ -427,7 +378,7 @@ export default function PersonalFinancePanel() {
     .sort((a, b) => (a.entry_date < b.entry_date ? 1 : a.entry_date > b.entry_date ? -1 : 0)), [expenseState.rows, selectedMonthKey]);
 
   const totalIncome = useMemo(() => monthIncomeRows.reduce((s, r) => s + num(r.amount), 0), [monthIncomeRows]);
-  const totalBudget = useMemo(() => [...monthBudgetMap.values()].reduce((s, v) => s + v, 0), [monthBudgetMap]);
+  const totalBudget = [...monthBudgetMap.values()].reduce((s, v) => s + v, 0);
 
   const spentByCategory = useMemo(() => {
     const m = new Map();
@@ -435,12 +386,12 @@ export default function PersonalFinancePanel() {
     return m;
   }, [monthExpenseRows]);
   const totalSpent = useMemo(() => [...spentByCategory.values()].reduce((s, v) => s + v, 0), [spentByCategory]);
-  const remaining = totalBudget - totalSpent;
+  const remaining = totalIncome - totalSpent;
   const budgetUsedPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
   const ringColor = totalBudget === 0 ? 'var(--color-text-tertiary)' : totalSpent > totalBudget ? '#E0485A' : budgetUsedPct >= 80 ? '#F5A623' : '#5B9BFF';
 
-  const monthRevenueTarget = useMemo(() => num(revenueTargetState.rows.find(r => r.month_key === selectedMonthKey)?.target_amount), [revenueTargetState.rows, selectedMonthKey]);
-  const revenueTargetPct = monthRevenueTarget > 0 ? Math.round((totalIncome / monthRevenueTarget) * 100) : 0;
+  const monthIncomeTarget = num(incomeTargetState.rows.find(r => r.month_key === selectedMonthKey)?.target_amount);
+  const incomeTargetPct = monthIncomeTarget > 0 ? Math.round((totalIncome / monthIncomeTarget) * 100) : 0;
 
   const incomeBySource = useMemo(() => {
     const m = new Map();
@@ -511,12 +462,12 @@ export default function PersonalFinancePanel() {
 
   // Budget categories are entirely user-defined — no fixed starter list, so
   // everyone builds their own criteria from a blank slate via "Add budget".
-  const budgetCategoryList = useMemo(() => {
+  const budgetCategoryList = (() => {
     const cats = new Set();
     monthBudgetMap.forEach((_, cat) => cats.add(cat));
     spentByCategory.forEach((_, cat) => cats.add(cat));
     return [...cats].sort();
-  }, [monthBudgetMap, spentByCategory]);
+  })();
 
   // Every category the user has ever created (any month, via budget or past
   // spending) — offered as a quick-fill chip in Log entry so a category you
@@ -528,31 +479,38 @@ export default function PersonalFinancePanel() {
     return [...cats].sort();
   }, [budgetState.rows, expenseState.rows]);
 
-  const categoryStatus = useMemo(() => budgetCategoryList.map((cat, i) => {
+  const categoryStatus = budgetCategoryList.map((cat, i) => {
     const budget = monthBudgetMap.get(cat) || 0;
     const spent = spentByCategory.get(cat) || 0;
     const over = budget > 0 ? Math.max(0, spent - budget) : 0;
     const pct = budget > 0 ? Math.min(100, Math.round((spent / budget) * 100)) : 0;
     const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
-    return { category: cat, budget, spent, over, pct, color };
-  }), [budgetCategoryList, monthBudgetMap, spentByCategory]);
+    const r = monthBudgetResolved.find(x => x.category === cat);
+    return { category: cat, budget, spent, over, pct, color, recurring: r?.recurring ?? false, isCarried: r?.isCarried ?? false, sourceMonthKey: r?.sourceMonthKey ?? null };
+  });
 
-  const overBudgetCategories = useMemo(() => categoryStatus.filter(c => c.over > 0).sort((a, b) => b.over - a.over), [categoryStatus]);
+  const overBudgetCategories = categoryStatus.filter(c => c.over > 0).sort((a, b) => b.over - a.over);
   const overallOver = totalBudget > 0 ? Math.max(0, totalSpent - totalBudget) : 0;
 
   // "Near" = 80%+ of a budget used but not over yet — a heads-up before the
   // over-budget alert, using the same 80% threshold the budget bars turn amber at.
   const NEAR_BUDGET_PCT = 80;
-  const nearBudgetCategories = useMemo(() => categoryStatus.filter(c => c.budget > 0 && c.over === 0 && c.pct >= NEAR_BUDGET_PCT).sort((a, b) => b.pct - a.pct), [categoryStatus]);
+  const nearBudgetCategories = categoryStatus.filter(c => c.budget > 0 && c.over === 0 && c.pct >= NEAR_BUDGET_PCT).sort((a, b) => b.pct - a.pct);
   const overallPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
   const overallNear = totalBudget > 0 && overallOver === 0 && overallPct >= NEAR_BUDGET_PCT;
 
   const prevMonthKey = addMonthsToKey(selectedMonthKey, -1);
-  const prevMonthBudgets = useMemo(() => budgetState.rows.filter(r => r.month_key === prevMonthKey && num(r.amount) > 0), [budgetState.rows, prevMonthKey]);
+  const prevMonthBudgets = useMemo(() => resolveMonthBudgets(budgetState.rows, prevMonthKey)
+    .filter(v => v.amount > 0)
+    .map(v => ({ category: v.category, amount: v.amount })), [budgetState.rows, prevMonthKey]);
 
+  // Copies as a one-off, non-recurring snapshot — a nudge to match last
+  // month, not a commitment. (Recurring categories keep carrying forward on
+  // their own, which is why this button naturally appears less often once
+  // you start using recurrence.)
   const copyPrevBudget = async () => {
     let copied = 0;
-    for (const r of prevMonthBudgets) { if (await saveBudget(r.category, r.amount)) copied += 1; }
+    for (const r of prevMonthBudgets) { if (await saveBudget(r.category, r.amount, false)) copied += 1; }
     if (copied === 0) return; // each failure already toasted its own error
     toast.success('Budget copied', `Copied ${copied} categor${copied !== 1 ? 'ies' : 'y'} from ${monthLabel(prevMonthKey)}.`);
   };
@@ -595,24 +553,31 @@ export default function PersonalFinancePanel() {
   }, [overBudgetCategories, overallOver, nearBudgetCategories, overallNear, overallPct, selectedMonthKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cleanLines = (items) => items.filter(it => it.label.trim() && num(it.amount) > 0).map(it => ({ label: it.label.trim(), detail: (it.detail || '').trim() || null, amount: num(it.amount) }));
-  const canAdd = cleanLines(nIncomeItems).length > 0 || cleanLines(nExpenseItems).length > 0;
+  const canAddIncome = cleanLines(nIncomeItems).length > 0;
+  const canAddExpense = cleanLines(nExpenseItems).length > 0;
 
-  const saveEntry = async () => {
-    const incomeLines = cleanLines(nIncomeItems);
-    const expenseLines = cleanLines(nExpenseItems);
-    if (incomeLines.length === 0 && expenseLines.length === 0) return;
+  // Income and expenses are logged independently, each through its own
+  // button + form, rather than one combined entry — saving one never
+  // touches the other's in-progress lines.
+  const saveEntry = async (type) => {
+    const items = type === 'income' ? nIncomeItems : nExpenseItems;
+    const lines = cleanLines(items);
+    if (lines.length === 0) return;
     if (!isDemo && !currentUserId) return;
     setSaving(true);
     const date = nDate || today;
-    const results = await Promise.all([
-      ...incomeLines.map(l => insertRow('personal_income', incomeState, { entry_date: date, source: l.label, detail: l.detail, amount: l.amount })),
-      ...expenseLines.map(l => insertRow('personal_expenses', expenseState, { entry_date: date, category: l.label, detail: l.detail, amount: l.amount })),
-    ]);
+    const table = type === 'income' ? 'personal_income' : 'personal_expenses';
+    const state = type === 'income' ? incomeState : expenseState;
+    const results = await Promise.all(lines.map(l => insertRow(table, state, {
+      entry_date: date, detail: l.detail, amount: l.amount,
+      ...(type === 'income' ? { source: l.label } : { category: l.label }),
+    })));
     setSaving(false);
     if (results.every(ok => !ok)) return; // nothing saved — leave the form as-is, each failure already toasted
-    setNIncomeItems([{ ...EMPTY_LINE }]); setNExpenseItems([{ ...EMPTY_LINE }]); setNDate(today); setShowAdd(false);
+    if (type === 'income') setNIncomeItems([{ ...EMPTY_LINE }]); else setNExpenseItems([{ ...EMPTY_LINE }]);
+    setNDate(today); setAddFormType(null);
     setSelectedMonthKey(monthKeyOf(date));
-    if (results.every(ok => ok)) toast.success('Entry logged', fmtNice(date));
+    if (results.every(ok => ok)) toast.success(type === 'income' ? 'Income logged' : 'Expense logged', fmtNice(date));
   };
 
   const incomeDisplay = useCountUp(totalIncome);
@@ -794,8 +759,8 @@ export default function PersonalFinancePanel() {
           <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Personal Finance</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Allocate a monthly budget, track where your income comes from, and get warned the moment you overspend — private to you</div>
         </div>
-        <button className="pfin-save" style={isMobile ? { width: '100%', justifyContent: 'center' } : { marginLeft: 'auto', flexShrink: 0 }} onClick={() => { setTab('transactions'); setShowAdd(true); }}>
-          <Plus size={15} /> Log entry
+        <button className="pfin-save" style={isMobile ? { width: '100%', justifyContent: 'center' } : { marginLeft: 'auto', flexShrink: 0 }} onClick={() => setTab('transactions')}>
+          <Plus size={15} /> Transactions
         </button>
       </div>
 
@@ -872,6 +837,9 @@ export default function PersonalFinancePanel() {
         <button className={`pfin-tab ${tab === 'insights' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('insights')}>
           <PieChart size={14} /> Insights
         </button>
+        <button className={`pfin-tab ${tab === 'goals' ? 'pfin-tab-active' : ''}`} onClick={() => setTab('goals')}>
+          <Target size={14} /> Goals
+        </button>
       </div>
 
       {loading ? (
@@ -881,31 +849,30 @@ export default function PersonalFinancePanel() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-          {/* Revenue target */}
+          {/* Income target */}
           {tab === 'budget' && (
           <div className="pfin-fadeup" style={{ ...card, animationDelay: '200ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(34,197,94,0.16)', color: '#22C55E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrendingUp size={16} /></div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Revenue target</span>
-              {monthRevenueTarget > 0 && (
-                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>{revenueTargetPct}% of <strong style={{ color: 'var(--color-text-primary)' }}>{money(monthRevenueTarget)}</strong></span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Income target</span>
+              {monthIncomeTarget > 0 && (
+                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>{incomeTargetPct}% of <strong style={{ color: 'var(--color-text-primary)' }}>{money(monthIncomeTarget)}</strong></span>
               )}
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginBottom: 12 }}>Set what you aim to earn this month — the bar fills as income comes in.</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className="pfin-budgetrow-bar" style={{ flex: 1 }}>
-                <div className="pfin-bar" style={{ width: `${monthRevenueTarget > 0 ? Math.min(100, Math.max(totalIncome > 0 ? 3 : 0, revenueTargetPct)) : 0}%`, height: '100%', borderRadius: 6, background: revenueTargetPct >= 100 ? '#22C55E' : '#5B9BFF' }} />
+                <div className="pfin-bar" style={{ width: `${monthIncomeTarget > 0 ? Math.min(100, Math.max(totalIncome > 0 ? 3 : 0, incomeTargetPct)) : 0}%`, height: '100%', borderRadius: 6, background: incomeTargetPct >= 100 ? '#22C55E' : '#5B9BFF' }} />
               </div>
-              <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Target"
-                value={revenueTargetDraft ?? (monthRevenueTarget ? String(monthRevenueTarget) : '')}
-                onChange={e => setRevenueTargetDraft(e.target.value)}
-                onBlur={e => { saveRevenueTarget(e.target.value); setRevenueTargetDraft(null); }} />
+              <button className="pfin-amountbtn" onClick={openIncomeTargetPrompt}>
+                {monthIncomeTarget > 0 ? money(monthIncomeTarget) : 'Set target'}
+              </button>
             </div>
-            {monthRevenueTarget > 0 && (
+            {monthIncomeTarget > 0 && (
               <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
-                {totalIncome >= monthRevenueTarget
-                  ? `Target reached — ${money(totalIncome - monthRevenueTarget)} over.`
-                  : `${money(monthRevenueTarget - totalIncome)} to go.`}
+                {totalIncome >= monthIncomeTarget
+                  ? `Target reached — ${money(totalIncome - monthIncomeTarget)} over.`
+                  : `${money(monthIncomeTarget - totalIncome)} to go.`}
               </div>
             )}
           </div>
@@ -943,7 +910,7 @@ export default function PersonalFinancePanel() {
             ) : (
             <div className="pfin-budgetgrid">
               {categoryStatus.map((c) => {
-                const value = budgetDraft[c.category] ?? (monthBudgetMap.get(c.category) ? String(monthBudgetMap.get(c.category)) : '');
+                const value = c.budget ? String(c.budget) : '';
                 const barColor = c.over > 0 ? '#E0485A' : c.pct >= 80 ? '#F5A623' : c.color;
                 const isEditing = editingCategory === c.category;
                 const commitEdit = () => { editBudgetCategory(c.category, editDraft.name, editDraft.amount); setEditingCategory(null); };
@@ -957,7 +924,10 @@ export default function PersonalFinancePanel() {
                           onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingCategory(null); }} />
                       ) : (
                         <>
-                          <span className="pfin-budgetrow-label">{c.category}</span>
+                          <span className="pfin-budgetrow-label">
+                            {c.category}
+                            {c.isCarried && <span className="pfin-carried-badge" title={`Carried from ${monthLabel(c.sourceMonthKey)}`}>auto</span>}
+                          </span>
                           <span className="pfin-budgetrow-spent" style={{ color: c.over > 0 ? '#E0485A' : 'var(--color-text-secondary)' }}>
                             {c.spent > 0 ? `${money(c.spent)} spent` : 'Nothing spent yet'}
                           </span>
@@ -970,6 +940,11 @@ export default function PersonalFinancePanel() {
                         </>
                       ) : (
                         <>
+                          <button className={`pfin-del ${c.recurring ? 'pfin-recur-active' : ''}`}
+                            title={c.recurring ? 'Recurring — click to stop carrying forward from this month' : 'Repeat this budget every month from now on'}
+                            onClick={() => saveBudget(c.category, c.budget, !c.recurring)}>
+                            <Repeat size={13} />
+                          </button>
                           <button className="pfin-del" title="Edit category"
                             onClick={() => { setEditingCategory(c.category); setEditDraft({ name: c.category, amount: value }); }}>
                             <Pencil size={13} />
@@ -990,10 +965,9 @@ export default function PersonalFinancePanel() {
                           onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))}
                           onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingCategory(null); }} />
                       ) : (
-                        <input className="pfin-input pfin-budgetrow-input" type="number" inputMode="decimal" placeholder="Budget"
-                          value={value}
-                          onChange={e => setBudgetDraft(d => ({ ...d, [c.category]: e.target.value }))}
-                          onBlur={e => { saveBudget(c.category, e.target.value); setBudgetDraft(d => { const n = { ...d }; delete n[c.category]; return n; }); }} />
+                        <button className="pfin-amountbtn" onClick={() => openBudgetPrompt(c.category, c.budget)}>
+                          {c.budget > 0 ? money(c.budget) : 'Set budget'}
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1004,32 +978,39 @@ export default function PersonalFinancePanel() {
           </div>
           )}
 
-          {/* Log entry */}
+          {/* Log income / Log expense */}
           {tab === 'transactions' && (<>
-          {showAdd ? (
-            <div className="pfin-pop" style={{ ...card, border: '1px solid rgba(34,197,94,0.35)' }}>
+          {addFormType ? (
+            <div className="pfin-pop" style={{ ...card, border: `1px solid ${addFormType === 'income' ? 'rgba(34,197,94,0.35)' : 'rgba(224,72,90,0.35)'}` }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}><Sparkles size={15} style={{ color: '#22C55E' }} /> Log entry</span>
-                <button className="pfin-del" title="Close" onClick={() => setShowAdd(false)}><X size={16} /></button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                  {addFormType === 'income'
+                    ? <><ArrowUpRight size={15} style={{ color: '#22C55E' }} /> Add income</>
+                    : <><ArrowDownRight size={15} style={{ color: '#E0485A' }} /> Add expense</>}
+                </span>
+                <button className="pfin-del" title="Close" onClick={() => setAddFormType(null)}><X size={16} /></button>
               </div>
               <div style={{ width: 160, marginBottom: 14 }}>
                 <label style={lbl}>Date</label>
                 <input ref={dateInputRef} className="pfin-input" type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
                 <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{fmtNice(nDate)}</div>
               </div>
-              <label style={lbl}>Income — where it came from</label>
-              {lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES, 'income')}
-              <label style={{ ...lbl, marginTop: 16 }}>Expenses — what was spent</label>
-              {lineEditor(nExpenseItems, setNExpenseItems, allExpenseChipOptions, 'expense')}
+              {addFormType === 'income'
+                ? lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES, 'income')
+                : lineEditor(nExpenseItems, setNExpenseItems, allExpenseChipOptions, 'expense')}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <button className="pfin-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
-                <button className="pfin-save" onClick={saveEntry} disabled={!canAdd || saving}>
-                  {saving ? <Loader2 size={15} className="pfin-spin" /> : <Plus size={15} />} {saving ? 'Saving…' : 'Save entry'}
+                <button className="pfin-cancel" onClick={() => setAddFormType(null)}>Cancel</button>
+                <button className="pfin-save" onClick={() => saveEntry(addFormType)} disabled={(addFormType === 'income' ? !canAddIncome : !canAddExpense) || saving}>
+                  {saving ? <Loader2 size={15} className="pfin-spin" /> : <Plus size={15} />}
+                  {saving ? 'Saving…' : addFormType === 'income' ? 'Save income' : 'Save expense'}
                 </button>
               </div>
             </div>
           ) : (
-            <button className="pfin-newbtn" onClick={() => setShowAdd(true)}><Plus size={16} /> Log entry</button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="pfin-newbtn" style={{ flex: '1 1 160px' }} onClick={() => setAddFormType('income')}><Plus size={16} /> Add income</button>
+              <button className="pfin-newbtn pfin-newbtn-expense" style={{ flex: '1 1 160px' }} onClick={() => setAddFormType('expense')}><Plus size={16} /> Add expense</button>
+            </div>
           )}
 
           {/* Transactions this month */}
@@ -1109,7 +1090,7 @@ export default function PersonalFinancePanel() {
             {insightScope === 'year' && (
               <div className="pfin-fadeup" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 10 : 14 }}>
                 {[
-                  { label: 'Total revenue', value: yearTotalIncome, Icon: TrendingUp, tint: '#22C55E' },
+                  { label: 'Total income', value: yearTotalIncome, Icon: TrendingUp, tint: '#22C55E' },
                   { label: 'Total expenses', value: yearTotalExpense, Icon: TrendingDown, tint: '#E0485A' },
                   { label: 'Net', value: yearNet, Icon: Wallet, tint: '#5B9BFF' },
                 ].map(({ label, value, Icon, tint }) => (
@@ -1140,20 +1121,73 @@ export default function PersonalFinancePanel() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PieChart size={16} /></div>
                 <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{insightScope === 'year' ? `${selectedYear} trend` : '6-month trend'}</span>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  {[
+                    { key: 'bar', Icon: BarChart3, title: 'Bar chart' },
+                    { key: 'line', Icon: LineChartIcon, title: 'Line chart' },
+                    { key: 'area', Icon: AreaChartIcon, title: 'Area chart' },
+                  ].map(({ key, Icon, title }) => (
+                    <button key={key} type="button" className={`pfin-del ${chartType === key ? 'pfin-recur-active' : ''}`} title={title} onClick={() => setChartType(key)}>
+                      <Icon size={14} />
+                    </button>
+                  ))}
+                </div>
               </div>
               <ResponsiveContainer width="100%" height={isMobile ? 220 : 280}>
-                <BarChart data={insightScope === 'year' ? yearTrendData : trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
-                  <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
-                  <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                  <Bar dataKey="Income" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                  <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                </BarChart>
+                {chartType === 'line' ? (
+                  <LineChart data={insightScope === 'year' ? yearTrendData : trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                    <Tooltip cursor={{ stroke: 'rgba(48,108,236,0.35)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Line type="monotone" dataKey="Income" stroke="#22C55E" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Expenses" stroke="#E0485A" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                ) : chartType === 'area' ? (
+                  <AreaChart data={insightScope === 'year' ? yearTrendData : trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                    <Tooltip cursor={{ stroke: 'rgba(48,108,236,0.35)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Area type="monotone" dataKey="Income" stroke="#22C55E" fill="#22C55E" fillOpacity={0.18} strokeWidth={2} />
+                    <Area type="monotone" dataKey="Expenses" stroke="#E0485A" fill="#E0485A" fillOpacity={0.18} strokeWidth={2} />
+                  </AreaChart>
+                ) : (
+                  <BarChart data={insightScope === 'year' ? yearTrendData : trendData} margin={{ top: 4, right: 6, left: -6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: '#6C82A3', fontSize: 10.5 }} tickLine={false} axisLine={false} width={46} tickFormatter={(v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                    <Tooltip cursor={{ fill: 'rgba(48,108,236,0.07)' }} contentStyle={{ background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#E2EEFF', fontWeight: 700 }} itemStyle={{ padding: 0 }} formatter={(v, n) => [money(v), n]} />
+                    <Legend iconType="circle" iconSize={9} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Bar dataKey="Income" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Bar dataKey="Expenses" fill="#E0485A" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             </div>
           </>)}
+
+          {tab === 'goals' && <GoalsSavingsPanel selectedMonthKey={selectedMonthKey} />}
+        </div>
+      )}
+
+      {amountPrompt && (
+        <div className="pfin-modal-overlay" onClick={closeAmountPrompt}>
+          <div className="pfin-modal pfin-pop" onClick={e => e.stopPropagation()}>
+            <div className="pfin-modal-title">
+              {amountPrompt.type === 'incomeTarget' ? 'Set income target' : `Set budget — ${amountPrompt.category}`}
+            </div>
+            <input className="pfin-input" type="number" inputMode="decimal" placeholder="Amount" autoFocus
+              value={amountPromptValue}
+              onChange={e => setAmountPromptValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmAmountPrompt(); if (e.key === 'Escape') closeAmountPrompt(); }} />
+            <div className="pfin-modal-actions">
+              <button className="pfin-cancel" onClick={closeAmountPrompt}>Cancel</button>
+              <button className="pfin-save" onClick={confirmAmountPrompt}><Check size={15} /> Save</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1182,6 +1216,8 @@ export default function PersonalFinancePanel() {
         }
         .pfin-newbtn:hover { background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.7); transform: translateY(-1px); }
         .pfin-newbtn:active { transform: translateY(0) scale(.985); }
+        .pfin-newbtn-expense { color: #E0485A; background: rgba(224,72,90,0.08); border-color: rgba(224,72,90,0.45); }
+        .pfin-newbtn-expense:hover { background: rgba(224,72,90,0.14); border-color: rgba(224,72,90,0.7); }
         .pfin-cancel {
           height: 38px; padding: 0 16px; border-radius: 10px; cursor: pointer; font-family: inherit;
           font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
@@ -1206,6 +1242,13 @@ export default function PersonalFinancePanel() {
           color: var(--color-text-tertiary); display: flex; align-items: center; justify-content: center; transition: .15s; flex-shrink: 0;
         }
         .pfin-del:hover { color: #E0485A; background: rgba(224,72,90,0.1); transform: scale(1.08); }
+        .pfin-recur-active { color: #5B9BFF; background: rgba(91,155,255,0.14); }
+        .pfin-recur-active:hover { color: #5B9BFF; background: rgba(91,155,255,0.22); }
+        .pfin-carried-badge {
+          display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+          background: rgba(91,155,255,0.16); color: #5B9BFF; font-size: 9px; font-weight: 800;
+          text-transform: uppercase; letter-spacing: .04em; vertical-align: middle;
+        }
         .pfin-bar { transition: width .6s cubic-bezier(.22,1,.36,1); }
 
         .pfin-monthnav {
@@ -1287,6 +1330,25 @@ export default function PersonalFinancePanel() {
         .pfin-budgetrow-bottom { display: flex; align-items: center; gap: 10px; }
         .pfin-budgetrow-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
         .pfin-budgetrow-input { width: 88px; flex-shrink: 0; height: 30px; text-align: right; }
+
+        .pfin-amountbtn {
+          flex-shrink: 0; height: 34px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 700;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border); color: var(--color-text-primary);
+          font-family: inherit; cursor: pointer; transition: .15s; font-variant-numeric: tabular-nums;
+        }
+        .pfin-amountbtn:hover { border-color: var(--color-border-active); background: var(--color-bg-elevated); transform: translateY(-1px); }
+        .pfin-amountbtn:active { transform: translateY(0) scale(.97); }
+
+        .pfin-modal-overlay {
+          position: fixed; inset: 0; background: rgba(4,8,18,0.6); backdrop-filter: blur(2px);
+          display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px;
+        }
+        .pfin-modal {
+          width: 100%; max-width: 300px; background: var(--color-bg-elevated); border: 1px solid var(--color-border);
+          border-radius: 16px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+        .pfin-modal-title { font-size: 14.5px; font-weight: 800; color: var(--color-text-primary); margin-bottom: 12px; }
+        .pfin-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
         .pfin-insightrow {
           width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px;
