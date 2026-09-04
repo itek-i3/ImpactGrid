@@ -6,7 +6,7 @@ import {
   Factory, Calendar, DollarSign, Droplets, Scale, TrendingUp,
   Users, Crosshair, UserCheck, BarChart3, ShieldAlert,
   AlertTriangle, CheckCircle2, Clock, Search, Filter, Plus, Pencil, Calculator,
-  Undo2, Redo2,
+  Undo2, Redo2, Eye,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
@@ -62,10 +62,51 @@ const MOTIVATION_OPTIONS = [
   { value: 'struggling',  label: 'Business Struggling',  score: 0   },
 ];
 
+// Due Diligence Risk Validation — option lists for each check's structured input.
+// This is a validation/risk layer over the viability score (see the calculators
+// below scoreLabel), never a second scoring formula: it never changes totalScore.
+const LEASE_TRANSFER_OPTIONS = [
+  { value: 'approved',      label: 'Transfer Approved' },
+  { value: 'renegotiation', label: 'Transfer Requires Renegotiation' },
+  { value: 'pending',       label: 'Transfer Pending Confirmation' },
+  { value: 'notAllowed',    label: 'Landlord Does Not Allow Transfer' },
+  { value: 'notApplicable', label: 'No Lease / Not Applicable' },
+];
+const LOCATION_DEPENDENCY_OPTIONS = [
+  { value: 'high',   label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low',    label: 'Low' },
+];
+const LEGAL_DISPUTE_OPTIONS = [
+  { value: 'none',              label: 'No Active Legal Disputes' },
+  { value: 'minor',             label: 'Minor Dispute With Low Impact' },
+  { value: 'underReview',       label: 'Active Dispute Under Review' },
+  { value: 'affectingBusiness', label: 'Active Legal Dispute Affecting Business' },
+  { value: 'affectingAssets',   label: 'Active Legal Dispute Affecting Key Assets' },
+];
+const COMPLIANCE_OPTIONS = [
+  { value: 'fullyCompliant',     label: 'Fully Compliant' },
+  { value: 'minorIssues',        label: 'Minor Compliance Issues' },
+  { value: 'remediable',         label: 'Non-Compliance — Can Be Remedied' },
+  { value: 'majorNonCompliance', label: 'Major Non-Compliance' },
+  { value: 'unknown',            label: 'Unknown / Insufficient Information' },
+];
+
 const MONO = 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)';
 
 // Brand status tokens (validated ≥3:1 on dark surface; always paired with labels)
 const SUCCESS = '#16A36B', WARNING = '#F5A623', ERROR = '#E0485A', ACCENT = '#306CEC';
+
+// Deal pipeline state for the "State" column — where each evaluated business
+// stands in the acquisition pipeline, independent of its worksheet score.
+const DEAL_STATES = [
+  { value: 'prospect',    label: 'Prospect',    col: '#8A94A6' },
+  { value: 'negotiation', label: 'Negotiation', col: WARNING },
+  { value: 'verified',    label: 'Verified',    col: ACCENT },
+  { value: 'acquired',    label: 'Acquired',    col: SUCCESS },
+  { value: 'failed',      label: 'Failed',      col: ERROR },
+];
+const dealStateInfo = (value) => DEAL_STATES.find(s => s.value === value) || DEAL_STATES[0];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +182,108 @@ function formatCurrency(value) {
 function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return `${value.toFixed(1)}%`;
+}
+
+// ── Due Diligence Risk Validation ────────────────────────────────────────────────
+// Six independent checks. Each returns:
+//   status          — the exact wording from spec, or null if not enough data entered yet
+//   level           — 0 PASS · 1 LOW RISK · 2 RISK FLAG/CONDITIONAL · 3 HIGH RISK · 4 CRITICAL RED FLAG
+//                      (used only to roll up the overall Due Diligence Status bucket)
+//   triggersOverride — true exactly when this check hits the specific condition named
+//                      in the spec's "Critical Override" list — forces the final
+//                      decision to "Manual Review" regardless of the viability score.
+// None of these ever touch the 11-criteria viability score.
+
+function ddRevenueCheck({ claimed, verified }) {
+  const c = parseFinancialNumber(claimed);
+  const v = parseFinancialNumber(verified);
+  if (c === null || v === null || c === 0) return { status: null, level: 0, triggersOverride: false, detail: null };
+  const variance = Math.abs(v - c) / c * 100;
+  const flagged = variance > 30;
+  return { status: flagged ? 'RED FLAG' : 'PASS', level: flagged ? 3 : 0, triggersOverride: flagged, detail: `${variance.toFixed(1)}% variance from claimed` };
+}
+
+function ddLiabilitiesCheck({ amount, monthlyRevenue }) {
+  const l = parseFinancialNumber(amount);
+  const r = parseFinancialNumber(monthlyRevenue);
+  if (l === null || r === null || r === 0) return { status: null, level: 0, triggersOverride: false, detail: null };
+  const ratio = (l / r) * 100;
+  const flagged = ratio > 40;
+  return { status: flagged ? 'RED FLAG' : 'PASS', level: flagged ? 3 : 0, triggersOverride: flagged, detail: `${ratio.toFixed(1)}% of monthly revenue` };
+}
+
+function ddLeaseCheck({ transferStatus, locationDependency }) {
+  if (!transferStatus) return { status: null, level: 0, triggersOverride: false };
+  if (transferStatus === 'approved' || transferStatus === 'notApplicable') return { status: 'PASS', level: 0, triggersOverride: false };
+  if (transferStatus === 'renegotiation' || transferStatus === 'pending') return { status: 'RISK FLAG', level: 2, triggersOverride: false };
+  // notAllowed
+  const critical = locationDependency === 'high';
+  return { status: critical ? 'CRITICAL RED FLAG' : 'HIGH RISK', level: critical ? 4 : 3, triggersOverride: critical };
+}
+
+function ddLegalCheck(status) {
+  const map = {
+    none:              { status: 'PASS',             level: 0, triggersOverride: false },
+    minor:             { status: 'RISK FLAG',         level: 2, triggersOverride: false },
+    underReview:       { status: 'HIGH RISK',         level: 3, triggersOverride: false },
+    affectingBusiness: { status: 'CRITICAL RED FLAG', level: 4, triggersOverride: true },
+    affectingAssets:   { status: 'CRITICAL RED FLAG', level: 4, triggersOverride: true },
+  };
+  return map[status] || { status: null, level: 0, triggersOverride: false };
+}
+
+function ddComplianceCheck({ status, daysToResolve }) {
+  if (!status) return { status: null, level: 0, triggersOverride: false };
+  if (status === 'fullyCompliant')     return { status: 'PASS', level: 0, triggersOverride: false };
+  if (status === 'minorIssues')        return { status: 'LOW RISK', level: 1, triggersOverride: false };
+  if (status === 'unknown')            return { status: 'REVIEW REQUIRED', level: 3, triggersOverride: false };
+  if (status === 'majorNonCompliance') return { status: 'CRITICAL RED FLAG', level: 4, triggersOverride: true };
+  // remediable — depends on whether it can be fixed within the 60-day window
+  const days = parseFloat(daysToResolve);
+  if (daysToResolve === '' || isNaN(days)) return { status: 'REVIEW REQUIRED', level: 3, triggersOverride: false };
+  const overdue = days > 60;
+  return { status: overdue ? 'CRITICAL RED FLAG' : 'CONDITIONAL', level: overdue ? 4 : 2, triggersOverride: overdue };
+}
+
+function ddEquipmentCheck({ replacementCost, budget }) {
+  const cost = parseFinancialNumber(replacementCost);
+  const bud = parseFinancialNumber(budget);
+  if (cost === null || bud === null) return { status: null, level: 0, triggersOverride: false, detail: null };
+  const flagged = cost > bud;
+  return { status: flagged ? 'RED FLAG' : 'PASS', level: flagged ? 3 : 0, triggersOverride: flagged, detail: flagged ? `Exceeds budget by ${formatCurrency(cost - bud)}` : null };
+}
+
+const DD_LEVEL_LABEL = ['PASS', 'LOW RISK', 'RISK FLAG', 'HIGH RISK', 'CRITICAL RED FLAG'];
+const DD_LEVEL_COLOR = [SUCCESS, SUCCESS, WARNING, ERROR, ERROR];
+
+// Rolls the six checks into one overall status. `level` is the worst (max) severity
+// found — used for the headline bucket; the counts below drive the final decision.
+function summarizeDueDiligence(checks) {
+  const evaluated = checks.filter(c => c.result.status !== null);
+  const overallLevel = evaluated.reduce((m, c) => Math.max(m, c.result.level), 0);
+  const hasAnyData = evaluated.length > 0;
+  return {
+    overallLevel,
+    overallLabel: hasAnyData ? DD_LEVEL_LABEL[overallLevel] : 'NOT EVALUATED',
+    overallColor: hasAnyData ? DD_LEVEL_COLOR[overallLevel] : 'var(--color-text-muted)',
+    totalIssues: evaluated.filter(c => c.result.level > 0).length,
+    redFlags: evaluated.filter(c => c.result.status === 'RED FLAG').length,
+    criticalRedFlags: evaluated.filter(c => c.result.status === 'CRITICAL RED FLAG').length,
+    overrideTriggered: checks.some(c => c.result.triggersOverride),
+    hasAnyData,
+  };
+}
+
+// Combines the viability score with the Due Diligence summary. A named override
+// condition always wins ("a high viability score should not automatically mean
+// approved"); short of that, the decision escalates with how many issues stacked up.
+// Nothing entered yet is deliberately its own case — never default to "proceed".
+function getFinalDecision(summary) {
+  if (!summary.hasAnyData) return { text: 'ENTER FINDINGS ABOVE TO GENERATE A RECOMMENDATION', color: 'var(--color-text-muted)' };
+  if (summary.overrideTriggered) return { text: 'DO NOT PROCEED — MANUAL REVIEW REQUIRED', color: ERROR };
+  if (summary.totalIssues === 0) return { text: 'PROCEED WITH ACQUISITION', color: SUCCESS };
+  if (summary.totalIssues === 1) return { text: 'PROCEED SUBJECT TO CONDITIONS', color: WARNING };
+  return { text: 'HIGH-RISK ACQUISITION — RENEGOTIATE OR REJECT', color: ERROR };
 }
 
 // ── Valuation (SDE / earnings + asset approach) ─────────────────────────────────
@@ -397,6 +540,26 @@ function MethodCard({ title, subtitle, value, children }) {
   );
 }
 
+// Read-only label/value pair — used by the view-mode evaluation summary.
+// Label is muted/tertiary so it reads as a heading, not more data — the value stays bold/primary.
+function InfoField({ label, value }) {
+  return (
+    <div>
+      <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>{label}</div>
+      <div style={{ fontSize:13, fontWeight:600, color: value ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>{value || '—'}</div>
+    </div>
+  );
+}
+
+// Status pill for one Due Diligence check — grey "Not evaluated" until enough data is entered.
+function DdStatusBadge({ result }) {
+  if (!result.status) {
+    return <span style={{ fontSize:10.5, fontWeight:700, padding:'3px 10px', borderRadius:99, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', color:'var(--color-text-muted)', flexShrink:0 }}>Not evaluated</span>;
+  }
+  const col = DD_LEVEL_COLOR[result.level];
+  return <span style={{ fontSize:10.5, fontWeight:700, padding:'3px 10px', borderRadius:99, background:`${col}1C`, border:`1px solid ${col}44`, color:col, flexShrink:0 }}>{result.status}</span>;
+}
+
 // ── Panel ──────────────────────────────────────────────────────────────────────
 
 export default function AcquisitionPanel() {
@@ -415,6 +578,7 @@ export default function AcquisitionPanel() {
   const [numStaff,        setNumStaff]        = useState('');
   const [businessSector,  setBusinessSector]  = useState('');
   const [evalDate,        setEvalDate]        = useState(today);
+  const [dealState,       setDealState]       = useState('prospect');
   const [assets,          setAssets]          = useState([]); // [{ id, name, worth }]
   const [scores,          setScores]          = useState(initScores);
   const [notes,           setNotes]           = useState(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
@@ -429,12 +593,20 @@ export default function AcquisitionPanel() {
   const [customMotivations, setCustomMotivations] = useState([]); // [{ value, label, score, custom }]
   const [newMotivationLabel, setNewMotivationLabel] = useState('');
   const [newMotivationScore, setNewMotivationScore] = useState(75);
+  // Due Diligence Risk Validation — six independent checks, see ddRevenueCheck etc. above.
+  const [ddRevenue,     setDdRevenue]     = useState({ claimed: '', verified: '' });
+  const [ddLiabilities, setDdLiabilities] = useState({ amount: '', monthlyRevenue: '' });
+  const [ddLease,       setDdLease]       = useState({ transferStatus: '', locationDependency: '' });
+  const [ddLegalDispute, setDdLegalDispute] = useState('');
+  const [ddCompliance,  setDdCompliance]  = useState({ status: '', daysToResolve: '' });
+  const [ddEquipment,   setDdEquipment]   = useState({ replacementCost: '', budget: '' });
   const [revenueMetrics,  setRevenueMetrics]  = useState({ revenue: '', totalExpenses: '', grossProfit: '' });
   const [investmentMetrics, setInvestmentMetrics] = useState({ acquisitionCost: '', monthlyProfit: '' });
   const [valuation,       setValuation]       = useState(EMPTY_VALUATION);
   const [valuationOpen,   setValuationOpen]   = useState(false);
   const [savedEvals,      setSavedEvals]      = useState([]);
   const [editingEvalId,   setEditingEvalId]   = useState(null); // id of the evaluation being edited (null = new)
+  const [formReadOnly,    setFormReadOnly]    = useState(false); // form opened to view the actual saved input, not edit it
   const [undoStack,       setUndoStack]       = useState([]);   // op-log entries: { id, before, after }
   const [redoStack,       setRedoStack]       = useState([]);
   const [localToImport,   setLocalToImport]   = useState([]);   // old browser-local evals waiting to auto-sync
@@ -507,6 +679,8 @@ export default function AcquisitionPanel() {
     [scores, industryValue, monthsInOp, legalChecks, customLegalItems, ownerMotivation, customMotivations, revenueMetrics, investmentMetrics]
   );
 
+  // Viability score — the 11-criteria worksheet only. Due Diligence below never
+  // changes this number; it's a separate risk layer, not a second scoring formula.
   const totalScore = useMemo(() =>
     Math.round(CRITERIA.reduce((a, c) => a + (derivedScores[c.id] ?? 0), 0) / CRITERIA.length),
     [derivedScores]
@@ -516,6 +690,19 @@ export default function AcquisitionPanel() {
     CRITERIA.filter(c => derivedScores[c.id] !== null).length,
     [derivedScores]
   );
+
+  // ── Due Diligence Risk Validation — independent of the score above ──────────────
+  const ddChecks = useMemo(() => [
+    { key: 'revenue',     label: 'Revenue Verification',              result: ddRevenueCheck(ddRevenue) },
+    { key: 'liabilities', label: 'Undisclosed Liabilities',            result: ddLiabilitiesCheck(ddLiabilities) },
+    { key: 'lease',       label: 'Lease Transferability',              result: ddLeaseCheck(ddLease) },
+    { key: 'legal',       label: 'Active Legal Disputes / Court Cases',result: ddLegalCheck(ddLegalDispute) },
+    { key: 'compliance',  label: 'Regulatory & Legal Compliance',      result: ddComplianceCheck(ddCompliance) },
+    { key: 'equipment',   label: 'Equipment & Asset Condition',        result: ddEquipmentCheck(ddEquipment) },
+  ], [ddRevenue, ddLiabilities, ddLease, ddLegalDispute, ddCompliance, ddEquipment]);
+
+  const ddSummary = useMemo(() => summarizeDueDiligence(ddChecks), [ddChecks]);
+  const finalDecision = useMemo(() => getFinalDecision(ddSummary), [ddSummary]);
 
   const dist = useMemo(() => {
     let strong = 0, partial = 0, weak = 0, pending = 0;
@@ -615,6 +802,8 @@ export default function AcquisitionPanel() {
     return [...savedEvals]
       .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0))
       .filter(ev => {
+        // Acquired/Failed have moved on — they live in their own list below, not here.
+        if (ev.dealState === 'acquired' || ev.dealState === 'failed') return false;
         if (q && !(`${ev.businessName} ${ev.sector || ''}`.toLowerCase().includes(q))) return false;
         if (tableFilter === 'strong') return ev.total >= 75;
         if (tableFilter === 'review') return ev.total >= 50 && ev.total < 75;
@@ -622,6 +811,21 @@ export default function AcquisitionPanel() {
         return true;
       });
   }, [savedEvals, tableSearch, tableFilter]);
+
+  // Businesses that have left the pipeline, split by outcome — kept as two separate
+  // lists since "why it failed" doesn't apply to a successful acquisition.
+  const acquiredEvals = useMemo(() =>
+    [...savedEvals]
+      .filter(ev => ev.dealState === 'acquired')
+      .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0)),
+    [savedEvals]
+  );
+  const failedEvals = useMemo(() =>
+    [...savedEvals]
+      .filter(ev => ev.dealState === 'failed')
+      .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0)),
+    [savedEvals]
+  );
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -756,7 +960,7 @@ export default function AcquisitionPanel() {
       const existing = editingEvalId ? savedEvals.find(e => e.id === editingEvalId) : null;
       const obj = {
         id,
-        businessName: businessName.trim(), sector: businessSector, date: evalDate,
+        businessName: businessName.trim(), sector: businessSector, date: evalDate, dealState,
         ownerName: ownerName.trim(), registrationDetails: registrationDetails.trim(),
         businessLocation: businessLocation.trim(), productsServices: productsServices.trim(),
         numStaff, assets: assets.map(a => ({ ...a })),
@@ -770,7 +974,10 @@ export default function AcquisitionPanel() {
         notes: { ...notes }, industryValue, monthsInOp,
         legalChecks: { ...legalChecks }, customLegalItems: customLegalItems.map(i => ({ ...i })),
         ownerMotivation, customMotivations: customMotivations.map(m => ({ ...m })),
+        ddRevenue: { ...ddRevenue }, ddLiabilities: { ...ddLiabilities }, ddLease: { ...ddLease },
+        ddLegalDispute, ddCompliance: { ...ddCompliance }, ddEquipment: { ...ddEquipment },
         revenueMetrics, investmentMetrics, valuation: { ...valuation },
+        exitNote: existing?.exitNote || '',
         total: totalScore, evaluatedCount,
         createdAt: existing?.createdAt || existing?.savedAt || new Date().toISOString(),
         savedAt: new Date().toISOString(),
@@ -795,9 +1002,28 @@ export default function AcquisitionPanel() {
     toast.info?.('Deleted', `"${target.businessName}" removed — use Undo to restore.`);
   }
 
-  function handleLoadEval(ev) {
+  // Patch a single field on an already-saved evaluation without opening the full form
+  // (used by the table's inline State dropdown and the Acquired/Failed exit note).
+  function updateSavedEval(id, patch) {
+    const existing = savedEvals.find(e => e.id === id);
+    if (!existing) return;
+    const after = { ...existing, ...patch };
+    pushHistory({ id, before: existing, after });
+    applyEvalChange(id, after);
+  }
+
+  function handleStateChange(id, newState) {
+    updateSavedEval(id, { dealState: newState });
+  }
+
+  function handleExitNoteChange(id, note) {
+    updateSavedEval(id, { exitNote: note });
+  }
+
+  function handleLoadEval(ev, readOnly = false) {
     setBusinessName(ev.businessName || ''); setBusinessSector(ev.sector || '');
     setEvalDate(ev.date || today);
+    setDealState(ev.dealState || 'prospect');
     setOwnerName(ev.ownerName || ''); setRegistrationDetails(ev.registrationDetails || '');
     setBusinessLocation(ev.businessLocation || ''); setProductsServices(ev.productsServices || '');
     setNumStaff(ev.numStaff || '');
@@ -811,12 +1037,19 @@ export default function AcquisitionPanel() {
     setCustomLegalItems(Array.isArray(ev.customLegalItems) ? ev.customLegalItems.map(i => ({ ...i })) : []);
     setOwnerMotivation(ev.ownerMotivation || '');
     setCustomMotivations(Array.isArray(ev.customMotivations) ? ev.customMotivations.map(m => ({ ...m })) : []);
+    setDdRevenue({ claimed: '', verified: '', ...(ev.ddRevenue || {}) });
+    setDdLiabilities({ amount: '', monthlyRevenue: '', ...(ev.ddLiabilities || {}) });
+    setDdLease({ transferStatus: '', locationDependency: '', ...(ev.ddLease || {}) });
+    setDdLegalDispute(ev.ddLegalDispute || '');
+    setDdCompliance({ status: '', daysToResolve: '', ...(ev.ddCompliance || {}) });
+    setDdEquipment({ replacementCost: '', budget: '', ...(ev.ddEquipment || {}) });
     setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '', ...(ev.revenueMetrics || {}) });
     setInvestmentMetrics(ev.investmentMetrics || { acquisitionCost: '', monthlyProfit: '' });
     setValuation(ev.valuation ? { ...EMPTY_VALUATION, ...ev.valuation } : EMPTY_VALUATION);
     setEditingEvalId(ev.id); // saving will REPLACE this record, not create a duplicate
     setViewedEvalId(null);
     setHistoryOpen(false);
+    setFormReadOnly(readOnly);
     setFormOpen(true);
   }
 
@@ -827,7 +1060,7 @@ export default function AcquisitionPanel() {
   }
 
   function handleReset() {
-    setBusinessName(''); setBusinessSector(''); setEvalDate(today);
+    setBusinessName(''); setBusinessSector(''); setEvalDate(today); setDealState('prospect');
     setOwnerName(''); setRegistrationDetails(''); setBusinessLocation('');
     setProductsServices(''); setNumStaff(''); setAssets([]);
     setScores(initScores);
@@ -837,11 +1070,18 @@ export default function AcquisitionPanel() {
     setCustomLegalItems([]); setNewLegalLabel('');
     setOwnerMotivation('');
     setCustomMotivations([]); setNewMotivationLabel(''); setNewMotivationScore(75);
+    setDdRevenue({ claimed: '', verified: '' });
+    setDdLiabilities({ amount: '', monthlyRevenue: '' });
+    setDdLease({ transferStatus: '', locationDependency: '' });
+    setDdLegalDispute('');
+    setDdCompliance({ status: '', daysToResolve: '' });
+    setDdEquipment({ replacementCost: '', budget: '' });
     setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '' });
     setInvestmentMetrics({ acquisitionCost: '', monthlyProfit: '' });
     setValuation(EMPTY_VALUATION);
     setViewedEvalId(null);
     setEditingEvalId(null);
+    setFormReadOnly(false);
   }
 
   function handleCopy() {
@@ -864,6 +1104,16 @@ export default function AcquisitionPanel() {
         return `${String(idx + 1).padStart(2, '0')}. ${c.title}: ${s === null ? 'Not evaluated' : `${s}%`}${n}`;
       }),
     ];
+    if (ddSummary.hasAnyData) {
+      lines.push('', 'DUE DILIGENCE RISK VALIDATION', '-----------------------------',
+        `Status            : ${ddSummary.overallLabel}`,
+        `Total Issues      : ${ddSummary.totalIssues}`,
+        `Red Flags         : ${ddSummary.redFlags}`,
+        `Critical Red Flags: ${ddSummary.criticalRedFlags}`,
+        ...ddChecks.filter(c => c.result.status && c.result.status !== 'PASS').map(c => `- ${c.label}: ${c.result.status}`),
+        '', `FINAL DECISION: ${finalDecision.text}`,
+      );
+    }
     if (assets.length > 0) {
       lines.push('', 'ASSETS OWNED', '------------',
         ...assets.map(a => `- ${a.name || '(unnamed)'}: ${a.worth ? formatCurrency(parseFinancialNumber(a.worth)) : '—'}`),
@@ -1265,6 +1515,167 @@ export default function AcquisitionPanel() {
     return null;
   };
 
+  // ── Read-only info renderers (view mode — no inputs, just what was entered) ──
+
+  const renderReadOnlyAnswer = (c) => {
+    const s = derivedScores[c.id];
+
+    if (c.inputType === 'financial-inputs') {
+      const metrics = calculateRevenueMetrics(revenueMetrics);
+      return (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:'10px 16px' }}>
+            <InfoField label="Revenue" value={revenueMetrics.revenue !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.revenue)) : null}/>
+            <InfoField label="Operational cost" value={revenueMetrics.totalExpenses !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.totalExpenses)) : null}/>
+            <InfoField label="Gross profit" value={revenueMetrics.grossProfit !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.grossProfit)) : null}/>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'10px 16px' }}>
+            <InfoField label="Net profit" value={formatCurrency(metrics.netProfit)}/>
+            <InfoField label="Net margin" value={formatPercent(metrics.netMargin)}/>
+          </div>
+          {assets.length > 0 && (
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>Assets owned & worth</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {assets.map(a => (
+                  <div key={a.id} style={{ display:'flex', justifyContent:'space-between', gap:10, fontSize:12.5, color:'var(--color-text-secondary)' }}>
+                    <span>{a.name?.trim() || '(unnamed)'}</span>
+                    <span style={{ fontWeight:700, color:'var(--color-text-primary)', fontVariantNumeric:'tabular-nums' }}>{a.worth ? formatCurrency(parseFinancialNumber(a.worth)) : '—'}</span>
+                  </div>
+                ))}
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:'var(--color-text-primary)', paddingTop:6, borderTop:'1px solid var(--color-border-subtle)' }}>
+                  <span>Total</span>
+                  <span>{formatCurrency(assets.reduce((sum, a) => sum + (parseFinancialNumber(a.worth) || 0), 0))}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (c.inputType === 'investment-inputs') {
+      const metrics = calculateInvestmentMetrics(investmentMetrics);
+      return (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:'10px 16px' }}>
+          <InfoField label="Acquisition cost" value={investmentMetrics.acquisitionCost !== '' ? formatCurrency(parseFinancialNumber(investmentMetrics.acquisitionCost)) : null}/>
+          <InfoField label="Monthly profit" value={investmentMetrics.monthlyProfit !== '' ? formatCurrency(parseFinancialNumber(investmentMetrics.monthlyProfit)) : null}/>
+          <InfoField label="Payback period" value={metrics.paybackMonths === null ? null : `${metrics.paybackMonths.toFixed(1)} months`}/>
+        </div>
+      );
+    }
+
+    if (c.inputType === 'toggle') {
+      const opts = { 0:{ label:'No', col:ERROR }, 50:{ label: c.id === 3 ? 'Seasonal' : 'Partly', col:WARNING }, 100:{ label:'Yes', col:SUCCESS } };
+      const o = s !== null ? opts[s] : null;
+      return o ? (
+        <span style={{ display:'inline-flex', padding:'4px 12px', borderRadius:99, fontSize:12, fontWeight:700, background:`${o.col}1F`, border:`1px solid ${o.col}44`, color:o.col }}>{o.label}</span>
+      ) : <span style={{ fontSize:12.5, color:'var(--color-text-muted)' }}>Not answered</span>;
+    }
+
+    if (c.inputType === 'industry-select') {
+      const found = TARGET_INDUSTRIES.find(i => i.value === industryValue);
+      return <InfoField label="Target industry" value={found ? found.label : (industryValue || null)}/>;
+    }
+
+    if (c.inputType === 'months-input') {
+      const mo = parseInt(monthsInOp, 10);
+      const hasVal = monthsInOp !== '' && !isNaN(mo);
+      if (!hasVal) return <span style={{ fontSize:12.5, color:'var(--color-text-muted)' }}>Not answered</span>;
+      const meetsRequirement = mo >= 24;
+      return (
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>{Math.floor(mo / 12)}y {mo % 12}m</span>
+          <span style={{ fontSize:11, color:'var(--color-text-tertiary)' }}>({mo} months)</span>
+          <span style={{ fontSize:11, padding:'3px 10px', borderRadius:99, fontWeight:600,
+            background: meetsRequirement ? `${SUCCESS}1F` : 'var(--color-bg-tertiary)',
+            color: meetsRequirement ? SUCCESS : 'var(--color-text-tertiary)',
+            border:`1px solid ${meetsRequirement ? `${SUCCESS}44` : 'var(--color-border)'}` }}>
+            {meetsRequirement ? '✓ Meets 2-year minimum' : 'Under 2 years'}
+          </span>
+        </div>
+      );
+    }
+
+    if (c.inputType === 'legal-checks') {
+      const rows = [
+        { key:'registration',    label:'Registered with relevant authority' },
+        { key:'taxCompliance',   label:'Tax filings current & compliant' },
+        { key:'licensesPermits', label:'Licenses & permits in place' },
+        { key:'noDisputes',      label:'No active legal disputes' },
+      ];
+      const box = (on) => (
+        <div style={{ width:16, height:16, borderRadius:5, border:`1.5px solid ${on ? SUCCESS : 'var(--color-border)'}`, background: on ? `${SUCCESS}22` : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          {on && <Check size={10} color={SUCCESS} strokeWidth={3}/>}
+        </div>
+      );
+      return (
+        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+          {rows.map(({ key, label }) => (
+            <div key={key} style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {box(legalChecks[key])}
+              <span style={{ fontSize:12.5, color: legalChecks[key] ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{label}</span>
+            </div>
+          ))}
+          {customLegalItems.map(item => (
+            <div key={item.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {box(item.checked)}
+              <span style={{ fontSize:12.5, color: item.checked ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (c.inputType === 'motivation-select') {
+      const found = [...MOTIVATION_OPTIONS, ...customMotivations].find(o => o.value === ownerMotivation);
+      if (!found) return <span style={{ fontSize:12.5, color:'var(--color-text-muted)' }}>Not answered</span>;
+      const mc = found.score >= 75 ? SUCCESS : found.score >= 50 ? WARNING : ERROR;
+      return (
+        <span style={{ display:'inline-flex', padding:'5px 14px', borderRadius:99, fontSize:12, fontWeight:700, background:`${mc}1F`, border:`1px solid ${mc}44`, color:mc }}>{found.label}</span>
+      );
+    }
+
+    return null;
+  };
+
+  // Human-readable readout of what was actually entered for one Due Diligence check.
+  function ddDetailText(key) {
+    switch (key) {
+      case 'revenue': {
+        const { claimed, verified } = ddRevenue;
+        if (!claimed && !verified) return 'Not entered';
+        return `Claimed ${claimed ? formatCurrency(parseFinancialNumber(claimed)) : '—'} vs. verified ${verified ? formatCurrency(parseFinancialNumber(verified)) : '—'}`;
+      }
+      case 'liabilities': {
+        const { amount, monthlyRevenue } = ddLiabilities;
+        if (!amount && !monthlyRevenue) return 'Not entered';
+        return `${amount ? formatCurrency(parseFinancialNumber(amount)) : '—'} undisclosed vs. ${monthlyRevenue ? formatCurrency(parseFinancialNumber(monthlyRevenue)) : '—'} monthly revenue`;
+      }
+      case 'lease': {
+        const opt = LEASE_TRANSFER_OPTIONS.find(o => o.value === ddLease.transferStatus);
+        if (!opt) return 'Not entered';
+        const dep = LOCATION_DEPENDENCY_OPTIONS.find(o => o.value === ddLease.locationDependency);
+        return `${opt.label}${dep ? ` · Location dependency: ${dep.label}` : ''}`;
+      }
+      case 'legal': {
+        const opt = LEGAL_DISPUTE_OPTIONS.find(o => o.value === ddLegalDispute);
+        return opt ? opt.label : 'Not entered';
+      }
+      case 'compliance': {
+        const opt = COMPLIANCE_OPTIONS.find(o => o.value === ddCompliance.status);
+        if (!opt) return 'Not entered';
+        return `${opt.label}${ddCompliance.daysToResolve !== '' ? ` · ${ddCompliance.daysToResolve} days to resolve` : ''}`;
+      }
+      case 'equipment': {
+        const { replacementCost, budget } = ddEquipment;
+        if (!replacementCost && !budget) return 'Not entered';
+        return `Replacement ${replacementCost ? formatCurrency(parseFinancialNumber(replacementCost)) : '—'} vs. budget ${budget ? formatCurrency(parseFinancialNumber(budget)) : '—'}`;
+      }
+      default: return '';
+    }
+  }
+
   // ── KPI tiles ───────────────────────────────────────────────────────────────
 
   const verdictIcon = !started ? Clock : totalScore >= 75 ? CheckCircle2 : totalScore >= 50 ? AlertTriangle : X;
@@ -1657,10 +2068,10 @@ export default function AcquisitionPanel() {
 
           {/* Table */}
           <div style={{ overflowX:'auto' }}>
-            <div style={{ minWidth:860 }}>
+            <div style={{ minWidth:960 }}>
               {/* Head */}
-              <div style={{ display:'grid', gridTemplateColumns:'1.4fr .85fr 1.05fr .75fr .6fr 1fr 96px', gap:10, padding:'10px 18px', borderBottom:'1px solid var(--color-border)' }}>
-                {['Business','Sector','Evaluated by','Date','Score','Verdict',''].map((h, i) => (
+              <div style={{ display:'grid', gridTemplateColumns:'1.4fr .85fr 1.05fr .75fr .6fr 1fr .8fr 120px', gap:10, padding:'10px 18px', borderBottom:'1px solid var(--color-border)' }}>
+                {['Business','Sector','Evaluated by','Date','Score','Verdict','State',''].map((h, i) => (
                   <span key={i} style={{ fontSize:10, fontWeight:800, color:'var(--color-text-primary)', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</span>
                 ))}
               </div>
@@ -1670,14 +2081,14 @@ export default function AcquisitionPanel() {
                 <div style={{ textAlign:'center', padding:'28px 0', color:'var(--color-text-tertiary)', fontSize:12.5 }}>
                   {savedEvals.length === 0 ? (
                     <>No evaluations yet — click <button onClick={startNewEvaluation} style={{ background:'none', border:'none', padding:0, color:'var(--color-text-link)', fontWeight:700, cursor:'pointer', fontSize:12.5, fontFamily:'inherit' }}>+ New Evaluation</button> to score your first business.</>
-                  ) : 'No evaluations match the current search/filter.'}
+                  ) : (tableSearch.trim() || tableFilter !== 'all') ? 'No evaluations match the current search/filter.' : 'Everything currently in your pipeline has moved to Acquired or Failed below.'}
                 </div>
               ) : tableRows.map((ev, i) => {
                 const col = scoreColor(ev.total);
                 const selected = ev.id === viewedEvalId;
                 return (
                   <div key={ev.id} className="acqp-row" onClick={() => setViewedEvalId(ev.id)} title="Click to view this evaluation"
-                    style={{ display:'grid', gridTemplateColumns:'1.4fr .85fr 1.05fr .75fr .6fr 1fr 96px', gap:10, padding:'10px 18px', alignItems:'center', cursor:'pointer', borderLeft:`3px solid ${selected ? ACCENT : 'transparent'}`, background: selected ? 'var(--color-accent-primary-subtle)' : 'transparent', borderBottom: i < tableRows.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
+                    style={{ display:'grid', gridTemplateColumns:'1.4fr .85fr 1.05fr .75fr .6fr 1fr .8fr 120px', gap:10, padding:'10px 18px', alignItems:'center', cursor:'pointer', borderLeft:`3px solid ${selected ? ACCENT : 'transparent'}`, background: selected ? 'var(--color-accent-primary-subtle)' : 'transparent', borderBottom: i < tableRows.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:9, minWidth:0 }}>
                       <span style={{ width:26, height:26, borderRadius:'50%', background:'var(--color-accent-primary-subtle)', border:'1px solid var(--color-border)', color:'var(--color-text-link)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>
                         {(ev.businessName || '?').charAt(0).toUpperCase()}
@@ -1693,7 +2104,24 @@ export default function AcquisitionPanel() {
                         {scoreLabel(ev.total, ev.evaluatedCount)}
                       </span>
                     </span>
+                    <span onClick={e => e.stopPropagation()} style={{ position:'relative', display:'inline-flex', alignItems:'center' }}>
+                      <select
+                        value={ev.dealState || 'prospect'}
+                        onChange={e => handleStateChange(ev.id, e.target.value)}
+                        title="Change deal state"
+                        style={{
+                          fontSize:10.5, fontWeight:700, height:22, padding:'0 22px 0 9px', borderRadius:99, fontFamily:'inherit',
+                          background:`${dealStateInfo(ev.dealState).col}1C`, border:`1px solid ${dealStateInfo(ev.dealState).col}44`,
+                          color: dealStateInfo(ev.dealState).col, appearance:'none', WebkitAppearance:'none', MozAppearance:'none',
+                          boxSizing:'border-box', lineHeight:'normal', verticalAlign:'middle', cursor:'pointer', outline:'none',
+                        }}
+                      >
+                        {DEAL_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                      <ChevronDown size={10} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color: dealStateInfo(ev.dealState).col, pointerEvents:'none' }}/>
+                    </span>
                     <span style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                      <button onClick={(e) => { e.stopPropagation(); handleLoadEval(ev, true); }} title="View the actual input entered" style={{ padding:'4px 6px', borderRadius:'var(--radius-md)', border:'1px solid var(--color-border)', background:'transparent', color:'var(--color-text-link)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Eye size={12}/></button>
                       <button onClick={(e) => { e.stopPropagation(); handleLoadEval(ev); }} title="Edit evaluation" style={{ padding:'4px 6px', borderRadius:'var(--radius-md)', border:'1px solid var(--color-border)', background:'transparent', color:'var(--color-text-link)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><Pencil size={12}/></button>
                       <button onClick={(e) => { e.stopPropagation(); handleDeleteEval(ev.id); }} title="Delete" style={{ padding:'4px 6px', borderRadius:'var(--radius-md)', border:'none', background:'transparent', color:'var(--color-text-muted)', cursor:'pointer', display:'flex', alignItems:'center' }}><X size={12}/></button>
                     </span>
@@ -1704,11 +2132,114 @@ export default function AcquisitionPanel() {
           </div>
         </div>
 
+        {/* ── Acquired (left) / Failed (right) — businesses that left the pipeline ── */}
+        <div className="acqp-two" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14, alignItems:'start' }}>
+
+        {/* ── Acquired — successfully closed deals ── */}
+        <div style={{ ...card, overflow:'hidden', animation:'acqpUp .22s ease both' }}>
+          <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <span style={{ fontSize:14, fontWeight:700, color:'var(--color-text-primary)', letterSpacing:'-.01em' }}>Acquired</span>
+            <span style={{ fontSize:11.5, color:'var(--color-text-tertiary)' }}>Businesses successfully acquired{acquiredEvals.length > 0 ? ` — ${acquiredEvals.length}` : ''}</span>
+          </div>
+          {acquiredEvals.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'24px 0', color:'var(--color-text-tertiary)', fontSize:12.5 }}>
+              None yet — set a business&apos;s state to Acquired above to track it here.
+            </div>
+          ) : (
+            <div>
+              {acquiredEvals.map((ev, i) => {
+                const info = dealStateInfo(ev.dealState);
+                return (
+                  <div key={ev.id} style={{ padding:'14px 18px', borderBottom: i < acquiredEvals.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', display:'flex', alignItems:'center', gap:9, flexWrap:'wrap' }}>
+                    <span style={{ width:26, height:26, borderRadius:'50%', background:'var(--color-accent-primary-subtle)', border:'1px solid var(--color-border)', color:'var(--color-text-link)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>
+                      {(ev.businessName || '?').charAt(0).toUpperCase()}
+                    </span>
+                    <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>{ev.businessName}</span>
+                    <span style={{ position:'relative', display:'inline-flex', alignItems:'center' }}>
+                      <select
+                        value={ev.dealState || 'prospect'}
+                        onChange={e => handleStateChange(ev.id, e.target.value)}
+                        title="Change deal state"
+                        style={{
+                          fontSize:10.5, fontWeight:700, height:22, padding:'0 22px 0 9px', borderRadius:99, fontFamily:'inherit',
+                          background:`${info.col}1C`, border:`1px solid ${info.col}44`,
+                          color:info.col, appearance:'none', WebkitAppearance:'none', MozAppearance:'none',
+                          boxSizing:'border-box', lineHeight:'normal', verticalAlign:'middle', cursor:'pointer', outline:'none',
+                        }}
+                      >
+                        {DEAL_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                      <ChevronDown size={10} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color:info.col, pointerEvents:'none' }}/>
+                    </span>
+                    <span style={{ fontSize:11, color:'var(--color-text-tertiary)', marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>{ev.date}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Failed — deals that fell through, with a reason ── */}
+        <div style={{ ...card, overflow:'hidden', animation:'acqpUp .24s ease both' }}>
+          <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <span style={{ fontSize:14, fontWeight:700, color:'var(--color-text-primary)', letterSpacing:'-.01em' }}>Failed</span>
+            <span style={{ fontSize:11.5, color:'var(--color-text-tertiary)' }}>Deals that fell through{failedEvals.length > 0 ? ` — ${failedEvals.length}` : ''}</span>
+          </div>
+          {failedEvals.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'24px 0', color:'var(--color-text-tertiary)', fontSize:12.5 }}>
+              None yet — set a business&apos;s state to Failed above to track it here.
+            </div>
+          ) : (
+            <div>
+              {failedEvals.map((ev, i) => {
+                const info = dealStateInfo(ev.dealState);
+                return (
+                  <div key={ev.id} style={{ padding:'14px 18px', borderBottom: i < failedEvals.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', display:'flex', flexDirection:'column', gap:9 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:9, flexWrap:'wrap' }}>
+                      <span style={{ width:26, height:26, borderRadius:'50%', background:'var(--color-accent-primary-subtle)', border:'1px solid var(--color-border)', color:'var(--color-text-link)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800, flexShrink:0 }}>
+                        {(ev.businessName || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>{ev.businessName}</span>
+                      <span style={{ position:'relative', display:'inline-flex', alignItems:'center' }}>
+                        <select
+                          value={ev.dealState || 'prospect'}
+                          onChange={e => handleStateChange(ev.id, e.target.value)}
+                          title="Change deal state"
+                          style={{
+                            fontSize:10.5, fontWeight:700, height:22, padding:'0 22px 0 9px', borderRadius:99, fontFamily:'inherit',
+                            background:`${info.col}1C`, border:`1px solid ${info.col}44`,
+                            color:info.col, appearance:'none', WebkitAppearance:'none', MozAppearance:'none',
+                            boxSizing:'border-box', lineHeight:'normal', verticalAlign:'middle', cursor:'pointer', outline:'none',
+                          }}
+                        >
+                          {DEAL_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                        <ChevronDown size={10} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', color:info.col, pointerEvents:'none' }}/>
+                      </span>
+                      <span style={{ fontSize:11, color:'var(--color-text-tertiary)', marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>{ev.date}</span>
+                    </div>
+                    <textarea
+                      key={ev.id}
+                      defaultValue={ev.exitNote || ''}
+                      onBlur={e => { const v = e.target.value; if (v !== (ev.exitNote || '')) handleExitNoteChange(ev.id, v); }}
+                      placeholder="Why did this deal fail?"
+                      rows={2}
+                      style={{ width:'100%', maxWidth:640, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)', padding:'8px 11px', color:'var(--color-text-primary)', fontSize:12, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.55 }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        </div>
+
         {/* ── Evaluation form — opened by the + buttons ── */}
         <Modal
           isOpen={formOpen}
           onClose={() => setFormOpen(false)}
-          title={editingEvalId ? 'Edit Business Evaluation' : 'Business Evaluation'}
+          title={formReadOnly ? 'Evaluation — actual input' : (editingEvalId ? 'Edit Business Evaluation' : 'Business Evaluation')}
           maxWidth="760px"
           footer={(
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', width:'100%' }}>
@@ -1721,17 +2252,33 @@ export default function AcquisitionPanel() {
                 <span style={{ fontSize:11.5, color:'var(--color-text-muted)', fontVariantNumeric:'tabular-nums' }}>· {evaluatedCount}/11 scored</span>
               </div>
               <div style={{ display:'flex', gap:8 }}>
-                <button onClick={handleReset} className="acqp-ghost" style={ghostBtn}><RefreshCw size={12}/> Reset</button>
-                <button onClick={handleSave} disabled={saving || !businessName.trim()} style={{
-                  display:'flex', alignItems:'center', gap:6, padding:'8px 20px', borderRadius:'var(--radius-lg)',
-                  background: businessName.trim() ? 'var(--color-accent-gradient)' : 'var(--color-bg-tertiary)',
-                  border: businessName.trim() ? 'none' : '1px solid var(--color-border)',
-                  color: businessName.trim() ? '#fff' : 'var(--color-text-muted)',
-                  cursor: businessName.trim() ? 'pointer' : 'not-allowed', fontSize:13, fontWeight:700, fontFamily:'inherit',
-                  boxShadow: businessName.trim() ? '0 4px 14px rgba(48,108,236,0.35)' : 'none', transition:'all .15s',
-                }}>
-                  <Save size={13}/> {saving ? 'Saving…' : (editingEvalId ? 'Update Evaluation' : 'Save Evaluation')}
-                </button>
+                {formReadOnly ? (
+                  <>
+                    <button onClick={() => setFormOpen(false)} className="acqp-ghost" style={ghostBtn}>Close</button>
+                    <button onClick={() => setFormReadOnly(false)} style={{
+                      display:'flex', alignItems:'center', gap:6, padding:'8px 20px', borderRadius:'var(--radius-lg)',
+                      background:'var(--color-accent-gradient)', border:'none', color:'#fff',
+                      cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                      boxShadow:'0 4px 14px rgba(48,108,236,0.35)', transition:'all .15s',
+                    }}>
+                      <Pencil size={13}/> Edit
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={handleReset} className="acqp-ghost" style={ghostBtn}><RefreshCw size={12}/> Reset</button>
+                    <button onClick={handleSave} disabled={saving || !businessName.trim()} style={{
+                      display:'flex', alignItems:'center', gap:6, padding:'8px 20px', borderRadius:'var(--radius-lg)',
+                      background: businessName.trim() ? 'var(--color-accent-gradient)' : 'var(--color-bg-tertiary)',
+                      border: businessName.trim() ? 'none' : '1px solid var(--color-border)',
+                      color: businessName.trim() ? '#fff' : 'var(--color-text-muted)',
+                      cursor: businessName.trim() ? 'pointer' : 'not-allowed', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                      boxShadow: businessName.trim() ? '0 4px 14px rgba(48,108,236,0.35)' : 'none', transition:'all .15s',
+                    }}>
+                      <Save size={13}/> {saving ? 'Saving…' : (editingEvalId ? 'Update Evaluation' : 'Save Evaluation')}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1740,110 +2287,387 @@ export default function AcquisitionPanel() {
 
               {/* How it works */}
               <p style={{ margin:0, fontSize:12, color:'var(--color-text-tertiary)', lineHeight:1.6 }}>
-                Name the business, then answer each question below. The score and verdict update automatically — nothing else to set.
+                {formReadOnly
+                  ? 'Exactly what was entered for this evaluation — click Edit to make changes.'
+                  : 'Name the business, then answer each question below. The score and verdict update automatically — nothing else to set.'}
               </p>
 
-              {/* Business details — one field per row, easier to scan and fill in order */}
-              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-                <div>
-                  <label className="acqp-lbl">Business Name *</label>
-                  <input className="acqp-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Sunshine Laundromat"/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Name of the owner</label>
-                  <input className="acqp-input" value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="e.g. Jane Wanjiru"/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Business registration details</label>
-                  <input className="acqp-input" value={registrationDetails} onChange={e => setRegistrationDetails(e.target.value)} placeholder="Registration / certificate no."/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Location</label>
-                  <input className="acqp-input" value={businessLocation} onChange={e => setBusinessLocation(e.target.value)} placeholder="e.g. Eldoret"/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Products / services</label>
-                  <input className="acqp-input" value={productsServices} onChange={e => setProductsServices(e.target.value)} placeholder="What the business sells"/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Number of staff</label>
-                  <input className="acqp-input" type="number" inputMode="numeric" min="0" value={numStaff} onChange={e => setNumStaff(e.target.value)} placeholder="e.g. 6"/>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Sector</label>
-                  <div style={{ position:'relative' }}>
-                    <select className="acqp-select" value={businessSector} onChange={e => setBusinessSector(e.target.value)}>
-                      <option value="">Select sector…</option>
-                      {/* Keep any previously-saved sector that isn't in the list */}
-                      {businessSector && !SECTORS.includes(businessSector) && (
-                        <option value={businessSector}>{businessSector}</option>
-                      )}
-                      {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+              {formReadOnly ? (
+                <>
+                  {/* Business details — read-only info grid */}
+                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                    <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)', fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>
+                      Business details
+                    </div>
+                    <div style={{ padding:'16px 18px', display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'16px 20px' }}>
+                      <InfoField label="Business name" value={businessName}/>
+                      <InfoField label="Name of the owner" value={ownerName}/>
+                      <InfoField label="Business registration details" value={registrationDetails}/>
+                      <InfoField label="Location" value={businessLocation}/>
+                      <InfoField label="Products / services" value={productsServices}/>
+                      <InfoField label="Number of staff" value={numStaff}/>
+                      <InfoField label="Sector" value={businessSector}/>
+                      <InfoField label="Date" value={evalDate}/>
+                      <div>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>State</div>
+                        <span style={{ display:'inline-flex', padding:'4px 12px', borderRadius:99, fontSize:12, fontWeight:700, background:`${dealStateInfo(dealState).col}1F`, border:`1px solid ${dealStateInfo(dealState).col}44`, color:dealStateInfo(dealState).col }}>
+                          {dealStateInfo(dealState).label}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="acqp-lbl">Date</label>
-                  <input className="acqp-input" type="date" value={evalDate} onChange={e => setEvalDate(e.target.value)}/>
-                </div>
-              </div>
 
-              {/* Criteria worksheet */}
-              <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Criteria worksheet</div>
-                  <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', fontVariantNumeric:'tabular-nums' }}>{evaluatedCount} of 11 scored</div>
-                </div>
+                  {/* Criteria worksheet — read-only */}
+                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Criteria worksheet</div>
+                      <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', fontVariantNumeric:'tabular-nums' }}>{evaluatedCount} of 11 scored</div>
+                    </div>
 
-                {CRITERIA.map((c, idx) => {
-            const s      = derivedScores[c.id];
-            const col    = scoreColor(s);
-            const scored = s !== null;
-            const Icon   = c.Icon;
-            return (
-              <div key={c.id} className="acqp-row" style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < CRITERIA.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
+                    {CRITERIA.map((c, idx) => {
+                      const s      = derivedScores[c.id];
+                      const col    = scoreColor(s);
+                      const scored = s !== null;
+                      const Icon   = c.Icon;
+                      return (
+                        <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < CRITERIA.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
 
-                {/* Icon chip */}
-                <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .2s' }}>
-                  <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
-                </div>
+                          {/* Icon chip */}
+                          <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                            <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
+                          </div>
 
-                {/* Content */}
-                <div style={{ minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
-                    <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                          {/* Content */}
+                          <div style={{ minWidth:0 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
+                              <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                            </div>
+                            <div style={{ marginTop:9 }}>{renderReadOnlyAnswer(c)}</div>
+                            {notes[c.id]?.trim() && (
+                              <div style={{ marginTop:9, padding:'8px 11px', borderRadius:'var(--radius-lg)', background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border-subtle)', fontSize:12, color:'var(--color-text-secondary)', lineHeight:1.55, maxWidth:520 }}>
+                                {notes[c.id]}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Score cell */}
+                          <div style={{ textAlign:'right', paddingTop:2 }}>
+                            <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
+                              {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                            </div>
+                            <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:3, lineHeight:1.5 }}>{c.desc}</div>
-                  <div style={{ marginTop:11 }}>{renderControl(c)}</div>
 
-                  {/* Note */}
-                  <div style={{ marginTop:9 }}>
-                    <button onClick={() => setNotesOpen(p => ({ ...p, [c.id]: !p[c.id] }))}
-                      style={{ background:'none', border:'none', cursor:'pointer', color: notes[c.id] ? 'var(--color-text-link)' : 'var(--color-text-muted)', fontSize:10.5, fontFamily:'inherit', display:'flex', alignItems:'center', gap:4, padding:0, fontWeight:600 }}>
-                      <ChevronDown size={10} style={{ transform: notesOpen[c.id] ? 'rotate(180deg)' : 'none', transition:'transform .12s' }}/>
-                      {notes[c.id] ? `Note (${notes[c.id].split(/\s+/).filter(Boolean).length}w)` : 'Add note'}
-                    </button>
-                    {notesOpen[c.id] && (
-                      <textarea value={notes[c.id]} onChange={e => setNotes(p => ({ ...p, [c.id]: e.target.value }))}
-                        placeholder="Observations, red flags, supporting context…" rows={2}
-                        style={{ marginTop:7, width:'100%', maxWidth:520, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)', padding:'8px 11px', color:'var(--color-text-primary)', fontSize:12, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.55 }}/>
-                    )}
+                  {/* Due Diligence Risk Validation — read-only */}
+                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                    <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Risk Validation</div>
+                      <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:2 }}>A risk layer over the viability score above — separate from it, not a second formula</div>
+                    </div>
+                    <div>
+                      {ddChecks.map((c, idx) => (
+                        <div key={c.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'12px 18px', borderBottom: idx < ddChecks.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+                          <div style={{ minWidth:0 }}>
+                            <div style={{ fontSize:12.5, fontWeight:650, color:'var(--color-text-primary)' }}>{c.label}</div>
+                            <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:2 }}>{ddDetailText(c.key)}</div>
+                          </div>
+                          <DdStatusBadge result={c.result}/>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ padding:'14px 18px', background:'var(--color-bg-tertiary)', borderTop:'1px solid var(--color-border-subtle)', display:'flex', flexDirection:'column', gap:10 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Status</span>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 11px', borderRadius:99, background:`${ddSummary.overallColor}1C`, border:`1px solid ${ddSummary.overallColor}44`, color:ddSummary.overallColor }}>{ddSummary.overallLabel}</span>
+                      </div>
+                      <div style={{ display:'flex', gap:16, flexWrap:'wrap', fontSize:11.5, color:'var(--color-text-tertiary)' }}>
+                        <span>Total Issues: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.totalIssues}</strong></span>
+                        <span>Red Flags: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.redFlags}</strong></span>
+                        <span>Critical Red Flags: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.criticalRedFlags}</strong></span>
+                      </div>
+                      <div style={{ padding:'10px 12px', borderRadius:'var(--radius-lg)', background:`${finalDecision.color}14`, border:`1px solid ${finalDecision.color}44` }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.06em' }}>Final Decision · Viability {totalScore}%</div>
+                        <div style={{ fontSize:13, fontWeight:800, color:finalDecision.color, marginTop:3 }}>{finalDecision.text}</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  {/* Business details — one field per row, easier to scan and fill in order */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                    <div>
+                      <label className="acqp-lbl">Business Name *</label>
+                      <input className="acqp-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Sunshine Laundromat"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Name of the owner</label>
+                      <input className="acqp-input" value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="e.g. Jane Wanjiru"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Business registration details</label>
+                      <input className="acqp-input" value={registrationDetails} onChange={e => setRegistrationDetails(e.target.value)} placeholder="Registration / certificate no."/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Location</label>
+                      <input className="acqp-input" value={businessLocation} onChange={e => setBusinessLocation(e.target.value)} placeholder="e.g. Eldoret"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Products / services</label>
+                      <input className="acqp-input" value={productsServices} onChange={e => setProductsServices(e.target.value)} placeholder="What the business sells"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Number of staff</label>
+                      <input className="acqp-input" type="number" inputMode="numeric" min="0" value={numStaff} onChange={e => setNumStaff(e.target.value)} placeholder="e.g. 6"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Sector</label>
+                      <div style={{ position:'relative' }}>
+                        <select className="acqp-select" value={businessSector} onChange={e => setBusinessSector(e.target.value)}>
+                          <option value="">Select sector…</option>
+                          {/* Keep any previously-saved sector that isn't in the list */}
+                          {businessSector && !SECTORS.includes(businessSector) && (
+                            <option value={businessSector}>{businessSector}</option>
+                          )}
+                          {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Date</label>
+                      <input className="acqp-input" type="date" value={evalDate} onChange={e => setEvalDate(e.target.value)}/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">State</label>
+                      <div style={{ position:'relative' }}>
+                        <select className="acqp-select" value={dealState} onChange={e => setDealState(e.target.value)}>
+                          {DEAL_STATES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                        <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Score cell */}
-                <div style={{ textAlign:'right', paddingTop:2 }}>
-                  <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
-                    {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                  {/* Criteria worksheet */}
+                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Criteria worksheet</div>
+                      <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', fontVariantNumeric:'tabular-nums' }}>{evaluatedCount} of 11 scored</div>
+                    </div>
+
+                    {CRITERIA.map((c, idx) => {
+                const s      = derivedScores[c.id];
+                const col    = scoreColor(s);
+                const scored = s !== null;
+                const Icon   = c.Icon;
+                return (
+                  <div key={c.id} className="acqp-row" style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < CRITERIA.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
+
+                    {/* Icon chip */}
+                    <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .2s' }}>
+                      <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
+                        <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:3, lineHeight:1.5 }}>{c.desc}</div>
+                      <div style={{ marginTop:11 }}>{renderControl(c)}</div>
+
+                      {/* Note */}
+                      <div style={{ marginTop:9 }}>
+                        <button onClick={() => setNotesOpen(p => ({ ...p, [c.id]: !p[c.id] }))}
+                          style={{ background:'none', border:'none', cursor:'pointer', color: notes[c.id] ? 'var(--color-text-link)' : 'var(--color-text-muted)', fontSize:10.5, fontFamily:'inherit', display:'flex', alignItems:'center', gap:4, padding:0, fontWeight:600 }}>
+                          <ChevronDown size={10} style={{ transform: notesOpen[c.id] ? 'rotate(180deg)' : 'none', transition:'transform .12s' }}/>
+                          {notes[c.id] ? `Note (${notes[c.id].split(/\s+/).filter(Boolean).length}w)` : 'Add note'}
+                        </button>
+                        {notesOpen[c.id] && (
+                          <textarea value={notes[c.id]} onChange={e => setNotes(p => ({ ...p, [c.id]: e.target.value }))}
+                            placeholder="Observations, red flags, supporting context…" rows={2}
+                            style={{ marginTop:7, width:'100%', maxWidth:520, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)', padding:'8px 11px', color:'var(--color-text-primary)', fontSize:12, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.55 }}/>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Score cell */}
+                    <div style={{ textAlign:'right', paddingTop:2 }}>
+                      <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
+                        {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                      </div>
+                      <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
-                </div>
-              </div>
-            );
-          })}
-              </div>
+                );
+              })}
+                  </div>
+
+                  {/* Due Diligence Risk Validation — six independent checks over the score above */}
+                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                    <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Risk Validation</div>
+                      <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:2 }}>A validation/risk layer over the score above — findings here never change it, but can block the deal</div>
+                    </div>
+
+                    <div style={{ display:'flex', flexDirection:'column' }}>
+                      {/* 1. Revenue Verification */}
+                      <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>1. Revenue Verification</span>
+                          <DdStatusBadge result={ddChecks[0].result}/>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:9 }}>
+                          <div>
+                            <label className="acqp-lbl">Claimed Monthly Revenue</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddRevenue.claimed} onChange={e => setDdRevenue(v => ({ ...v, claimed: e.target.value }))} placeholder="e.g. 500000"/>
+                          </div>
+                          <div>
+                            <label className="acqp-lbl">Verified Monthly Revenue</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddRevenue.verified} onChange={e => setDdRevenue(v => ({ ...v, verified: e.target.value }))} placeholder="e.g. 420000"/>
+                          </div>
+                        </div>
+                        {ddChecks[0].result.detail && <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:7 }}>{ddChecks[0].result.detail}</div>}
+                      </div>
+
+                      {/* 2. Undisclosed Liabilities */}
+                      <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>2. Undisclosed Liabilities</span>
+                          <DdStatusBadge result={ddChecks[1].result}/>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:9 }}>
+                          <div>
+                            <label className="acqp-lbl">Total Undisclosed Liabilities</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddLiabilities.amount} onChange={e => setDdLiabilities(v => ({ ...v, amount: e.target.value }))} placeholder="e.g. 80000"/>
+                          </div>
+                          <div>
+                            <label className="acqp-lbl">Average Monthly Revenue</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddLiabilities.monthlyRevenue} onChange={e => setDdLiabilities(v => ({ ...v, monthlyRevenue: e.target.value }))} placeholder="e.g. 500000"/>
+                          </div>
+                        </div>
+                        {ddChecks[1].result.detail && <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:7 }}>{ddChecks[1].result.detail}</div>}
+                      </div>
+
+                      {/* 3. Lease Transferability */}
+                      <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>3. Lease Transferability</span>
+                          <DdStatusBadge result={ddChecks[2].result}/>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:9 }}>
+                          <div>
+                            <label className="acqp-lbl">Lease Transfer Status</label>
+                            <div style={{ position:'relative' }}>
+                              <select className="acqp-select" value={ddLease.transferStatus} onChange={e => setDdLease(v => ({ ...v, transferStatus: e.target.value }))}>
+                                <option value="">Select…</option>
+                                {LEASE_TRANSFER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="acqp-lbl">Business Location Dependency</label>
+                            <div style={{ position:'relative' }}>
+                              <select className="acqp-select" value={ddLease.locationDependency} onChange={e => setDdLease(v => ({ ...v, locationDependency: e.target.value }))}>
+                                <option value="">Select…</option>
+                                {LOCATION_DEPENDENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. Active Legal Disputes / Court Cases */}
+                      <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>4. Active Legal Disputes / Court Cases</span>
+                          <DdStatusBadge result={ddChecks[3].result}/>
+                        </div>
+                        <div style={{ marginTop:9, maxWidth:360 }}>
+                          <div style={{ position:'relative' }}>
+                            <select className="acqp-select" value={ddLegalDispute} onChange={e => setDdLegalDispute(e.target.value)}>
+                              <option value="">Select…</option>
+                              {LEGAL_DISPUTE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                            <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 5. Regulatory & Legal Compliance */}
+                      <div style={{ padding:'14px 18px', borderBottom:'1px solid var(--color-border-subtle)' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>5. Regulatory & Legal Compliance</span>
+                          <DdStatusBadge result={ddChecks[4].result}/>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns: ddCompliance.status === 'remediable' ? '1fr 1fr' : '1fr', gap:10, marginTop:9 }}>
+                          <div>
+                            <label className="acqp-lbl">Compliance Status</label>
+                            <div style={{ position:'relative' }}>
+                              <select className="acqp-select" value={ddCompliance.status} onChange={e => setDdCompliance(v => ({ ...v, status: e.target.value }))}>
+                                <option value="">Select…</option>
+                                {COMPLIANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                            </div>
+                          </div>
+                          {ddCompliance.status === 'remediable' && (
+                            <div>
+                              <label className="acqp-lbl">Days Required to Resolve</label>
+                              <input className="acqp-input" type="number" min="0" step="1" value={ddCompliance.daysToResolve} onChange={e => setDdCompliance(v => ({ ...v, daysToResolve: e.target.value }))} placeholder="e.g. 45"/>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 6. Equipment & Asset Condition */}
+                      <div style={{ padding:'14px 18px' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                          <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>6. Equipment & Asset Condition</span>
+                          <DdStatusBadge result={ddChecks[5].result}/>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:9 }}>
+                          <div>
+                            <label className="acqp-lbl">Estimated Equipment Replacement Cost</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddEquipment.replacementCost} onChange={e => setDdEquipment(v => ({ ...v, replacementCost: e.target.value }))} placeholder="e.g. 300000"/>
+                          </div>
+                          <div>
+                            <label className="acqp-lbl">Available Equipment Budget</label>
+                            <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={ddEquipment.budget} onChange={e => setDdEquipment(v => ({ ...v, budget: e.target.value }))} placeholder="e.g. 250000"/>
+                          </div>
+                        </div>
+                        {ddChecks[5].result.detail && <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:7 }}>{ddChecks[5].result.detail}</div>}
+                      </div>
+                    </div>
+
+                    {/* Rollup: overall status + counts + final decision */}
+                    <div style={{ padding:'14px 18px', background:'var(--color-bg-tertiary)', borderTop:'1px solid var(--color-border-subtle)', display:'flex', flexDirection:'column', gap:10 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:12.5, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Status</span>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'3px 11px', borderRadius:99, background:`${ddSummary.overallColor}1C`, border:`1px solid ${ddSummary.overallColor}44`, color:ddSummary.overallColor }}>{ddSummary.overallLabel}</span>
+                      </div>
+                      <div style={{ display:'flex', gap:16, flexWrap:'wrap', fontSize:11.5, color:'var(--color-text-tertiary)' }}>
+                        <span>Total Issues: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.totalIssues}</strong></span>
+                        <span>Red Flags: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.redFlags}</strong></span>
+                        <span>Critical Red Flags: <strong style={{ color:'var(--color-text-primary)' }}>{ddSummary.criticalRedFlags}</strong></span>
+                      </div>
+                      <div style={{ padding:'10px 12px', borderRadius:'var(--radius-lg)', background:`${finalDecision.color}14`, border:`1px solid ${finalDecision.color}44` }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.06em' }}>Final Decision · Viability {totalScore}%</div>
+                        <div style={{ fontSize:13, fontWeight:800, color:finalDecision.color, marginTop:3 }}>{finalDecision.text}</div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
           </div>
         </Modal>
 
