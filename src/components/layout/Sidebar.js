@@ -289,6 +289,32 @@ export default function Sidebar() {
               </button>
             </nav>
 
+            {/* ── Finance — every agency's own manager/superadmin gets this, not just ACR.
+                 ACR keeps the "Daily Finance" name (it tracks several businesses day by
+                 day); every other agency sees its own name instead — "itek Finance". ── */}
+            {['manager', 'superadmin'].includes(userProfile?.role) && (() => {
+              const currentAgencyName = agencies?.find(a => a.id === activeAgencyId)?.name || '';
+              const isAcrAgency = currentAgencyName.toLowerCase().includes('acr');
+              const financeLabel = isAcrAgency ? 'Daily Finance' : (currentAgencyName ? `${currentAgencyName} Finance` : 'Finance');
+              return (
+                <>
+                  <div className={styles.sidebarSectionLabel}>
+                    <span className={styles.sidebarSectionTitle}>Finance</span>
+                  </div>
+                  <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <Wallet size={15} />
+                      <span>{financeLabel}</span>
+                    </button>
+                  </nav>
+                </>
+              );
+            })()}
+
             {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
               <>
                 {/* ── Business (ACR) ── */}
@@ -305,14 +331,6 @@ export default function Sidebar() {
                       >
                         <Building2 size={15} />
                         <span>Businesses</span>
-                      </button>
-                      <button
-                        className="ig-nav"
-                        onClick={() => { setCurrentView('finance'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
-                        style={currentView === 'finance' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
-                      >
-                        <Wallet size={15} />
-                        <span>Daily Finance</span>
                       </button>
                       <button
                         className="ig-nav"

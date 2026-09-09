@@ -32,6 +32,12 @@ export default function BusinessesPanel() {
   const [fDomain, setFDomain] = useState('');
   const [fLocation, setFLocation] = useState('');
   const [fHandler, setFHandler] = useState('');
+  const [fFinancePeriod, setFFinancePeriod] = useState('daily');
+  const [fLinkedAgencyId, setFLinkedAgencyId] = useState('');
+
+  // Other agencies on the platform this business could be linked to (not
+  // itself) — e.g. a business that's also its own agency here, like itek.
+  const linkableAgencies = (agencies || []).filter(a => a.id !== activeAgencyId).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const demoKey = `demo-biz-${agencyId || 'x'}`;
 
@@ -76,13 +82,14 @@ export default function BusinessesPanel() {
 
   const openNew = () => {
     setEditingId(null);
-    setFName(''); setFSector('Services'); setFDomain(''); setFLocation(''); setFHandler('');
+    setFName(''); setFSector('Services'); setFDomain(''); setFLocation(''); setFHandler(''); setFFinancePeriod('daily'); setFLinkedAgencyId('');
     setModalOpen(true);
   };
   const openEdit = (b) => {
     setEditingId(b.id);
     setFName(b.name || ''); setFSector(b.sector || 'Services'); setFDomain(b.domain || '');
-    setFLocation(b.location || ''); setFHandler(b.handler || '');
+    setFLocation(b.location || ''); setFHandler(b.handler || ''); setFFinancePeriod(b.finance_period || 'daily');
+    setFLinkedAgencyId(b.linked_agency_id || '');
     setConfirmDeleteId(null);
     setModalOpen(true);
   };
@@ -96,6 +103,8 @@ export default function BusinessesPanel() {
       agency_id: agencyId, name,
       sector: fSector || null, domain: fDomain.trim() || null,
       location: fLocation.trim() || null, handler: fHandler.trim() || null,
+      finance_period: fFinancePeriod,
+      linked_agency_id: fLinkedAgencyId || null,
     };
     if (isDemo) {
       if (editingId) persistDemo(businesses.map(b => b.id === editingId ? { ...b, ...base } : b));
@@ -196,6 +205,16 @@ export default function BusinessesPanel() {
                   {b.location && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><MapPin size={12} style={{ color: 'var(--color-text-tertiary)' }} /> {b.location}</span>}
                   {b.handler && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><User size={12} style={{ color: 'var(--color-text-tertiary)' }} /> {b.handler}</span>}
                 </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-tertiary)', fontSize: 10.5, fontWeight: 700 }}>
+                    {b.finance_period === 'monthly' ? 'Monthly tracking' : 'Daily tracking'}
+                  </span>
+                  {b.linked_agency_id && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(48,108,236,0.14)', color: '#7EB3FF', fontSize: 10.5, fontWeight: 700 }}>
+                      Linked to {agencies?.find(a => a.id === b.linked_agency_id)?.name || 'agency'}
+                    </span>
+                  )}
+                </div>
 
                 {confirmDeleteId === b.id && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, background: 'rgba(224,72,90,0.10)', border: '1px solid rgba(224,72,90,0.30)', borderRadius: 10, padding: '7px 10px' }}>
@@ -247,6 +266,41 @@ export default function BusinessesPanel() {
                 <input className="biz-input" list="biz-handlers" value={fHandler} onChange={e => setFHandler(e.target.value)} placeholder="Who runs it" />
               </div>
             </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>Finance tracking</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[{ key: 'daily', label: 'Daily' }, { key: 'monthly', label: 'Monthly' }].map(p => (
+                  <button key={p.key} type="button" onClick={() => setFFinancePeriod(p.key)}
+                    style={{
+                      flex: 1, border: '1px solid', borderColor: fFinancePeriod === p.key ? 'rgba(48,108,236,0.6)' : 'var(--color-border)',
+                      background: fFinancePeriod === p.key ? 'rgba(48,108,236,0.16)' : 'var(--color-bg-tertiary)',
+                      color: fFinancePeriod === p.key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                      borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 5 }}>
+                {fFinancePeriod === 'monthly'
+                  ? 'This business only logs one revenue & expenses figure per month.'
+                  : 'This business logs revenue & expenses day by day, with weekly and monthly rollups.'}
+              </div>
+            </div>
+
+            {userProfile?.role === 'superadmin' && linkableAgencies.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <label style={lbl}>Link to agency (optional) — superadmin only</label>
+                <select className="biz-input" value={fLinkedAgencyId} onChange={e => setFLinkedAgencyId(e.target.value)}>
+                  <option value="">Not linked — a plain business</option>
+                  {linkableAgencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 5 }}>
+                  If this business is itself an agency on this platform (e.g. it runs its own workspace), link it here — its finance figures become that agency&apos;s own {fLinkedAgencyId ? `${linkableAgencies.find(a => a.id === fLinkedAgencyId)?.name || ''} Finance`.trim() : 'Finance tab'}, kept in sync both ways, instead of a separate record.
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button className="biz-btn ghost" onClick={() => setModalOpen(false)}>Cancel</button>

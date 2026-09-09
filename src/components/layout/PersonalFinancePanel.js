@@ -16,7 +16,7 @@ import {
 } from 'recharts';
 import GoalsSavingsPanel from '@/components/layout/GoalsSavingsPanel';
 import {
-  money, num, hexToRgba, monthKeyOf, monthLabel, pad2, addMonthsToKey,
+  money, num, hexToRgba, monthKeyOf, monthLabel, pad2, addMonthsToKey, startOfWeekKey, weekRangeLabel,
   useLiveTable, useCountUp, RadialProgress,
   insertRow as insertRowShared, deleteRow as deleteRowShared, updateRow as updateRowShared,
 } from '@/lib/personalFinance/shared';
@@ -64,6 +64,11 @@ const resolveMonthBudgets = (rows, monthKey) => {
 };
 
 const INCOME_SOURCES = ['Salary', 'Business', 'Freelance', 'Side Hustle', 'Investments', 'Rental', 'Gift', 'Other'];
+const PERIODS = [
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly' },
+];
 const CATEGORY_PALETTE = ['#E0485A', '#F97316', '#F5A623', '#EAB308', '#84CC16', '#EC4899', '#5B9BFF', '#0EA5E9', '#14B8A6', '#F472B6', '#A78BFA', '#94A3B8'];
 const EMPTY_LINE = { label: '', detail: '', amount: '' };
 
@@ -134,6 +139,7 @@ export default function PersonalFinancePanel() {
   const [tab, setTab] = useState('budget');
   const [addFormType, setAddFormType] = useState(null); // null | 'income' | 'expense'
   const [nDate, setNDate] = useState(today);
+  const [nPeriod, setNPeriod] = useState('daily'); // 'daily' | 'weekly' | 'monthly'
   const [nIncomeItems, setNIncomeItems] = useState([{ ...EMPTY_LINE }]);
   const [nExpenseItems, setNExpenseItems] = useState([{ ...EMPTY_LINE }]);
   const [saving, setSaving] = useState(false);
@@ -148,7 +154,7 @@ export default function PersonalFinancePanel() {
   const [amountPrompt, setAmountPrompt] = useState(null); // null | { type: 'incomeTarget' } | { type: 'budget', category }
   const [amountPromptValue, setAmountPromptValue] = useState('');
   const [editingTxn, setEditingTxn] = useState(null); // { type: 'income'|'expense', id }
-  const [editTxnDraft, setEditTxnDraft] = useState({ label: '', detail: '', amount: '', date: '' });
+  const [editTxnDraft, setEditTxnDraft] = useState({ label: '', detail: '', amount: '', date: '', period: 'daily' });
   const [insightScope, setInsightScope] = useState('month'); // 'month' | 'year'
   const [chartType, setChartType] = useState('bar'); // 'bar' | 'line' | 'area'
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
@@ -180,7 +186,18 @@ export default function PersonalFinancePanel() {
   // date) instead of forcing a delete-and-relog.
   const startEditTxn = (type, r) => {
     setEditingTxn({ type, id: r.id });
-    setEditTxnDraft({ label: type === 'income' ? r.source : r.category, detail: r.detail || '', amount: String(r.amount), date: r.entry_date });
+    setEditTxnDraft({ label: type === 'income' ? r.source : r.category, detail: r.detail || '', amount: String(r.amount), date: r.entry_date, period: r.period || 'daily' });
+  };
+
+  // Resolves whatever the period control + date/week/month input currently
+  // hold down to the single anchor date a row is actually stored under —
+  // weekly snaps to that week's Monday, monthly to the 1st, daily passes
+  // through untouched.
+  const resolveEntryDate = (period, dateStr, fallback) => {
+    const d = dateStr || fallback;
+    if (period === 'weekly') return startOfWeekKey(d);
+    if (period === 'monthly') return `${d.slice(0, 7)}-01`;
+    return d;
   };
 
   const commitEditTxn = async () => {
@@ -191,7 +208,8 @@ export default function PersonalFinancePanel() {
     const table = type === 'income' ? 'personal_income' : 'personal_expenses';
     const state = type === 'income' ? incomeState : expenseState;
     const labelField = type === 'income' ? 'source' : 'category';
-    const patch = { [labelField]: label, detail: editTxnDraft.detail.trim() || null, amount: num(editTxnDraft.amount), entry_date: editTxnDraft.date || today };
+    const period = editTxnDraft.period || 'daily';
+    const patch = { [labelField]: label, detail: editTxnDraft.detail.trim() || null, amount: num(editTxnDraft.amount), entry_date: resolveEntryDate(period, editTxnDraft.date, today), period };
     const ok = await updateRow(table, state, id, patch);
     if (ok) { setEditingTxn(null); toast.success('Updated'); }
   };
@@ -565,19 +583,22 @@ export default function PersonalFinancePanel() {
     if (lines.length === 0) return;
     if (!isDemo && !currentUserId) return;
     setSaving(true);
-    const date = nDate || today;
+    const date = resolveEntryDate(nPeriod, nDate, today);
     const table = type === 'income' ? 'personal_income' : 'personal_expenses';
     const state = type === 'income' ? incomeState : expenseState;
     const results = await Promise.all(lines.map(l => insertRow(table, state, {
-      entry_date: date, detail: l.detail, amount: l.amount,
+      entry_date: date, period: nPeriod, detail: l.detail, amount: l.amount,
       ...(type === 'income' ? { source: l.label } : { category: l.label }),
     })));
     setSaving(false);
     if (results.every(ok => !ok)) return; // nothing saved — leave the form as-is, each failure already toasted
     if (type === 'income') setNIncomeItems([{ ...EMPTY_LINE }]); else setNExpenseItems([{ ...EMPTY_LINE }]);
-    setNDate(today); setAddFormType(null);
+    setNDate(today); setNPeriod('daily'); setAddFormType(null);
     setSelectedMonthKey(monthKeyOf(date));
-    if (results.every(ok => ok)) toast.success(type === 'income' ? 'Income logged' : 'Expense logged', fmtNice(date));
+    if (results.every(ok => ok)) {
+      const when = nPeriod === 'monthly' ? monthLabel(monthKeyOf(date)) : nPeriod === 'weekly' ? weekRangeLabel(date) : fmtNice(date);
+      toast.success(type === 'income' ? 'Income logged' : 'Expense logged', when);
+    }
   };
 
   const incomeDisplay = useCountUp(totalIncome);
@@ -717,9 +738,27 @@ export default function PersonalFinancePanel() {
             <input className="pfin-input" style={{ flex: '1 1 90px' }} type="text" placeholder="Detail (optional)" value={editTxnDraft.detail}
               onChange={e => setEditTxnDraft(d => ({ ...d, detail: e.target.value }))} />
           </div>
+          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+            {PERIODS.map(p => (
+              <button key={p.key} type="button" onClick={() => setEditTxnDraft(d => ({ ...d, period: p.key }))}
+                style={{
+                  border: '1px solid', borderColor: editTxnDraft.period === p.key ? 'rgba(91,155,255,0.6)' : 'var(--color-border)',
+                  background: editTxnDraft.period === p.key ? 'rgba(91,155,255,0.16)' : 'transparent',
+                  color: editTxnDraft.period === p.key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                  borderRadius: 999, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-            <input className="pfin-input" style={{ flex: '1 1 110px' }} type="date" value={editTxnDraft.date}
-              onChange={e => setEditTxnDraft(d => ({ ...d, date: e.target.value }))} />
+            {editTxnDraft.period === 'monthly' ? (
+              <input className="pfin-input" style={{ flex: '1 1 110px' }} type="month" value={editTxnDraft.date.slice(0, 7)}
+                onChange={e => setEditTxnDraft(d => ({ ...d, date: `${e.target.value}-01` }))} />
+            ) : (
+              <input className="pfin-input" style={{ flex: '1 1 110px' }} type="date" value={editTxnDraft.date}
+                onChange={e => setEditTxnDraft(d => ({ ...d, date: e.target.value }))} />
+            )}
             <input className="pfin-input" style={{ flex: '0 1 100px' }} type="number" inputMode="decimal" placeholder="Amount" value={editTxnDraft.amount}
               onChange={e => setEditTxnDraft(d => ({ ...d, amount: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') commitEditTxn(); if (e.key === 'Escape') setEditingTxn(null); }} />
@@ -730,12 +769,15 @@ export default function PersonalFinancePanel() {
       );
     }
 
+    const dateLabel = r.period === 'monthly' ? monthLabel(monthKeyOf(r.entry_date))
+      : r.period === 'weekly' ? weekRangeLabel(r.entry_date)
+      : fmtShort(r.entry_date);
     return (
       <div key={r.id} className="pfin-txnrow">
         <div className={`pfin-txnicon ${iconClass}`}><Icon size={14} /></div>
         <div className="pfin-txnmeta">
           <span className="pfin-txnlabel">{label}</span>
-          <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{fmtShort(r.entry_date)}</span>
+          <span className="pfin-txndate">{r.detail ? `${r.detail} · ` : ''}{dateLabel}</span>
         </div>
         <span className={`pfin-txnamount ${amountClass}`}>{sign}{money(r.amount)}</span>
         <button className="pfin-del" title="Edit" onClick={() => startEditTxn(type, r)}>
@@ -990,10 +1032,31 @@ export default function PersonalFinancePanel() {
                 </span>
                 <button className="pfin-del" title="Close" onClick={() => setAddFormType(null)}><X size={16} /></button>
               </div>
-              <div style={{ width: 160, marginBottom: 14 }}>
-                <label style={lbl}>Date</label>
-                <input ref={dateInputRef} className="pfin-input" type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
-                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{fmtNice(nDate)}</div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Recorded</label>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  {PERIODS.map(p => (
+                    <button key={p.key} type="button" onClick={() => setNPeriod(p.key)}
+                      style={{
+                        border: '1px solid', borderColor: nPeriod === p.key ? 'rgba(91,155,255,0.6)' : 'var(--color-border)',
+                        background: nPeriod === p.key ? 'rgba(91,155,255,0.16)' : 'transparent',
+                        color: nPeriod === p.key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                        borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      }}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ width: 180 }}>
+                  {nPeriod === 'monthly' ? (
+                    <input ref={dateInputRef} className="pfin-input" type="month" value={nDate.slice(0, 7)} onChange={e => setNDate(`${e.target.value}-01`)} />
+                  ) : (
+                    <input ref={dateInputRef} className="pfin-input" type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                    {nPeriod === 'monthly' ? monthLabel(nDate.slice(0, 7)) : nPeriod === 'weekly' ? weekRangeLabel(startOfWeekKey(nDate)) : fmtNice(nDate)}
+                  </div>
+                </div>
               </div>
               {addFormType === 'income'
                 ? lineEditor(nIncomeItems, setNIncomeItems, INCOME_SOURCES, 'income')

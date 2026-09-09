@@ -23,6 +23,25 @@ export const addMonthsToKey = (key, delta) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 };
 
+// Monday of the week containing `dateStr` — the anchor a 'weekly' entry is
+// stored under, so any day the user picks within a week resolves to the
+// same row date.
+export const startOfWeekKey = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() + ((day === 0 ? -6 : 1) - day));
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+export const weekRangeLabel = (mondayStr) => {
+  const start = new Date(`${mondayStr}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const startFmt = start.toLocaleDateString('en-GB', { day: 'numeric', month: sameMonth ? undefined : 'short' });
+  const endFmt = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `Week of ${startFmt}–${endFmt}`;
+};
+
 // Smoothly eases a displayed number toward `value` whenever it changes —
 // summary tiles count up/down instead of jumping, so edits feel alive.
 export function useCountUp(value, duration = 550) {
