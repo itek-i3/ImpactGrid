@@ -34,6 +34,14 @@ export default function BusinessesPanel() {
   const [fHandler, setFHandler] = useState('');
   const [fFinancePeriod, setFFinancePeriod] = useState('daily');
   const [fLinkedAgencyId, setFLinkedAgencyId] = useState('');
+  const [fManaged, setFManaged] = useState(true);
+  const [showUnmanaged, setShowUnmanaged] = useState(false);
+
+  // The tab only lists businesses actively being managed; ones flipped off
+  // (e.g. no longer run day-to-day) drop out of here — and out of the ACR
+  // home page's combined total — without losing their finance history.
+  const managedBusinesses = businesses.filter((b) => b.managed !== false);
+  const unmanagedBusinesses = businesses.filter((b) => b.managed === false);
 
   // Other agencies on the platform this business could be linked to (not
   // itself) — e.g. a business that's also its own agency here, like itek.
@@ -82,16 +90,22 @@ export default function BusinessesPanel() {
 
   const openNew = () => {
     setEditingId(null);
-    setFName(''); setFSector('Services'); setFDomain(''); setFLocation(''); setFHandler(''); setFFinancePeriod('daily'); setFLinkedAgencyId('');
+    setFName(''); setFSector('Services'); setFDomain(''); setFLocation(''); setFHandler(''); setFFinancePeriod('daily'); setFLinkedAgencyId(''); setFManaged(true);
     setModalOpen(true);
   };
   const openEdit = (b) => {
     setEditingId(b.id);
     setFName(b.name || ''); setFSector(b.sector || 'Services'); setFDomain(b.domain || '');
     setFLocation(b.location || ''); setFHandler(b.handler || ''); setFFinancePeriod(b.finance_period || 'daily');
-    setFLinkedAgencyId(b.linked_agency_id || '');
+    setFLinkedAgencyId(b.linked_agency_id || ''); setFManaged(b.managed !== false);
     setConfirmDeleteId(null);
     setModalOpen(true);
+  };
+
+  const setManaged = async (b, managed) => {
+    if (isDemo) { persistDemo(businesses.map(x => x.id === b.id ? { ...x, managed } : x)); return; }
+    setBusinesses(prev => prev.map(x => x.id === b.id ? { ...x, managed } : x));
+    try { await createClient().from('businesses').update({ managed }).eq('id', b.id); } catch (_) {}
   };
 
   const save = async () => {
@@ -105,6 +119,7 @@ export default function BusinessesPanel() {
       location: fLocation.trim() || null, handler: fHandler.trim() || null,
       finance_period: fFinancePeriod,
       linked_agency_id: fLinkedAgencyId || null,
+      managed: fManaged,
     };
     if (isDemo) {
       if (editingId) persistDemo(businesses.map(b => b.id === editingId ? { ...b, ...base } : b));
@@ -171,7 +186,7 @@ export default function BusinessesPanel() {
       {/* List */}
       {loading ? (
         <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12.5, padding: 24 }}>Loading…</div>
-      ) : businesses.length === 0 ? (
+      ) : managedBusinesses.length === 0 ? (
         <div style={{ ...card, padding: '44px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>No businesses yet</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Add your first business — it’ll appear in the Daily Finance switcher.</div>
@@ -179,7 +194,7 @@ export default function BusinessesPanel() {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 12 }}>
-          {businesses.map(b => {
+          {managedBusinesses.map(b => {
             const tint = SECTOR_TINT[b.sector] || '#5B9BFF';
             return (
               <div key={b.id} style={{ ...card, padding: 16 }}>
@@ -226,6 +241,31 @@ export default function BusinessesPanel() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Not currently managed — excluded from this list and from the ACR
+          home page's combined total, but their finance history is kept */}
+      {!loading && unmanagedBusinesses.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <button onClick={() => setShowUnmanaged(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
+            {showUnmanaged ? 'Hide' : 'Show'} not currently managed ({unmanagedBusinesses.length})
+          </button>
+          {showUnmanaged && (
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 12, marginTop: 10 }}>
+              {unmanagedBusinesses.map(b => (
+                <div key={b.id} style={{ ...card, padding: 16, opacity: 0.6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 1 }}>Not managed — excluded from totals</div>
+                    </div>
+                    <button className="biz-btn ghost sm" onClick={() => setManaged(b, true)}>Resume managing</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -287,6 +327,14 @@ export default function BusinessesPanel() {
                   ? 'This business only logs one revenue & expenses figure per month.'
                   : 'This business logs revenue & expenses day by day, with weekly and monthly rollups.'}
               </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, cursor: 'pointer' }}>
+              <input type="checkbox" checked={fManaged} onChange={e => setFManaged(e.target.checked)} />
+              <span style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', fontWeight: 600 }}>Actively managed</span>
+            </label>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+              Turn off if this isn&apos;t being run/tracked right now — it&apos;ll move out of this list and out of the ACR home page total, without losing its finance history.
             </div>
 
             {userProfile?.role === 'superadmin' && linkableAgencies.length > 0 && (

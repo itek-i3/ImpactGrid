@@ -65,12 +65,23 @@ export default function HomeDashboard() {
 
   // Every finance entry ever logged for this agency — powers both the current
   // month's Financial Dashboard tiles and the multi-year Annual Growth Tracker.
+  // Also pulls in any agency linked to one of this agency's business rows
+  // (e.g. ACR's "itek" business linked to itek's own agency) so the total
+  // reflects every portfolio business and agency together, not just the
+  // ones logged directly under this agency_id — except businesses flipped to
+  // "not managed" (e.g. ACR's BiteBack), which drop out of the total the
+  // same way they drop out of the Businesses tab.
   useEffect(() => {
     if (isDemo || !agencyId) return;
     let cancelled = false;
     (async () => {
-      const { data } = await createClient().from('daily_finance').select('entry_date, revenue, expenses').eq('agency_id', agencyId);
-      if (!cancelled) setFinanceRows(data || []);
+      const sb = createClient();
+      const { data: biz } = await sb.from('businesses').select('id, linked_agency_id, managed').eq('agency_id', agencyId);
+      const linkedAgencyIds = [...new Set((biz || []).map((b) => b.linked_agency_id).filter(Boolean))];
+      const unmanagedIds = new Set((biz || []).filter((b) => b.managed === false).map((b) => b.id));
+      const { data } = await sb.from('daily_finance').select('entry_date, revenue, expenses, business_id').in('agency_id', [agencyId, ...linkedAgencyIds]);
+      const rows = (data || []).filter((r) => !r.business_id || !unmanagedIds.has(r.business_id));
+      if (!cancelled) setFinanceRows(rows);
     })();
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
