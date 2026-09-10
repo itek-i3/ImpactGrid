@@ -13,6 +13,10 @@ import {
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
 
+const BIZ_SECTORS = ['Services', 'FMCG', 'Real Estate', 'Agriculture'];
+const ADD_NEW_BIZ = '__add_new__';
+const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
 // Simple parser for financial figures
 function parseFinancialNumber(v) {
   if (v === null || v === undefined) return null;
@@ -34,6 +38,10 @@ export default function ValuationPanel() {
   const [businesses, setBusinesses] = useState([]);
   const [selectedBizId, setSelectedBizId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [addingBiz, setAddingBiz] = useState(false);
+  const [newBizName, setNewBizName] = useState('');
+  const [newBizSector, setNewBizSector] = useState('Services');
+  const [savingNewBiz, setSavingNewBiz] = useState(false);
   const [financeLogs, setFinanceLogs] = useState([]);
   const [evaluations, setEvaluations] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -464,6 +472,44 @@ export default function ValuationPanel() {
     }));
   };
 
+  // Quick-add a business straight from the "Select Business" dropdown
+  const handleAddBusiness = async () => {
+    const name = newBizName.trim();
+    if (!name) return;
+    if (!isDemo && !agencyId) return;
+    setSavingNewBiz(true);
+    const base = { agency_id: agencyId, name, sector: newBizSector || null, domain: null, location: null, handler: null };
+    try {
+      if (isDemo) {
+        const created = { ...base, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+        const next = [...businesses, created];
+        setBusinesses(next);
+        try { localStorage.setItem(`demo-biz-${agencyId || 'x'}`, JSON.stringify(next)); } catch (_) {}
+        setSelectedBizId(created.id);
+      } else {
+        const sb = createClient();
+        const { data, error } = await sb
+          .from('businesses')
+          .insert({ ...base, created_by: isUuid(userProfile?.id) ? userProfile.id : null })
+          .select('*')
+          .maybeSingle();
+        if (error) throw error;
+        if (data) {
+          setBusinesses(prev => [...prev, data]);
+          setSelectedBizId(data.id);
+        }
+      }
+      setAddingBiz(false);
+      setNewBizName('');
+      setNewBizSector('Services');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to Add', err.message || 'Could not add the business — try again.');
+    } finally {
+      setSavingNewBiz(false);
+    }
+  };
+
   // Save valuation data
   const handleSave = async () => {
     if (!activeBiz) return;
@@ -651,22 +697,64 @@ export default function ValuationPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={cardStyle}>
             <label style={labelStyle}>Select Business</label>
-            <select 
-              value={selectedBizId} 
-              onChange={(e) => setSelectedBizId(e.target.value)} 
+            <select
+              value={selectedBizId}
+              onChange={(e) => {
+                if (e.target.value === ADD_NEW_BIZ) { setAddingBiz(true); return; }
+                setSelectedBizId(e.target.value);
+              }}
               style={{ ...inputStyle, padding: '10px 12px', fontSize: 14 }}
               disabled={loading}
             >
               {loading ? (
                 <option>Loading businesses...</option>
-              ) : businesses.length === 0 ? (
-                <option value="">No businesses found</option>
               ) : (
-                businesses.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))
+                <>
+                  {businesses.length === 0 && <option value="">No businesses found</option>}
+                  {businesses.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                  <option value={ADD_NEW_BIZ}>+ Add new business…</option>
+                </>
               )}
             </select>
+
+            {addingBiz && (
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 10, border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  autoFocus
+                  value={newBizName}
+                  onChange={(e) => setNewBizName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddBusiness(); if (e.key === 'Escape') { setAddingBiz(false); setNewBizName(''); } }}
+                  placeholder="Business name"
+                  style={{ ...inputStyle, margin: 0 }}
+                />
+                <select
+                  value={newBizSector}
+                  onChange={(e) => setNewBizSector(e.target.value)}
+                  style={{ ...inputStyle, margin: 0 }}
+                >
+                  {BIZ_SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="biz-btn primary"
+                    onClick={handleAddBusiness}
+                    disabled={savingNewBiz || !newBizName.trim()}
+                    style={{ flex: 1 }}
+                  >
+                    {savingNewBiz ? 'Adding…' : 'Add Business'}
+                  </button>
+                  <button
+                    className="biz-btn ghost"
+                    onClick={() => { setAddingBiz(false); setNewBizName(''); setNewBizSector('Services'); }}
+                    disabled={savingNewBiz}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: 20 }}>
               <label style={labelStyle}>Extrapolation Period</label>
