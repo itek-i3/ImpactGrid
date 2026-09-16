@@ -15,6 +15,7 @@ import MeetingsPanel from '@/components/layout/MeetingsPanel';
 import FinancePanel from '@/components/layout/FinancePanel';
 import PersonalFinancePanel from '@/components/layout/PersonalFinancePanel';
 import BusinessesPanel from '@/components/layout/BusinessesPanel';
+import BusinessIntelPanel from '@/components/layout/BusinessIntelPanel';
 import ValuationPanel from '@/components/layout/ValuationPanel';
 import TeamPanel from '@/components/layout/TeamPanel';
 import ScoreboardPanel from '@/components/layout/ScoreboardPanel';
@@ -163,6 +164,8 @@ function WorkspaceContent() {
             <PersonalFinancePanel />
           ) : currentView === 'businesses' ? (
             <BusinessesPanel />
+          ) : currentView === 'bizIntel' ? (
+            <BusinessIntelPanel />
           ) : currentView === 'valuation' ? (
             <ValuationPanel />
           ) : currentView === 'team' ? (

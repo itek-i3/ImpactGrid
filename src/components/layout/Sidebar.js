@@ -24,6 +24,7 @@ import {
   Wallet,
   TrendingUp,
   PiggyBank,
+  Sparkles,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -339,6 +340,14 @@ export default function Sidebar() {
                       >
                         <TrendingUp size={15} />
                         <span>Valuation</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('bizIntel'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'bizIntel' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Sparkles size={15} />
+                        <span>Growth Profile</span>
                       </button>
                     </>
                   )}
