@@ -604,7 +604,7 @@ export default function BusinessIntelPanel() {
           <Lock size={24} />
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4, fontFamily: 'var(--font-display)' }}>Restricted</div>
-        <div style={{ fontSize: 13 }}>The Growth Profile registry is available to managers and admins in ACR.</div>
+        <div style={{ fontSize: 13 }}>The Data Registry is available to managers and admins in ACR.</div>
       </div>
     );
   }
@@ -617,7 +617,7 @@ export default function BusinessIntelPanel() {
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
             <div>
               <div className="biz-eyebrow"><Sparkles size={11} /> TOIG Business Intelligence</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-.02em', fontFamily: 'var(--font-display)', marginTop: 2 }}>Growth Profile Registry</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-.02em', fontFamily: 'var(--font-display)', marginTop: 2 }}>Data Registry</div>
               <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', marginTop: 4 }}>TOIG&apos;s own roster of the businesses it works with — separate from ACR&apos;s managed businesses</div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

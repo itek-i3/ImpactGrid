@@ -347,7 +347,7 @@ export default function Sidebar() {
                         style={currentView === 'bizIntel' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Sparkles size={15} />
-                        <span>Growth Profile</span>
+                        <span>Data Registry</span>
                       </button>
                     </>
                   )}
