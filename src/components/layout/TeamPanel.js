@@ -17,7 +17,6 @@ export default function TeamPanel() {
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
   const me = userProfile?.id;
-  const isManager = ['manager', 'superadmin'].includes(userProfile?.role);
 
   const [members, setMembers] = useState([]);
   const [missions, setMissions] = useState({}); // user_id -> row
@@ -46,7 +45,10 @@ export default function TeamPanel() {
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
 
-  const canEditMember = (uid) => uid === me || isManager;
+  // A mission is editable only by the member it belongs to — managers and
+  // superadmins included. Enforced by the member_missions_write policy too
+  // (20260919000000_member_missions_owner_only.sql); this just hides the control.
+  const canEditMember = (uid) => uid === me;
 
   const openEdit = (uid) => {
     const m = missions[uid];
@@ -234,7 +236,7 @@ export default function TeamPanel() {
         <div onClick={() => setEditUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, background: 'rgba(2,5,12,0.82)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', margin: '20px 0', background: '#0b1120', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.7)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
-              <span style={{ fontSize: 15, fontWeight: 800 }}>{editUser === me ? 'My mission' : `Edit mission · ${members.find((m) => m.id === editUser)?.full_name || ''}`}</span>
+              <span style={{ fontSize: 15, fontWeight: 800 }}>My mission</span>
               <button onClick={() => setEditUser(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#D8E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68vh', overflowY: 'auto' }}>
