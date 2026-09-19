@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useContext, createContext } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -8,8 +8,13 @@ import { useToast } from '@/components/ui/Toast';
 import {
   Sparkles, Lock, Save, RefreshCw, ChevronLeft,
   Plus, Trash2, User, ShoppingBag, Wrench, DollarSign, AlertTriangle,
-  Rocket, CheckCircle2, Circle, Info, MapPin, TrendingUp,
+  Rocket, CheckCircle2, Circle, Info, MapPin, TrendingUp, Eye, Pencil,
 } from 'lucide-react';
+
+// Whether the detail page is being shown read-only ('view') or editable
+// ('edit') — read by Field/InfraRow so every field call site doesn't need
+// its own readOnly prop.
+const ViewModeContext = createContext(false);
 
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -26,6 +31,7 @@ function buildSampleEntries() {
       data: {
         identity: {
           ownerName: 'Grace Wanjiru', ownerPhone: '0722 445 981', ownerEmail: 'grace.wanjiru@sunshinelaundry.co.ke',
+          country: 'Kenya', city: 'Nairobi',
           yearEstablished: '2021', registrationStatus: 'Registered Business Name', businessPhone: '0722 445 981', businessEmail: 'hello@sunshinelaundry.co.ke',
         },
         operations: {
@@ -74,6 +80,7 @@ function buildSampleEntries() {
       data: {
         identity: {
           ownerName: 'Hassan Mwakio', ownerPhone: '0733 210 764', ownerEmail: 'hassan@freshgrocers.co.ke',
+          country: 'Kenya', city: 'Mombasa',
           yearEstablished: '2018', registrationStatus: 'Limited Company', businessPhone: '0733 210 764', businessEmail: 'info@freshgrocers.co.ke',
         },
         operations: {
@@ -122,6 +129,7 @@ function buildSampleEntries() {
       data: {
         identity: {
           ownerName: 'Samuel Kiptoo', ownerPhone: '0711 908 233', ownerEmail: '',
+          country: 'Kenya', city: 'Nakuru',
           yearEstablished: '2016', registrationStatus: 'Sole Proprietorship', businessPhone: '0711 908 233', businessEmail: '',
         },
         operations: {
@@ -168,6 +176,26 @@ function buildSampleEntries() {
 const REG_STATUS = ['Unregistered', 'Sole Proprietorship', 'Registered Business Name', 'Limited Company', 'Cooperative', 'NGO / Non-profit', 'Other'];
 const OPERATING_MODELS = ['Owner-operated', 'Manager-run', 'Franchise', 'Family-run', 'Remote / Online', 'Hybrid'];
 const REVENUE_RANGES = ['Pre-revenue', 'Under KES 50K/mo', 'KES 50K–200K/mo', 'KES 200K–500K/mo', 'KES 500K–1M/mo', 'KES 1M–5M/mo', 'Over KES 5M/mo', 'Prefer not to share'];
+
+// Country/city are structured (select) fields so the registry can be filtered
+// reliably — starting with Kenya's major cities/towns; add more countries here
+// as TOIG's roster grows beyond Kenya.
+const COUNTRIES = ['Kenya'];
+const CITIES_BY_COUNTRY = {
+  Kenya: ['Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi', 'Kitale', 'Garissa', 'Kakamega', 'Nyeri', 'Machakos', 'Meru', 'Naivasha', 'Kericho'],
+};
+const citiesFor = (country) => CITIES_BY_COUNTRY[country] || [];
+
+// Legacy rows (and any entry saved without a country/city pick) fall back to
+// Kenya — the registry has only ever tracked Kenyan businesses so far — and to
+// the trailing ", City" part of the free-text location, if there is one.
+const effectiveCountry = (entry) => entry?.data?.identity?.country || 'Kenya';
+const effectiveCity = (entry) => {
+  const c = entry?.data?.identity?.city;
+  if (c) return c;
+  const parts = (entry?.location || '').split(',');
+  return parts.length > 1 ? parts[parts.length - 1].trim() : '';
+};
 const GROWTH_TRENDS = ['Growing', 'Stable', 'Declining', 'Seasonal / Fluctuating', 'Too early to tell'];
 
 const INFRA_AREAS = [
@@ -228,13 +256,13 @@ const SECTIONS = [
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
 // are stored as their own top-level registry columns, not inside `data`.
-const IDENTITY_FIELD_COUNT = 10;
+const IDENTITY_FIELD_COUNT = 12;
 const OPERATIONS_FIELD_COUNT = 7;
 const PERFORMANCE_FIELD_COUNT = 6;
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
-  identity: { ownerName: '', ownerPhone: '', ownerEmail: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '' },
+  identity: { ownerName: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '' },
   operations: { productsServices: '', employeeCount: '', locationCount: '', operatingModel: '', suppliers: '', customerSegments: '', currentSystems: '' },
   performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '' },
   infrastructure: Object.fromEntries(INFRA_AREAS.map((a) => [a.key, { level: '', note: '' }])),
@@ -337,16 +365,32 @@ function VerificationBadge({ value, onChange }) {
   );
 }
 
+// Non-interactive stand-in for VerificationBadge, used on the read-only view.
+function VerificationTag({ value }) {
+  const v = verificationOf(value);
+  return (
+    <span
+      className="biz-verify"
+      style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)`, borderColor: `color-mix(in srgb, ${v.varColor} 40%, transparent)`, cursor: 'default', display: 'inline-block' }}
+    >
+      {v.label}
+    </span>
+  );
+}
+
 // A single property row: fixed-width mono label on the left, control on the
 // right, verification badge trailing when the field has a value. Rows share
 // one hairline rhythm instead of each field living in its own boxed tile.
 function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint }) {
+  const readOnly = useContext(ViewModeContext);
   const hasValue = (value || '').toString().trim().length > 0;
   return (
     <div className="biz-row">
       <label className="biz-row-label">{label}</label>
       <div className="biz-row-control">
-        {type === 'select' ? (
+        {readOnly ? (
+          <div className="biz-static">{hasValue ? value : <span className="biz-static-empty">Not recorded</span>}</div>
+        ) : type === 'select' ? (
           <select className="biz-input" value={value} onChange={(e) => onChange(e.target.value)}>
             <option value="">Select…</option>
             {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -356,29 +400,40 @@ function Field({ label, value, onChange, verification, onVerify, type = 'text', 
         ) : (
           <input className="biz-input" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
         )}
-        {hint && <div className="biz-hint">{hint}</div>}
+        {hint && !readOnly && <div className="biz-hint">{hint}</div>}
       </div>
-      {onVerify && hasValue && <VerificationBadge value={verification} onChange={onVerify} />}
+      {onVerify && hasValue && (readOnly ? <VerificationTag value={verification} /> : <VerificationBadge value={verification} onChange={onVerify} />)}
     </div>
   );
 }
 
 function InfraRow({ area, value, onChange, verification, onVerify }) {
+  const readOnly = useContext(ViewModeContext);
   const v = value || { level: '', note: '' };
+  const levelLabel = INFRA_LEVELS.find((lv) => lv.key === v.level)?.label;
   return (
     <div className="biz-row">
       <label className="biz-row-label">{area.label}</label>
       <div className="biz-row-control">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {INFRA_LEVELS.map((lv) => (
-            <button key={lv.key} type="button" onClick={() => onChange({ ...v, level: lv.key })} className={`biz-pill ${v.level === lv.key ? 'active' : ''}`}>
-              {lv.label}
-            </button>
-          ))}
-        </div>
-        <input className="biz-input" style={{ marginTop: 8 }} placeholder="What do they use, if anything? (optional)" value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
+        {readOnly ? (
+          <div className="biz-static">
+            {levelLabel || <span className="biz-static-empty">Not recorded</span>}
+            {v.note ? ` — ${v.note}` : ''}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {INFRA_LEVELS.map((lv) => (
+                <button key={lv.key} type="button" onClick={() => onChange({ ...v, level: lv.key })} className={`biz-pill ${v.level === lv.key ? 'active' : ''}`}>
+                  {lv.label}
+                </button>
+              ))}
+            </div>
+            <input className="biz-input" style={{ marginTop: 8 }} placeholder="What do they use, if anything? (optional)" value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
+          </>
+        )}
       </div>
-      {v.level && <VerificationBadge value={verification} onChange={onVerify} />}
+      {v.level && (readOnly ? <VerificationTag value={verification} /> : <VerificationBadge value={verification} onChange={onVerify} />)}
     </div>
   );
 }
@@ -397,12 +452,23 @@ export default function BusinessIntelPanel() {
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [view, setView] = useState('registry'); // 'registry' | 'detail'
   const [selectedId, setSelectedId] = useState('');
+  const [detailMode, setDetailMode] = useState('view'); // 'view' | 'edit'
 
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const [profile, setProfile] = useState(blankDraft());
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('identity');
+
+  // Registry-list filters — country first (just Kenya for now), city narrows
+  // within it. Both apply to the list, the insight cards, and the count below.
+  const [filterCountry, setFilterCountry] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+
+  const filteredEntries = useMemo(() => entries.filter((e) =>
+    (!filterCountry || effectiveCountry(e) === filterCountry) &&
+    (!filterCity || effectiveCity(e) === filterCity)
+  ), [entries, filterCountry, filterCity]);
 
   const activeEntry = useMemo(() => entries.find((e) => e.id === selectedId), [entries, selectedId]);
 
@@ -412,7 +478,7 @@ export default function BusinessIntelPanel() {
   // snapshot on the home page, just drawn from profile data instead of daily
   // finance entries (this roster has no numeric revenue of its own).
   const registryInsights = useMemo(() => {
-    const profiles = entries.map((e) => mergeProfile(e.data));
+    const profiles = filteredEntries.map((e) => mergeProfile(e.data));
 
     const revenueCounts = new Map();
     profiles.forEach((p) => {
@@ -433,7 +499,7 @@ export default function BusinessIntelPanel() {
     const topNeedName = topNeedKey ? GROWTH_NEEDS.find((n) => n.key === topNeedKey)?.name : null;
 
     return { topRevenue, topRevenueCount, revenueTotal, growingCount, growingPct, trendTotal: trends.length, topNeedName, topNeedCount };
-  }, [entries]);
+  }, [filteredEntries]);
 
   // Reset the edit buffer when a different entry is opened — adjusted during
   // render (not an effect) so it lands in the same commit as the id change.
@@ -442,7 +508,14 @@ export default function BusinessIntelPanel() {
   const [loadedForId, setLoadedForId] = useState('');
   if (selectedId && selectedId !== loadedForId && activeEntry) {
     setLoadedForId(selectedId);
-    setProfile({ name: activeEntry.name || '', industry: activeEntry.industry || '', location: activeEntry.location || '', ...mergeProfile(activeEntry.data) });
+    const merged = mergeProfile(activeEntry.data);
+    // location is stored as the combined "Area, City" display string — strip the
+    // ", City" suffix back off so the Area field doesn't duplicate identity.city.
+    const citySuffix = merged.identity.city ? `, ${merged.identity.city}` : '';
+    const area = citySuffix && (activeEntry.location || '').endsWith(citySuffix)
+      ? activeEntry.location.slice(0, -citySuffix.length)
+      : (activeEntry.location || '');
+    setProfile({ name: activeEntry.name || '', industry: activeEntry.industry || '', location: area, ...merged });
     setActiveSection('identity');
   }
 
@@ -469,7 +542,7 @@ export default function BusinessIntelPanel() {
 
   const persistDemoEntries = (next) => { try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {} };
 
-  const openEntry = (id) => { setSelectedId(id); setView('detail'); };
+  const openEntry = (id, mode = 'view') => { setSelectedId(id); setDetailMode(mode); setView('detail'); };
   const backToRegistry = () => { setView('registry'); setSelectedId(''); setLoadedForId(''); };
 
   // Opens straight into a blank profile page — nothing is created in the
@@ -480,6 +553,7 @@ export default function BusinessIntelPanel() {
     setSelectedId('__new__');
     setLoadedForId('__new__');
     setActiveSection('identity');
+    setDetailMode('edit');
     setView('detail');
   };
 
@@ -519,13 +593,17 @@ export default function BusinessIntelPanel() {
   });
 
   const isNewDraft = selectedId === '__new__';
+  const isViewOnly = detailMode === 'view' && !isNewDraft;
 
   const handleSaveProfile = async () => {
     const name = profile.name.trim();
     if (!name) return;
     if (!isDemo && !agencyId) return;
     setSaving(true);
-    const base = { agency_id: agencyId, name, industry: profile.industry.trim() || null, location: profile.location.trim() || null };
+    // location keeps its old "Area, City" display shape (used in the record list
+    // and rail) even though City is now its own structured, filterable field.
+    const displayLocation = [profile.location.trim(), profile.identity.city].filter(Boolean).join(', ');
+    const base = { agency_id: agencyId, name, industry: profile.industry.trim() || null, location: displayLocation || null };
     const dataPayload = {
       identity: profile.identity, operations: profile.operations, performance: profile.performance,
       infrastructure: profile.infrastructure, challenges: profile.challenges, growthNeeds: profile.growthNeeds,
@@ -627,6 +705,31 @@ export default function BusinessIntelPanel() {
           </div>
 
           {!loadingEntries && entries.length > 0 && (
+            <div className="biz-filter-row">
+              <select
+                className="biz-input biz-filter-select"
+                value={filterCountry}
+                onChange={(e) => { setFilterCountry(e.target.value); setFilterCity(''); }}
+              >
+                <option value="">All countries</option>
+                {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select
+                className="biz-input biz-filter-select"
+                value={filterCity}
+                onChange={(e) => setFilterCity(e.target.value)}
+              >
+                <option value="">All cities</option>
+                {citiesFor(filterCountry || 'Kenya').map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {(filterCountry || filterCity) && (
+                <button className="biz-btn ghost sm" onClick={() => { setFilterCountry(''); setFilterCity(''); }}>Clear filters</button>
+              )}
+              <span className="biz-filter-count mono">{filteredEntries.length} / {entries.length} businesses</span>
+            </div>
+          )}
+
+          {!loadingEntries && entries.length > 0 && (
             <div className="biz-insight-row">
               <div className="biz-insight-card">
                 <DollarSign size={22} style={{ color: '#5B9BFF' }} />
@@ -663,9 +766,15 @@ export default function BusinessIntelPanel() {
                 {isDemo && <button className="biz-btn ghost" onClick={loadSampleData}><Sparkles size={14} /> Load sample data</button>}
               </div>
             </div>
+          ) : filteredEntries.length === 0 ? (
+            <div className="biz-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, fontFamily: 'var(--font-display)' }}>No businesses match these filters</div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 16 }}>Try a different country or city, or clear the filters.</div>
+              <button className="biz-btn ghost" onClick={() => { setFilterCountry(''); setFilterCity(''); }}>Clear filters</button>
+            </div>
           ) : (
             <div className="biz-panel biz-record-list">
-              {entries.map((entry) => {
+              {filteredEntries.map((entry) => {
                 const c = profileCompleteness(entry);
                 const needNames = mergeProfile(entry.data).growthNeeds.selected
                   .map((k) => GROWTH_NEEDS.find((n) => n.key === k)?.name)
@@ -673,7 +782,7 @@ export default function BusinessIntelPanel() {
                   .slice(0, 2);
                 return (
                   <div key={entry.id}>
-                    <div className="biz-record-row" onClick={() => openEntry(entry.id)}>
+                    <div className="biz-record-row" onClick={() => openEntry(entry.id, 'view')}>
                       <Avatar name={entry.name} />
                       <div className="biz-record-main">
                         <div className="biz-record-name">{entry.name}</div>
@@ -686,7 +795,11 @@ export default function BusinessIntelPanel() {
                         {needNames.map((n) => <span key={n} className="biz-need-tag">{n}</span>)}
                       </div>
                       <div className="biz-record-pct mono">{c.pct}%</div>
-                      <button className="biz-icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(entry.id); }}><Trash2 size={13} /></button>
+                      <div className="biz-record-actions">
+                        <button className="biz-icon" title="View" onClick={(e) => { e.stopPropagation(); openEntry(entry.id, 'view'); }}><Eye size={13} /></button>
+                        <button className="biz-icon" title="Edit" onClick={(e) => { e.stopPropagation(); openEntry(entry.id, 'edit'); }}><Pencil size={13} /></button>
+                        <button className="biz-icon" title="Delete" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(entry.id); }}><Trash2 size={13} /></button>
+                      </div>
                     </div>
                     {confirmDeleteId === entry.id && (
                       <div className="biz-inline-confirm">
@@ -708,9 +821,13 @@ export default function BusinessIntelPanel() {
             <button className="biz-back" onClick={backToRegistry}><ChevronLeft size={15} /> Registry</button>
             <div style={{ display: 'flex', gap: 8 }}>
               {!isNewDraft && <button className="biz-icon" title="Delete business" onClick={() => setConfirmDeleteId(selectedId)}><Trash2 size={15} /></button>}
-              <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
-                {saving ? <RefreshCw size={14} className="animate-spin" /> : isNewDraft ? <Plus size={14} /> : <Save size={14} />} {isNewDraft ? 'Register Business' : 'Save Profile'}
-              </button>
+              {isViewOnly ? (
+                <button className="biz-btn primary" onClick={() => setDetailMode('edit')}><Pencil size={14} /> Edit</button>
+              ) : (
+                <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
+                  {saving ? <RefreshCw size={14} className="animate-spin" /> : isNewDraft ? <Plus size={14} /> : <Save size={14} />} {isNewDraft ? 'Register Business' : 'Save Profile'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -722,10 +839,11 @@ export default function BusinessIntelPanel() {
             </div>
           )}
 
-          {!profile.name.trim() && (
+          {!isViewOnly && !profile.name.trim() && (
             <div className="biz-notice">Give it a business name in the Identity tab before you can save.</div>
           )}
 
+          <ViewModeContext.Provider value={isViewOnly}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '240px 1fr', gap: 16, alignItems: 'start' }}>
             {/* Left: identity rail */}
             <div className="biz-panel biz-rail" style={{ position: isMobile ? 'static' : 'sticky', top: 12 }}>
@@ -769,7 +887,17 @@ export default function BusinessIntelPanel() {
                     <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
                     <Field label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
                     <Field label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
-                    <Field label="Location" value={profile.location} onChange={(v) => setProfile((p) => ({ ...p, location: v }))} verification={profile.verification['identity.location']} onVerify={(v) => setVerify('identity.location', v)} placeholder="e.g. Westlands, Nairobi" />
+                    <Field
+                      label="Country" type="select" options={COUNTRIES} value={profile.identity.country}
+                      onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, country: v, city: citiesFor(v).includes(p.identity.city) ? p.identity.city : '' } }))}
+                      verification={profile.verification['identity.country']} onVerify={(v) => setVerify('identity.country', v)}
+                    />
+                    <Field
+                      label="City" type="select" options={citiesFor(profile.identity.country || 'Kenya')} value={profile.identity.city}
+                      onChange={(v) => setField('identity', 'city', v)}
+                      verification={profile.verification['identity.city']} onVerify={(v) => setVerify('identity.city', v)}
+                    />
+                    <Field label="Area / Neighbourhood" value={profile.location} onChange={(v) => setProfile((p) => ({ ...p, location: v }))} verification={profile.verification['identity.location']} onVerify={(v) => setVerify('identity.location', v)} placeholder="e.g. Westlands" />
                     <Field label="Industry" value={profile.industry} onChange={(v) => setProfile((p) => ({ ...p, industry: v }))} verification={profile.verification['identity.industry']} onVerify={(v) => setVerify('identity.industry', v)} placeholder="e.g. Laundry & garment care" />
                     <Field label="Year established" value={profile.identity.yearEstablished} onChange={(v) => setField('identity', 'yearEstablished', v)} verification={profile.verification['identity.yearEstablished']} onVerify={(v) => setVerify('identity.yearEstablished', v)} placeholder="e.g. 2021" />
                     <Field label="Registration status" type="select" options={REG_STATUS} value={profile.identity.registrationStatus} onChange={(v) => setField('identity', 'registrationStatus', v)} verification={profile.verification['identity.registrationStatus']} onVerify={(v) => setVerify('identity.registrationStatus', v)} />
@@ -820,7 +948,7 @@ export default function BusinessIntelPanel() {
                       {CHALLENGES.map((c) => {
                         const active = profile.challenges.selected.includes(c);
                         return (
-                          <button key={c} type="button" onClick={() => toggleChallenge(c)} className={`biz-chip ${active ? 'active' : ''}`}>
+                          <button key={c} type="button" disabled={isViewOnly} onClick={() => toggleChallenge(c)} className={`biz-chip ${active ? 'active' : ''}`}>
                             {active ? <CheckCircle2 size={13} /> : <Circle size={13} />} {c}
                           </button>
                         );
@@ -838,7 +966,7 @@ export default function BusinessIntelPanel() {
                       {GROWTH_NEEDS.map((need) => {
                         const active = profile.growthNeeds.selected.includes(need.key);
                         return (
-                          <button key={need.key} type="button" onClick={() => toggleGrowthNeed(need.key)} className={`biz-need-card ${active ? 'active' : ''}`}>
+                          <button key={need.key} type="button" disabled={isViewOnly} onClick={() => toggleGrowthNeed(need.key)} className={`biz-need-card ${active ? 'active' : ''}`}>
                             {active ? <CheckCircle2 size={17} color="var(--color-accent-primary)" style={{ flexShrink: 0 }} /> : <Circle size={17} color="var(--color-text-tertiary)" style={{ flexShrink: 0 }} />}
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>{need.name}</div>
@@ -862,12 +990,15 @@ export default function BusinessIntelPanel() {
               <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="Anything else worth recording — not shared with the business (TOIG team only)" />
             </div>
           </div>
+          </ViewModeContext.Provider>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-            <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
-              {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save Profile
-            </button>
-          </div>
+          {!isViewOnly && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+              <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
+                {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save Profile
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -912,6 +1043,11 @@ export default function BusinessIntelPanel() {
         }
         :global(.biz-icon:hover) { color: var(--color-error); border-color: var(--color-error); }
 
+        /* Registry filter bar */
+        :global(.biz-filter-row) { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+        :global(.biz-filter-select) { width: auto; min-width: 140px; }
+        :global(.biz-filter-count) { font-size: 11.5px; color: var(--color-text-tertiary); margin-left: auto; }
+
         /* Registry insight cards */
         :global(.biz-insight-row) { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
         :global(.biz-insight-card) {
@@ -942,6 +1078,7 @@ export default function BusinessIntelPanel() {
           background: var(--color-accent-primary-subtle); color: var(--color-accent-secondary);
         }
         :global(.biz-record-pct) { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); width: 34px; text-align: right; flex-shrink: 0; }
+        :global(.biz-record-actions) { display: flex; gap: 6px; flex-shrink: 0; }
         @media (max-width: 640px) { :global(.biz-record-needs) { display: none; } }
 
         :global(.biz-inline-confirm) {
@@ -988,10 +1125,12 @@ export default function BusinessIntelPanel() {
         :global(.biz-proplist > .biz-row:first-child) { border-top: none; }
         :global(.biz-row:hover) { background: var(--color-bg-hover); }
         :global(.biz-row-label) {
-          font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-          color: var(--color-text-primary); padding-top: 9px;
+          font-family: var(--font-sans); font-size: 11.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+          color: var(--color-text-secondary); padding-top: 9px;
         }
         :global(.biz-row-control) { min-width: 0; }
+        :global(.biz-static) { padding: 9px 0; font-size: 13.5px; font-weight: 500; color: var(--color-text-primary); white-space: pre-wrap; line-height: 1.5; }
+        :global(.biz-static-empty) { color: var(--color-text-tertiary); font-style: italic; }
         @media (max-width: 640px) {
           :global(.biz-row) { grid-template-columns: 1fr; }
           :global(.biz-row-label) { padding-top: 0; }
@@ -1011,6 +1150,7 @@ export default function BusinessIntelPanel() {
           color: var(--color-text-secondary); border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); transition: var(--transition-fast, .12s);
         }
         :global(.biz-chip.active) { border-color: var(--color-error); background: var(--color-error-bg); color: var(--color-error); }
+        :global(.biz-chip:disabled), :global(.biz-need-card:disabled) { cursor: default; }
         :global(.biz-need-card) {
           display: flex; gap: 10px; align-items: flex-start; text-align: left; cursor: pointer; font-family: var(--font-sans);
           border: 1px solid var(--color-border); background: var(--color-bg-tertiary); border-radius: var(--radius-lg, 12px); padding: 13px; transition: var(--transition-fast, .12s);
