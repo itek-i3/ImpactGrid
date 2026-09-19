@@ -194,10 +194,10 @@ export default function Sidebar() {
       <aside
         className={`${styles.sidebar} ${!sidebarOpen ? styles.sidebarCollapsed : ''}`}
         style={{
-          background: 'rgba(0,0,0,0.88)',
+          background: 'var(--color-sidebar-surface, rgba(0,0,0,0.88))',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          boxShadow: '4px 0 32px rgba(0,0,0,0.60)',
+          boxShadow: 'var(--shadow-sidebar, 4px 0 32px rgba(0,0,0,0.60))',
         }}
       >
         {/* ── Header ── */}

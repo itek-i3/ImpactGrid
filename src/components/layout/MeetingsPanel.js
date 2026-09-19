@@ -443,7 +443,7 @@ export default function MeetingsPanel() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</span>
                         {m.recurrence === 'weekly' && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 99, padding: '1px 7px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(48,108,236,0.18)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 99, padding: '1px 7px' }}>
                             <Repeat size={9} /> Weekly
                           </span>
                         )}

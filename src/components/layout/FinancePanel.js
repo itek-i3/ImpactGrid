@@ -506,13 +506,13 @@ export default function FinancePanel() {
         <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Business</span>
         <div style={{ position: 'relative' }}>
           <button className="fin-bizbtn" onClick={() => setBizMenuOpen(o => !o)}>
-            <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', color: '#8FC0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
+            <span className="fin-bizavatar" style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
               {(activeBiz?.name || '?').charAt(0).toUpperCase()}
             </span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, color: '#EAF1FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+            <span className="fin-bizname" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
               {activeBiz?.name || 'Select business'}
             </span>
-            <ChevronDown size={17} style={{ color: '#8FB4E8', flexShrink: 0 }} />
+            <ChevronDown size={17} style={{ color: 'var(--color-text-control, #8FB4E8)', flexShrink: 0 }} />
           </button>
           {bizMenuOpen && (
             <>
@@ -552,7 +552,7 @@ export default function FinancePanel() {
           figures are that agency's own Finance tab, not a separate copy. */}
       {linkedAgencyId && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(48,108,236,0.08)', border: '1px solid rgba(48,108,236,0.25)', color: 'var(--color-text-secondary)', fontSize: 12.5, marginBottom: 18 }}>
-          <Building2 size={14} style={{ color: '#5B9BFF', flexShrink: 0 }} />
+          <Building2 size={14} style={{ color: 'var(--color-accent-text, #5B9BFF)', flexShrink: 0 }} />
           <span>Linked to <strong style={{ color: 'var(--color-text-primary)' }}>{linkedAgency?.name || 'another agency'}</strong> — figures here are {linkedAgency?.name ? `${linkedAgency.name} Finance` : "that agency's own Finance"}, kept in sync both ways.</span>
         </div>
       )}
@@ -587,7 +587,7 @@ export default function FinancePanel() {
       {chartData.length > 0 && (
         <div style={{ ...card, marginBottom: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
+            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Finance reports</span>
             <span style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{activeBiz?.name ? `${activeBiz.name} · ` : ''}{effectiveReportPeriod}</span>
           </div>
@@ -751,7 +751,7 @@ export default function FinancePanel() {
                 <button className="fin-month" onClick={() => toggleMonth(month.key)}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
                     {open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
-                    <CalendarDays size={16} style={{ color: '#5B9BFF', flexShrink: 0 }} />
+                    <CalendarDays size={16} style={{ color: 'var(--color-accent-text, #5B9BFF)', flexShrink: 0 }} />
                     <span className="fin-month-title">{month.label}</span>
                     <span className="fin-month-sub">{month.rows.length} day{month.rows.length !== 1 ? 's' : ''} logged</span>
                   </span>
@@ -878,6 +878,15 @@ export default function FinancePanel() {
           background: rgba(255,255,255,0.05); border: 1px solid rgba(120,150,210,0.28); transition: .12s;
         }
         .fin-bizbtn:hover { background: rgba(48,108,236,0.14); border-color: rgba(48,108,236,0.55); }
+        .fin-bizavatar { color: #8FC0FF; }
+        .fin-bizname { color: #EAF1FF; }
+        /* The trigger sits on the page, so it follows the theme; the popup it opens is dark in both.
+           :global() on the ancestor — styled-jsx otherwise scopes [data-theme] to this component too,
+           and <html> never carries that class. */
+        :global([data-theme="light"]) .fin-bizbtn { background: var(--color-bg-elevated); border-color: var(--color-border); }
+        :global([data-theme="light"]) .fin-bizbtn:hover { background: var(--color-accent-primary-subtle); border-color: var(--color-border-active); }
+        :global([data-theme="light"]) .fin-bizavatar { color: var(--color-accent-text); }
+        :global([data-theme="light"]) .fin-bizname { color: var(--color-text-primary); }
         .fin-newbtn {
           width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
           height: 46px; margin-bottom: 22px; border-radius: 12px; cursor: pointer; font-family: inherit;

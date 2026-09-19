@@ -1111,8 +1111,8 @@
 
 .chartSelect {
   font-size: 11px;
-  color: #7EB3FF;
-  background: #0d1b38;
+  color: var(--color-accent-text, #7EB3FF);
+  background: var(--color-bg-tertiary);
   border: 1px solid rgba(48, 108, 236, 0.30);
   border-radius: 8px;
   padding: 4px 10px;
@@ -1242,7 +1242,7 @@
   top: calc(100% + 4px);
   left: 0;
   z-index: calc(var(--z-popover) + 1);
-  background: #080f1e; /* Match --color-bg-secondary */
+  background: var(--color-bg-secondary);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
@@ -1619,4 +1619,39 @@
   content: attr(data-placeholder);
   color: var(--color-text-muted);
   pointer-events: none;
+}
+
+/* The card modal's title, body and close button all use theme tokens over a
+   hardcoded dark gradient, so in light mode the title was dark-navy on navy. */
+[data-theme="light"] .cardModalOverlay {
+  background: rgba(15, 28, 56, 0.38);
+}
+
+[data-theme="light"] .cardModal {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+  border-top-color: var(--color-accent-primary);
+  box-shadow: var(--shadow-xl);
+}
+
+[data-theme="light"] .cardModalHeader {
+  border-bottom-color: var(--color-border-subtle);
+}
+
+[data-theme="light"] .cardModalClose {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+}
+
+/* The grip/block-action menus are dark in both themes, but .menuItemIcon is
+   redefined further up with a theme token (the column-type menu's), which in
+   light mode is dark slate on the near-black menu. Keep the dark-theme value. */
+[data-theme="light"] .gripMainMenu .menuItemIcon,
+[data-theme="light"] .gripSubMenu .menuItemIcon {
+  color: #7EB3FF;
+}
+
+[data-theme="light"] .gripMainMenu .menuItemActive .menuItemIcon,
+[data-theme="light"] .gripSubMenu .menuItemActive .menuItemIcon {
+  color: #5B9BFF !important;
 }

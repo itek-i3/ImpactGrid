@@ -128,7 +128,7 @@ export default function TeamPanel() {
     <div style={{ maxWidth: 1120, margin: '0 auto', padding: isMobile ? '16px 14px 60px' : '26px 36px 80px', color: tKey }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(91,155,255,0.14)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={22} /></div>
+        <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(91,155,255,0.14)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={22} /></div>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-.02em' }}>Team missions</h1>
           <div style={{ fontSize: 12.5, color: tSub }}>Every person aligned to measurable outcomes — not just tasks</div>
@@ -141,11 +141,11 @@ export default function TeamPanel() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
             {avatar(meMember, 44)}
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#7EB3FF', textTransform: 'uppercase', letterSpacing: '.06em' }}>My mission this week</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', textTransform: 'uppercase', letterSpacing: '.06em' }}>My mission this week</div>
               <div style={{ fontSize: 16, fontWeight: 800 }}>{meMember.full_name || meMember.email || 'You'}</div>
             </div>
           </div>
-          <button onClick={() => openEdit(me)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: '#7EB3FF', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(48,108,236,0.25)' }}><Pencil size={13} /> Edit my mission</button>
+          <button onClick={() => openEdit(me)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(48,108,236,0.25)' }}><Pencil size={13} /> Edit my mission</button>
         </div>
 
         <p style={{ margin: '0 0 16px', fontSize: 15, lineHeight: 1.5, color: myRow.mission ? tKey : tSub, fontStyle: myRow.mission ? 'normal' : 'italic', fontWeight: myRow.mission ? 500 : 400 }}>
@@ -233,11 +233,11 @@ export default function TeamPanel() {
 
       {/* Edit modal */}
       {editUser && (
-        <div onClick={() => setEditUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, background: 'rgba(2,5,12,0.82)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', margin: '20px 0', background: '#0b1120', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.7)' }}>
+        <div className="ig-scrim" onClick={() => setEditUser(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
+          <div className="ig-dialog" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', margin: '20px 0', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
               <span style={{ fontSize: 15, fontWeight: 800 }}>My mission</span>
-              <button onClick={() => setEditUser(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#D8E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+              <button className="ig-dialog-close" onClick={() => setEditUser(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68vh', overflowY: 'auto' }}>
               <Field label="Department"><input className="tm-in" value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} placeholder="e.g. Marketing" /></Field>
@@ -254,15 +254,15 @@ export default function TeamPanel() {
                       <input className="tm-in" value={k.current} onChange={(e) => setForm((f) => ({ ...f, kpis: f.kpis.map((x, j) => j === i ? { ...x, current: e.target.value } : x) }))} placeholder="Now" inputMode="decimal" />
                       <input className="tm-in" value={k.target} onChange={(e) => setForm((f) => ({ ...f, kpis: f.kpis.map((x, j) => j === i ? { ...x, target: e.target.value } : x) }))} placeholder="Target" inputMode="decimal" />
                       <input className="tm-in" value={k.unit} onChange={(e) => setForm((f) => ({ ...f, kpis: f.kpis.map((x, j) => j === i ? { ...x, unit: e.target.value } : x) }))} placeholder="Unit" />
-                      <button onClick={() => setForm((f) => ({ ...f, kpis: f.kpis.filter((_, j) => j !== i) }))} style={{ borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+                      <button onClick={() => setForm((f) => ({ ...f, kpis: f.kpis.filter((_, j) => j !== i) }))} style={{ borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
                     </div>
                   ))}
-                  <button onClick={() => setForm((f) => ({ ...f, kpis: [...f.kpis, { label: '', target: '', current: '', unit: '' }] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add KPI</button>
+                  <button onClick={() => setForm((f) => ({ ...f, kpis: [...f.kpis, { label: '', target: '', current: '', unit: '' }] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add KPI</button>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
-              <button onClick={() => setEditUser(null)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: '#9DB8DD', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => setEditUser(null)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
               <button onClick={saveEdit} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}><Check size={15} /> Save</button>
             </div>
           </div>
@@ -294,10 +294,10 @@ function ListField({ label, items, onChange, placeholder }) {
         {items.map((v, i) => (
           <div key={i} style={{ display: 'flex', gap: 7 }}>
             <input className="tm-in" value={v} onChange={(e) => onChange(items.map((x, j) => j === i ? e.target.value : x))} placeholder={`${placeholder} ${i + 1}`} />
-            <button onClick={() => onChange(items.length > 1 ? items.filter((_, j) => j !== i) : [''])} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+            <button onClick={() => onChange(items.length > 1 ? items.filter((_, j) => j !== i) : [''])} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
           </div>
         ))}
-        <button onClick={() => onChange([...items, ''])} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add</button>
+        <button onClick={() => onChange([...items, ''])} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add</button>
       </div>
     </div>
   );
@@ -310,7 +310,7 @@ function TaskAdder({ onAdd }) {
     <div style={{ display: 'flex', gap: 7, marginTop: 2 }}>
       <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} placeholder="Add a task…"
         style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--color-bg-tertiary, rgba(255,255,255,0.04))', border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.14))', borderRadius: 9, padding: '7px 11px', fontSize: 13, color: 'var(--color-text-primary, #E2EEFF)', fontFamily: 'inherit', outline: 'none' }} />
-      <button onClick={submit} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 13px', borderRadius: 9, border: 'none', background: 'rgba(48,108,236,0.2)', color: '#7EB3FF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={14} /></button>
+      <button onClick={submit} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, padding: '0 13px', borderRadius: 9, border: 'none', background: 'rgba(48,108,236,0.2)', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={14} /></button>
     </div>
   );
 }

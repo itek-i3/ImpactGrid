@@ -331,7 +331,7 @@ export default function HomeDashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <div className="dash-card" style={card}>
             {cardHeader(Compass, '#5B9BFF', 'Vision')}
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#5B9BFF', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Where are we going?</div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--color-accent-text, #5B9BFF)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Where are we going?</div>
             <p style={{ margin: 0, fontSize: isMobile ? 15 : 17, lineHeight: 1.4, fontWeight: 700, fontStyle: 'italic', color: strategy?.vision ? tKey : tSub }}>
               “{strategy?.vision || (canEdit ? 'Set the long-term vision this agency is working toward, via "Edit strategy".' : DEFAULT_VISION)}”
             </p>
@@ -426,7 +426,7 @@ export default function HomeDashboard() {
         {/* Messages — unread conversations */}
         <div className="dash-card" style={{ ...card, minWidth: 0, minHeight: isMobile ? undefined : 280 }}>
           {cardHeader(MessageSquare, '#5B9BFF', 'Messages',
-            <button onClick={() => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#5B9BFF', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
+            <button onClick={() => router.push(`/chat${workspace?.id ? `?workspaceId=${workspace.id}` : ''}`)} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-accent-text, #5B9BFF)', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
               Open <ArrowRight size={11} />
             </button>
           )}
@@ -447,7 +447,7 @@ export default function HomeDashboard() {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</span>
-                        {n.count > 1 && <span style={{ fontSize: 9.5, fontWeight: 700, color: '#5B9BFF', background: 'rgba(48,108,236,0.16)', borderRadius: 999, padding: '0 5px', marginLeft: 'auto', flexShrink: 0 }}>{n.count}</span>}
+                        {n.count > 1 && <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--color-accent-text, #5B9BFF)', background: 'rgba(48,108,236,0.16)', borderRadius: 999, padding: '0 5px', marginLeft: 'auto', flexShrink: 0 }}>{n.count}</span>}
                       </div>
                       <div style={{ fontSize: 11.5, color: tSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview}</div>
                     </div>
@@ -487,7 +487,7 @@ export default function HomeDashboard() {
                         {priorities.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7 }}>
                             {priorities.map((p, j) => (
-                              <span key={j} style={{ fontSize: 11, fontWeight: 600, color: '#7EB3FF', background: 'rgba(48,108,236,0.14)', borderRadius: 999, padding: '3px 9px' }}>{p}</span>
+                              <span key={j} style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(48,108,236,0.14)', borderRadius: 999, padding: '3px 9px' }}>{p}</span>
                             ))}
                           </div>
                         )}
@@ -572,11 +572,11 @@ export default function HomeDashboard() {
 
       {/* Edit strategy modal */}
       {editing && (
-        <div onClick={() => setEditing(false)} style={{ position: 'fixed', inset: 0, zIndex: 10050, background: 'rgba(2,5,12,0.82)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', margin: '20px 0', background: '#0b1120', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.7)' }}>
+        <div className="ig-scrim" onClick={() => setEditing(false)} style={{ position: 'fixed', inset: 0, zIndex: 10050, backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
+          <div className="ig-dialog" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, 100%)', margin: '20px 0', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
               <span style={{ fontSize: 15, fontWeight: 800 }}>Edit agency strategy</span>
-              <button onClick={() => setEditing(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#D8E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+              <button className="ig-dialog-close" onClick={() => setEditing(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '70vh', overflowY: 'auto' }}>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 160px', gap: 12 }}>
@@ -598,7 +598,7 @@ export default function HomeDashboard() {
                       <div key={i} style={{ border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 10, padding: 9, display: 'flex', flexDirection: 'column', gap: 7 }}>
                         <div style={{ display: 'flex', gap: 7 }}>
                           <input className="strat-in" value={o.text} onChange={(e) => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, text: e.target.value } : x) }))} placeholder={`Objective ${i + 1}`} />
-                          <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.length > 1 ? f.objectives.filter((_, j) => j !== i) : [emptyObjective()] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+                          <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.length > 1 ? f.objectives.filter((_, j) => j !== i) : [emptyObjective()] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingLeft: 14 }}>
                           <span style={{ fontSize: 10, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Success measures</span>
@@ -608,15 +608,15 @@ export default function HomeDashboard() {
                                 onChange={(e) => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: x.successMeasures.map((y, l) => l === k ? e.target.value : y) } : x) }))}
                                 placeholder={`Success measure ${k + 1}`} />
                               <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: x.successMeasures.length > 1 ? x.successMeasures.filter((_, l) => l !== k) : [''] } : x) }))}
-                                style={{ width: 28, flexShrink: 0, borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={11} /></button>
+                                style={{ width: 28, flexShrink: 0, borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={11} /></button>
                             </div>
                           ))}
                           <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: [...x.successMeasures, ''] } : x) }))}
-                            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 7, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={12} /> Add success measure</button>
+                            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 7, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={12} /> Add success measure</button>
                         </div>
                       </div>
                     ))}
-                    <button onClick={() => setForm((f) => ({ ...f, objectives: [...f.objectives, emptyObjective()] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add objective</button>
+                    <button onClick={() => setForm((f) => ({ ...f, objectives: [...f.objectives, emptyObjective()] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add objective</button>
                   </div>
                 </Field>
               </div>
@@ -625,10 +625,10 @@ export default function HomeDashboard() {
                   {form.monthly_goals.map((g, i) => (
                     <div key={i} style={{ display: 'flex', gap: 7 }}>
                       <input className="strat-in" value={g} onChange={(e) => setForm((f) => ({ ...f, monthly_goals: f.monthly_goals.map((x, j) => j === i ? e.target.value : x) }))} placeholder={`Goal ${i + 1}`} />
-                      <button onClick={() => setForm((f) => ({ ...f, monthly_goals: f.monthly_goals.length > 1 ? f.monthly_goals.filter((_, j) => j !== i) : [''] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+                      <button onClick={() => setForm((f) => ({ ...f, monthly_goals: f.monthly_goals.length > 1 ? f.monthly_goals.filter((_, j) => j !== i) : [''] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
                     </div>
                   ))}
-                  <button onClick={() => setForm((f) => ({ ...f, monthly_goals: [...f.monthly_goals, ''] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add goal</button>
+                  <button onClick={() => setForm((f) => ({ ...f, monthly_goals: [...f.monthly_goals, ''] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add goal</button>
                 </div>
               </Field>
               <Field label="Agency scoreboard metrics">
@@ -637,15 +637,15 @@ export default function HomeDashboard() {
                     <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 30px', gap: 7 }}>
                       <input className="strat-in" value={m.label} onChange={(e) => setForm((f) => ({ ...f, metrics: f.metrics.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))} placeholder="e.g. Clients acquired" />
                       <input className="strat-in" value={m.value} onChange={(e) => setForm((f) => ({ ...f, metrics: f.metrics.map((x, j) => j === i ? { ...x, value: e.target.value } : x) }))} placeholder="Value" />
-                      <button onClick={() => setForm((f) => ({ ...f, metrics: f.metrics.length > 1 ? f.metrics.filter((_, j) => j !== i) : [{ label: '', value: '' }] }))} style={{ width: 30, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+                      <button onClick={() => setForm((f) => ({ ...f, metrics: f.metrics.length > 1 ? f.metrics.filter((_, j) => j !== i) : [{ label: '', value: '' }] }))} style={{ width: 30, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
                     </div>
                   ))}
-                  <button onClick={() => setForm((f) => ({ ...f, metrics: [...f.metrics, { label: '', value: '' }] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add metric</button>
+                  <button onClick={() => setForm((f) => ({ ...f, metrics: [...f.metrics, { label: '', value: '' }] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add metric</button>
                 </div>
               </Field>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
-              <button onClick={() => setEditing(false)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: '#9DB8DD', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => setEditing(false)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
               <button onClick={save} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}><Check size={15} /> Save</button>
             </div>
           </div>

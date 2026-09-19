@@ -167,7 +167,7 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div className="pfin-fadeup" style={{ ...card }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Target size={16} /></div>
+          <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Target size={16} /></div>
           <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Goals & Savings</span>
           {pocketState.rows.length > 0 && (
             <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Total <strong style={{ color: 'var(--color-text-primary)' }}>{money(totalBalance)}</strong></span>

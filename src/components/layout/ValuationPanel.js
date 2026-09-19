@@ -669,7 +669,7 @@ export default function ValuationPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5B9BFF' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent-text, #5B9BFF)' }}>
             <TrendingUp size={22} />
           </div>
           <div>
@@ -848,8 +848,8 @@ export default function ValuationPanel() {
                 </div>
 
                 <div style={{ background: 'rgba(48,108,236,0.06)', padding: 12, borderRadius: 10, border: '1px solid rgba(48,108,236,0.15)' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: '#7EB3FF', textTransform: 'uppercase' }}>Annualized Net Profit</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#5B9BFF', marginTop: 4 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', textTransform: 'uppercase' }}>Annualized Net Profit</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-accent-text, #5B9BFF)', marginTop: 4 }}>
                     {money(stats.runRateNet)}
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(91,155,255,0.6)', marginTop: 2 }}>Valuation baseline profit</div>
@@ -920,7 +920,7 @@ export default function ValuationPanel() {
                             <td style={{ padding: '10px 12px', color: 'var(--color-text-secondary)' }}>{item.date}</td>
                             <td style={{ padding: '10px 12px', textTransform: 'capitalize', fontWeight: 600, color: 'var(--color-text-tertiary)' }}>{item.type}</td>
                             <td style={{ padding: '10px 12px', color: 'var(--color-text-primary)' }}>{item.what}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#5B9BFF' }}>{money(item.amount)}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-accent-text, #5B9BFF)' }}>{money(item.amount)}</td>
                           </tr>
                         );
                       })}
@@ -1046,7 +1046,7 @@ export default function ValuationPanel() {
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>Seller's Discretionary Earnings (SDE)</div>
                     <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 1 }}>Annualized Net Profit + Total SDE Add-backs</div>
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#5B9BFF' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--color-accent-text, #5B9BFF)' }}>
                     {money(valuationResult.sde)}
                   </div>
                 </div>
@@ -1135,7 +1135,7 @@ export default function ValuationPanel() {
             {/* Main Valuation Result Card */}
             <div style={{ 
               ...cardStyle, 
-              background: 'linear-gradient(135deg, rgba(48,108,236,0.15) 0%, rgba(13,27,56,0.85) 100%)',
+              background: 'var(--gradient-hero, linear-gradient(135deg, rgba(48,108,236,0.15) 0%, rgba(13,27,56,0.85) 100%))',
               border: '1px solid rgba(48,108,236,0.3)',
               position: 'relative',
               overflow: 'hidden'
@@ -1147,10 +1147,10 @@ export default function ValuationPanel() {
               }} />
               
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <TrendingUp size={16} style={{ color: '#5B9BFF' }} />
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#7EB3FF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Recommended Business Worth</span>
+                <TrendingUp size={16} style={{ color: 'var(--color-accent-text, #5B9BFF)' }} />
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Recommended Business Worth</span>
               </div>
-              <h2 style={{ fontSize: 28, fontWeight: 800, color: '#E2EEFF', letterSpacing: '-.02em', margin: '4px 0 8px' }}>
+              <h2 style={{ fontSize: 28, fontWeight: 800, color: 'var(--color-text-primary, #E2EEFF)', letterSpacing: '-.02em', margin: '4px 0 8px' }}>
                 {money(valuationResult.recommended)}
               </h2>
               <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
@@ -1194,7 +1194,7 @@ export default function ValuationPanel() {
                           gap: 6
                         }}>
                           {m.label}
-                          {isRec && <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(48,108,236,0.2)', color: '#7EB3FF', padding: '1px 5px', borderRadius: 4 }}>REC</span>}
+                          {isRec && <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(48,108,236,0.2)', color: 'var(--color-accent-text, #7EB3FF)', padding: '1px 5px', borderRadius: 4 }}>REC</span>}
                         </span>
                         <span style={{ fontWeight: 700, color: m.value > 0 ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)' }}>
                           {m.value > 0 ? money(m.value) : 'Not configured'}

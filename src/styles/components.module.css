@@ -126,6 +126,14 @@
   animation: scaleIn 0.2s ease forwards;
 }
 
+/* Everything inside a modal is styled with theme tokens (dark-navy title, input
+   labels, ghost buttons...), so a dark card in light mode is dark-on-dark. */
+[data-theme="light"] .modal {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-xl);
+}
+
 .modalHeader {
   display: flex;
   align-items: center;
@@ -295,22 +303,22 @@
 
 .badgeSuccess {
   background: var(--color-success-bg);
-  color: var(--color-success);
+  color: var(--color-success-text, var(--color-success));
 }
 
 .badgeWarning {
   background: var(--color-warning-bg);
-  color: var(--color-warning);
+  color: var(--color-warning-text, var(--color-warning));
 }
 
 .badgeError {
   background: var(--color-error-bg);
-  color: var(--color-error);
+  color: var(--color-error-text, var(--color-error));
 }
 
 .badgeInfo {
   background: var(--color-info-bg);
-  color: var(--color-info);
+  color: var(--color-accent-text, var(--color-info));
 }
 
 .badgeDot {
@@ -418,6 +426,13 @@
   animation: fadeInDown 0.15s ease forwards;
 }
 
+/* Items use theme tokens (see .modal), so the menu surface has to follow. */
+[data-theme="light"] .dropdownMenu {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-lg);
+}
+
 .dropdownMenuRight {
   left: auto;
   right: 0;
@@ -442,12 +457,12 @@
 }
 
 .dropdownItemDanger {
-  color: var(--color-error);
+  color: var(--color-error-text, var(--color-error));
 }
 
 .dropdownItemDanger:hover {
   background: var(--color-error-bg);
-  color: var(--color-error);
+  color: var(--color-error-text, var(--color-error));
 }
 
 .dropdownItemIcon {

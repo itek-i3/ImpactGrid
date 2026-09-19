@@ -138,7 +138,7 @@ export default function WeeklyReviewPanel() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 15.5, fontWeight: 800 }}>{weekLabel(r.week_start)}</span>
-                      {isCurrent && <span style={{ fontSize: 10, fontWeight: 800, color: '#7EB3FF', background: 'rgba(48,108,236,0.16)', padding: '2px 8px', borderRadius: 999 }}>THIS WEEK</span>}
+                      {isCurrent && <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(48,108,236,0.16)', padding: '2px 8px', borderRadius: 999 }}>THIS WEEK</span>}
                       {idx === 0 && !isCurrent && <span style={{ fontSize: 10, fontWeight: 800, color: '#4ECDC4', background: 'rgba(78,205,196,0.14)', padding: '2px 8px', borderRadius: 999 }}>LATEST</span>}
                     </div>
                     {r.headline && <p style={{ margin: '6px 0 0', fontSize: 14, color: tKey, fontWeight: 500 }}>{r.headline}</p>}
@@ -159,11 +159,11 @@ export default function WeeklyReviewPanel() {
 
       {/* Edit modal */}
       {editing && (
-        <div onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, background: 'rgba(2,5,12,0.82)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(640px, 100%)', margin: '20px 0', background: '#0b1120', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.7)' }}>
+        <div className="ig-scrim" onClick={() => setEditing(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
+          <div className="ig-dialog" onClick={(e) => e.stopPropagation()} style={{ width: 'min(640px, 100%)', margin: '20px 0', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
               <span style={{ fontSize: 15, fontWeight: 800 }}>{editing.new ? 'New weekly review' : `Edit · ${weekLabel(form.week_start)}`}</span>
-              <button onClick={() => setEditing(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', color: '#D8E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+              <button className="ig-dialog-close" onClick={() => setEditing(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '70vh', overflowY: 'auto' }}>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '170px 1fr', gap: 12 }}>
@@ -175,7 +175,7 @@ export default function WeeklyReviewPanel() {
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
-              <button onClick={() => setEditing(null)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: '#9DB8DD', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={() => setEditing(null)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
               <button onClick={save} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}><Check size={15} /> Save</button>
             </div>
           </div>
@@ -208,10 +208,10 @@ function ListField({ label, items, onChange, placeholder, tint }) {
         {items.map((v, i) => (
           <div key={i} style={{ display: 'flex', gap: 7 }}>
             <input className="wr-in" value={v} onChange={(e) => onChange(items.map((x, j) => j === i ? e.target.value : x))} placeholder={`${placeholder}`} />
-            <button onClick={() => onChange(items.length > 1 ? items.filter((_, j) => j !== i) : [''])} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: '#8FB4E8', cursor: 'pointer' }}><X size={13} /></button>
+            <button onClick={() => onChange(items.length > 1 ? items.filter((_, j) => j !== i) : [''])} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
           </div>
         ))}
-        <button onClick={() => onChange([...items, ''])} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: '#7EB3FF', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add</button>
+        <button onClick={() => onChange([...items, ''])} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add</button>
       </div>
     </div>
   );

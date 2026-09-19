@@ -182,19 +182,40 @@
 
   --color-surface:         rgba(255, 255, 255, 0.95);
   --color-surface-glass:   rgba(255, 255, 255, 0.80);
-  --color-surface-overlay: rgba(245, 247, 255, 0.96);
+  /* A dim scrim, not a pale wash — a 96%-opaque near-white backdrop leaves a
+     white modal with almost no separation from the page behind it. */
+  --color-surface-overlay: rgba(15, 28, 56, 0.38);
 
   --color-border:        rgba(20, 33, 61, 0.10);
   --color-border-hover:  rgba(20, 33, 61, 0.20);
   --color-border-active: rgba(48, 108, 236, 0.50);
   --color-border-subtle: rgba(20, 33, 61, 0.06);
 
+  /* Contrast on white / #F5F7FF: secondary 8.1 / 7.6, tertiary 5.2 / 4.8,
+     muted 3.9 / 3.6 (hints and placeholders only). tertiary and muted were
+     3.3 and 2.0 — below AA and too faint to read as real text. */
   --color-text-primary:   #0F1C38;
   --color-text-secondary: #3D5070;
-  --color-text-tertiary:  #7A8EB0;
-  --color-text-muted:     #A8B8D0;
+  --color-text-tertiary:  #5A6E92;
+  --color-text-muted:     #71829F;
   --color-text-inverse:   #F5F7FF;
   --color-text-link:      #1A56D6;
+
+  /* Text-safe variants of the accent and status colors. Light-only on purpose:
+     the dark palette's bright shades already read fine on dark surfaces, so
+     call sites write var(--color-success-text, var(--color-success)) (or a
+     dark literal as the fallback) and dark mode keeps its current color. The
+     base status colors stay as they are for fills, dots and bars, where the
+     brighter shade looks right. */
+  --color-accent-text:  #1E4FB8;
+  --color-success-text: #0B7A4F;
+  --color-warning-text: #9A5B00;
+  --color-error-text:   #C62F42;
+  /* Quiet text for cancel / remove controls; the dark palette uses a few pale
+     blues (#9DB8DD, #8FB4E8) there that vanish on white. */
+  --color-text-control: #3D5070;
+  /* Result card on the Valuation page — a fixed dark-navy gradient otherwise. */
+  --gradient-hero: linear-gradient(135deg, rgba(48, 108, 236, 0.12) 0%, #FFFFFF 100%);
 
   --color-accent-primary: #306CEC;
   --color-accent-primary-hover: #1E4FB8;
@@ -230,12 +251,16 @@
   --color-callout-red: rgba(224, 72, 90, 0.08);
   --color-callout-gray: rgba(20, 33, 61, 0.04);
 
-  --color-sidebar-bg: #F0F2FA;
-  --color-sidebar-border: rgba(20, 33, 61, 0.08);
-  --color-sidebar-text: #5B6B86;
-  --color-sidebar-text-active: #0F1C38;
-  --color-sidebar-hover: rgba(20, 33, 61, 0.06);
-  --color-sidebar-active: rgba(48, 108, 236, 0.12);
+  /* The sidebar stays dark in light mode (see :root). These used to describe a
+     light sidebar, which left its hover icons dark-on-dark and its borders
+     invisible, so only the surface is set here and the rest inherit from :root.
+     Sidebar.js paints its own translucent-black inline background, which over
+     a light page washes out to neutral grey — hence the opaque navy below. */
+  --color-sidebar-bg: #0B1330;
+  --color-sidebar-surface: #0B1330;
+  --shadow-sidebar: 1px 0 0 rgba(20, 33, 61, 0.10), 8px 0 24px rgba(15, 28, 56, 0.12);
+
+  color-scheme: light;
 }
 
 /* ── Base Styles ───────────────────────────────────────────────── */
@@ -302,9 +327,12 @@ body {
   border-radius: 8px; cursor: pointer; transition: .15s;
   text-align: left;
 }
+/* The sidebar is dark in both themes, so light mode only differs in resting
+   color (#3D5A8A is too dim to rely on). Placed before :hover/.active so those
+   win on equal specificity — the old light-only hover rule out-ranked
+   .ig-nav.active and stripped the gradient off a hovered active item. */
+[data-theme="light"] .ig-nav { color: var(--color-sidebar-text); }
 .ig-nav:hover { background: rgba(48,108,236,0.12); color: #7EB3FF; }
-[data-theme="light"] .ig-nav { color: #5B6B86; }
-[data-theme="light"] .ig-nav:hover { background: rgba(20,33,61,0.06); color: #306CEC; }
 .ig-nav.active {
   background: linear-gradient(135deg, #1E4FB8, #306CEC);
   color: #fff; font-weight: 600;
@@ -399,6 +427,16 @@ body {
   gap: 20px;
 }
 
+/* Edit dialogs opened from HomeDashboard, TeamPanel and WeeklyReviewPanel. The
+   dark values below are what those dialogs used inline; their titles, inputs
+   and labels are theme-colored, so the surface has to follow in light mode. */
+.ig-scrim { background: rgba(2, 5, 12, 0.82); }
+.ig-dialog { background: #0b1120; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7); }
+.ig-dialog-close { background: rgba(255, 255, 255, 0.06); color: #D8E8FF; }
+[data-theme="light"] .ig-scrim { background: rgba(15, 28, 56, 0.38); }
+[data-theme="light"] .ig-dialog { background: #FFFFFF; box-shadow: 0 24px 70px rgba(15, 28, 56, 0.28); }
+[data-theme="light"] .ig-dialog-close { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -409,6 +447,11 @@ body {
 ::selection {
   background: rgba(99, 102, 241, 0.3);
   color: var(--color-text-primary);
+}
+
+/* The indigo above is off-brand and reads muddy on white; use the accent blue. */
+[data-theme="light"] ::selection {
+  background: rgba(48, 108, 236, 0.22);
 }
 
 /* ── Scrollbar ── */
@@ -496,6 +539,17 @@ select option:checked,
 select option:hover {
   background-color: rgba(48, 108, 236, 0.35);
   color: #7EB3FF;
+}
+
+[data-theme="light"] select option {
+  background-color: #FFFFFF;
+  color: #0F1C38;
+}
+
+[data-theme="light"] select option:checked,
+[data-theme="light"] select option:hover {
+  background-color: rgba(48, 108, 236, 0.14);
+  color: #1E4FB8;
 }
 
 /* ── Keyframe Animations ─────────────────────────────────────── */

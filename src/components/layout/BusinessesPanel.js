@@ -169,7 +169,7 @@ export default function BusinessesPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5B9BFF' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent-text, #5B9BFF)' }}>
             <Building2 size={22} />
           </div>
           <div>
@@ -225,7 +225,7 @@ export default function BusinessesPanel() {
                     {b.finance_period === 'monthly' ? 'Monthly tracking' : 'Daily tracking'}
                   </span>
                   {b.linked_agency_id && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(48,108,236,0.14)', color: '#7EB3FF', fontSize: 10.5, fontWeight: 700 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(48,108,236,0.14)', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 10.5, fontWeight: 700 }}>
                       Linked to {agencies?.find(a => a.id === b.linked_agency_id)?.name || 'agency'}
                     </span>
                   )}

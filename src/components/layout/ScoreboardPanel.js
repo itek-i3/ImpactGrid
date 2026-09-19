@@ -119,7 +119,7 @@ export default function ScoreboardPanel() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                      {isMe && <span style={{ fontSize: 10, fontWeight: 800, color: '#7EB3FF', background: 'rgba(48,108,236,0.16)', padding: '2px 7px', borderRadius: 999 }}>YOU</span>}
+                      {isMe && <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(48,108,236,0.16)', padding: '2px 7px', borderRadius: 999 }}>YOU</span>}
                     </div>
                     {/* progress bar */}
                     <div style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden', marginTop: 7, maxWidth: 320 }}>

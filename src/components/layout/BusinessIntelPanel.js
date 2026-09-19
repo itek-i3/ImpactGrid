@@ -732,7 +732,7 @@ export default function BusinessIntelPanel() {
           {!loadingEntries && entries.length > 0 && (
             <div className="biz-insight-row">
               <div className="biz-insight-card">
-                <DollarSign size={22} style={{ color: '#5B9BFF' }} />
+                <DollarSign size={22} style={{ color: 'var(--color-accent-text, #5B9BFF)' }} />
                 <div className="biz-insight-value">{registryInsights.topRevenue || '—'}</div>
                 <div className="biz-insight-label">
                   Most common revenue band{registryInsights.revenueTotal > 0 ? ` · ${registryInsights.topRevenueCount}/${registryInsights.revenueTotal}` : ''}

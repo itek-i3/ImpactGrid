@@ -861,7 +861,7 @@ export default function PersonalFinancePanel() {
           <div className="pfin-hero-amount" style={{ color: remainingColor(remaining) }}>{money(remainingDisplay)}</div>
           <div className="pfin-hero-stats">
             <span><TrendingUp size={12} style={{ color: '#22C55E' }} /> {money(incomeDisplay)}</span>
-            <span><Wallet size={12} style={{ color: '#5B9BFF' }} /> {money(budgetDisplay)}</span>
+            <span><Wallet size={12} style={{ color: 'var(--color-accent-text, #5B9BFF)' }} /> {money(budgetDisplay)}</span>
             <span><TrendingDown size={12} style={{ color: '#E0485A' }} /> {money(spentDisplay)}</span>
           </div>
         </div>
@@ -924,7 +924,7 @@ export default function PersonalFinancePanel() {
           {tab === 'budget' && (
           <div className="pfin-fadeup" style={{ ...card, animationDelay: '220ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Wallet size={16} /></div>
+              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Wallet size={16} /></div>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Budget allocation</span>
               <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Total <strong style={{ color: 'var(--color-text-primary)' }}>{money(totalBudget)}</strong></span>
             </div>
@@ -1079,7 +1079,7 @@ export default function PersonalFinancePanel() {
           {/* Transactions this month */}
           <div className="pfin-fadeup" style={{ ...card, animationDelay: '300ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Receipt size={16} /></div>
+              <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Receipt size={16} /></div>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Transactions this month</span>
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 {chip(`+${money(totalIncome)}`, '#22C55E')}
@@ -1182,7 +1182,7 @@ export default function PersonalFinancePanel() {
 
             <div className="pfin-fadeup" style={{ ...card }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: '#5B9BFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PieChart size={16} /></div>
+                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PieChart size={16} /></div>
                 <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{insightScope === 'year' ? `${selectedYear} trend` : '6-month trend'}</span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                   {[
