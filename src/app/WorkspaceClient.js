@@ -145,8 +145,13 @@ function WorkspaceContent() {
 
         <Topbar />
 
+        {/* No z-index here on purpose. A z-index would make this a stacking context,
+            trapping every position:fixed dialog rendered by a panel underneath the
+            sticky Topbar and the Sidebar (both z-index 200) whatever the dialog's own
+            zIndex — the top of each form ended up hidden behind the Topbar. It still
+            paints above the decorative glows, which come earlier in the DOM. */}
         <div className={styles.pageContent} style={{
-          position: 'relative', zIndex: 1,
+          position: 'relative',
           backgroundImage: isLight ? 'none' : `
             linear-gradient(rgba(48,108,236,0.06) 1px, transparent 1px),
             linear-gradient(90deg, rgba(48,108,236,0.06) 1px, transparent 1px)
