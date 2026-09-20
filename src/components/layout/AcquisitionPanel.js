@@ -584,6 +584,7 @@ export default function AcquisitionPanel() {
   const [notes,           setNotes]           = useState(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
   const [notesOpen,       setNotesOpen]       = useState({});
   const [industryValue,   setIndustryValue]   = useState('');
+  const [industryOther,   setIndustryOther]   = useState(''); // free-text industry when "Other" is picked
   const [monthsInOp,      setMonthsInOp]      = useState('');
   const [opUnit,          setOpUnit]          = useState('months'); // how the operating-age input is entered: 'months' | 'years'
   const [legalChecks,     setLegalChecks]     = useState({ registration: false, taxCompliance: false, licensesPermits: false, noDisputes: false });
@@ -971,7 +972,9 @@ export default function AcquisitionPanel() {
           avatar: userProfile?.avatar_url || null,
         },
         scores: Object.fromEntries(CRITERIA.map(c => [c.id, derivedScores[c.id]])),
-        notes: { ...notes }, industryValue, monthsInOp,
+        notes: { ...notes }, industryValue,
+        industryOther: industryValue === 'other' ? industryOther.trim() : '',
+        monthsInOp,
         legalChecks: { ...legalChecks }, customLegalItems: customLegalItems.map(i => ({ ...i })),
         ownerMotivation, customMotivations: customMotivations.map(m => ({ ...m })),
         ddRevenue: { ...ddRevenue }, ddLiabilities: { ...ddLiabilities }, ddLease: { ...ddLease },
@@ -1032,7 +1035,7 @@ export default function AcquisitionPanel() {
     [2,3,5,6,7,9,10].forEach(id => { raw[id] = ev.scores?.[id] ?? null; });
     setScores(raw);
     setNotes(ev.notes || Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
-    setIndustryValue(ev.industryValue || ''); setMonthsInOp(ev.monthsInOp || '');
+    setIndustryValue(ev.industryValue || ''); setIndustryOther(ev.industryOther || ''); setMonthsInOp(ev.monthsInOp || '');
     setLegalChecks(ev.legalChecks || { registration: false, taxCompliance: false, licensesPermits: false, noDisputes: false });
     setCustomLegalItems(Array.isArray(ev.customLegalItems) ? ev.customLegalItems.map(i => ({ ...i })) : []);
     setOwnerMotivation(ev.ownerMotivation || '');
@@ -1065,7 +1068,7 @@ export default function AcquisitionPanel() {
     setProductsServices(''); setNumStaff(''); setAssets([]);
     setScores(initScores);
     setNotes(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
-    setNotesOpen({}); setIndustryValue(''); setMonthsInOp(''); setOpUnit('months');
+    setNotesOpen({}); setIndustryValue(''); setIndustryOther(''); setMonthsInOp(''); setOpUnit('months');
     setLegalChecks({ registration: false, taxCompliance: false, licensesPermits: false, noDisputes: false });
     setCustomLegalItems([]); setNewLegalLabel('');
     setOwnerMotivation('');
@@ -1331,17 +1334,28 @@ export default function AcquisitionPanel() {
 
     if (c.inputType === 'industry-select') {
       return (
-        <div style={{ position:'relative', maxWidth:320 }}>
-          <select className="acqp-select" value={industryValue}
-            onChange={e => {
-              setIndustryValue(e.target.value);
-              const found = TARGET_INDUSTRIES.find(i => i.value === e.target.value);
-              if (found && found.value !== 'other') setBusinessSector(found.label);
-            }}>
-            <option value="">Select target industry…</option>
-            {TARGET_INDUSTRIES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
-          </select>
-          <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+        <div style={{ maxWidth:320, display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={{ position:'relative' }}>
+            <select className="acqp-select" value={industryValue}
+              onChange={e => {
+                setIndustryValue(e.target.value);
+                if (e.target.value !== 'other') setIndustryOther('');
+                const found = TARGET_INDUSTRIES.find(i => i.value === e.target.value);
+                if (found && found.value !== 'other') setBusinessSector(found.label);
+              }}>
+              <option value="">Select target industry…</option>
+              {TARGET_INDUSTRIES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+            </select>
+            <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+          </div>
+          {industryValue === 'other' && (
+            <input
+              className="acqp-input" value={industryOther} maxLength={80}
+              onChange={e => setIndustryOther(e.target.value)}
+              placeholder="Specify the industry — e.g. Pharmacy"
+              aria-label="Specify the industry"
+            />
+          )}
         </div>
       );
     }
@@ -1575,7 +1589,10 @@ export default function AcquisitionPanel() {
 
     if (c.inputType === 'industry-select') {
       const found = TARGET_INDUSTRIES.find(i => i.value === industryValue);
-      return <InfoField label="Target industry" value={found ? found.label : (industryValue || null)}/>;
+      const label = industryValue === 'other' && industryOther.trim()
+        ? `Other: ${industryOther.trim()}`
+        : (found ? found.label : (industryValue || null));
+      return <InfoField label="Target industry" value={label}/>;
     }
 
     if (c.inputType === 'months-input') {
