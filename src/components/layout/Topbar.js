@@ -174,6 +174,9 @@ export default function Topbar() {
   };
 
   const isReadOnly = userProfile?.role === 'member';
+  // A personal page is fully editable by its creator regardless of workspace
+  // role — the shared-page read-only gate above doesn't apply to it.
+  const isOwnPersonalPage = !!(currentPage?.isPersonal && currentPage?.createdBy === userProfile?.id);
   const isLight = theme === 'light';
   // Total unread MESSAGES across conversations (WhatsApp-style), not just channels.
   const meetingReminders = Object.entries(meetingNotifs || {}).map(([key, m]) => ({ key, ...m })).sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -195,7 +198,7 @@ export default function Topbar() {
       </button>
 
       {/* Undo / Redo — for the page editor, or whatever view registered a controller (hidden on phones) */}
-      {(!isReadOnly || undoController) && !isMobile && (
+      {(!isReadOnly || undoController || isOwnPersonalPage) && !isMobile && (
         <div style={{ display: 'flex', gap: 4 }}>
           <button
             className="ig-kbtn"
@@ -220,7 +223,7 @@ export default function Topbar() {
 
       {/* Page title */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {saveLabel && !isReadOnly && (
+        {saveLabel && (!isReadOnly || isOwnPersonalPage) && (
           <div style={{ fontSize: 11, color: '#3D5A8A', fontWeight: 600, letterSpacing: '.03em', marginBottom: 1 }}>
             {saveLabel}
           </div>
@@ -267,8 +270,9 @@ export default function Topbar() {
         </button>
       )}
 
-      {/* Share / Publish (hidden on phones) */}
-      {currentPage && !isReadOnly && !isMobile && (
+      {/* Share / Publish — never offered for personal pages, which must stay
+          private (hidden on phones) */}
+      {currentPage && !currentPage.isPersonal && !isReadOnly && !isMobile && (
         <div style={{ position: 'relative' }}>
           <button
             className="ig-kbtn"

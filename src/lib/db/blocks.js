@@ -1,9 +1,19 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { clientForUser } from './clientForUser';
+import { clientForUser, getRequesterContext } from './clientForUser';
 
 export async function listBlocks(pageId) {
   // Use admin client so RLS doesn't block blocks on pages in secondary agencies
   const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+
+  // The admin client bypasses RLS, so a personal page's blocks would otherwise
+  // be readable by anyone who knows its id — check ownership here instead
+  // (superadmins keep seeing everything, matching every other admin-bypass).
+  const { userId, role } = await getRequesterContext();
+  if (role !== 'superadmin') {
+    const { data: page } = await client.from('pages').select('is_personal, created_by').eq('id', pageId).single();
+    if (page?.is_personal && page.created_by !== userId) return { data: [], error: null };
+  }
+
   const { data, error } = await client
     .from('blocks')
     .select('*')

@@ -32,6 +32,7 @@ function AdminPanelContent() {
   const [logoUrl, setLogoUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Edit logo state
   const [editingAgency, setEditingAgency] = useState(null); // { id, name, logoUrl }
@@ -185,7 +186,8 @@ function AdminPanelContent() {
   const handleNameChange = (e) => {
     const val = e.target.value;
     setName(val);
-    
+    if (fieldErrors.name) setFieldErrors((fe) => ({ ...fe, name: undefined }));
+
     // Auto-slugify: lowercase, replace spaces with hyphens, remove non-alphanumeric chars
     const generatedSlug = val
       .toLowerCase()
@@ -193,21 +195,19 @@ function AdminPanelContent() {
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9\-]/g, '');
     setSlug(generatedSlug);
+    if (fieldErrors.slug) setFieldErrors((fe) => ({ ...fe, slug: undefined }));
   };
 
   // 4. Submit New Agency
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
-    
-    if (!name.trim()) {
-      setFormError('Agency Name is required.');
-      return;
-    }
-    if (!slug.trim()) {
-      setFormError('Agency Slug is required.');
-      return;
-    }
+
+    const errs = {};
+    if (!name.trim()) errs.name = 'Agency Name is required.';
+    if (!slug.trim()) errs.slug = 'Agency Slug is required.';
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) return;
 
     setSubmitting(true);
     try {
@@ -361,6 +361,9 @@ function AdminPanelContent() {
         
         .admin-input::placeholder { color: rgba(148, 180, 255, 0.35); }
         .admin-input:focus { outline: none; border-color: rgba(91, 155, 255, 0.85) !important; box-shadow: 0 0 0 3px rgba(48, 108, 236, 0.20); }
+        .admin-input-error { border-color: rgba(224, 72, 90, 0.85) !important; background: rgba(224, 72, 90, 0.08) !important; }
+        .admin-input-error:focus { box-shadow: 0 0 0 3px rgba(224, 72, 90, 0.20) !important; }
+        .admin-field-error-msg { display: block; color: #FF6B7A; font-size: 11px; margin-top: 6px; }
         .admin-input {
           width: 100%;
           background: rgba(48, 108, 236, 0.10);
@@ -892,30 +895,35 @@ function AdminPanelContent() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                  <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Name</label>
                       <input
-                        className="admin-input"
+                        className={`admin-input${fieldErrors.name ? ' admin-input-error' : ''}`}
                         type="text"
                         placeholder="e.g. Itek, i3+"
                         value={name}
                         onChange={handleNameChange}
-                        required
+                        aria-required="true"
+                        aria-invalid={!!fieldErrors.name}
                       />
+                      {fieldErrors.name && <span className="admin-field-error-msg">{fieldErrors.name}</span>}
                     </div>
 
                     <div>
                       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Slug</label>
                       <input
-                        className="admin-input"
+                        className={`admin-input${fieldErrors.slug ? ' admin-input-error' : ''}`}
                         type="text"
                         placeholder="e.g. itek, i3-plus"
                         value={slug}
-                        onChange={e => setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                        required
+                        onChange={e => { setSlug(e.target.value.toLowerCase().replace(/\s+/g, '-')); if (fieldErrors.slug) setFieldErrors(fe => ({ ...fe, slug: undefined })); }}
+                        aria-required="true"
+                        aria-invalid={!!fieldErrors.slug}
                       />
-                      <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>Used for scoping users and workspaces (a-z, 0-9, hyphens).</span>
+                      {fieldErrors.slug
+                        ? <span className="admin-field-error-msg">{fieldErrors.slug}</span>
+                        : <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>Used for scoping users and workspaces (a-z, 0-9, hyphens).</span>}
                     </div>
 
                     <div>

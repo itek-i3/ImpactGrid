@@ -40,6 +40,7 @@ export default function ValuationPanel() {
   const [loading, setLoading] = useState(true);
   const [addingBiz, setAddingBiz] = useState(false);
   const [newBizName, setNewBizName] = useState('');
+  const [newBizNameError, setNewBizNameError] = useState(false);
   const [newBizSector, setNewBizSector] = useState('Services');
   const [savingNewBiz, setSavingNewBiz] = useState(false);
   const [financeLogs, setFinanceLogs] = useState([]);
@@ -475,7 +476,8 @@ export default function ValuationPanel() {
   // Quick-add a business straight from the "Select Business" dropdown
   const handleAddBusiness = async () => {
     const name = newBizName.trim();
-    if (!name) return;
+    if (!name) { setNewBizNameError(true); return; }
+    setNewBizNameError(false);
     if (!isDemo && !agencyId) return;
     setSavingNewBiz(true);
     const base = { agency_id: agencyId, name, sector: newBizSector || null, domain: null, location: null, handler: null };
@@ -700,7 +702,7 @@ export default function ValuationPanel() {
             <select
               value={selectedBizId}
               onChange={(e) => {
-                if (e.target.value === ADD_NEW_BIZ) { setAddingBiz(true); return; }
+                if (e.target.value === ADD_NEW_BIZ) { setAddingBiz(true); setNewBizNameError(false); return; }
                 setSelectedBizId(e.target.value);
               }}
               style={{ ...inputStyle, padding: '10px 12px', fontSize: 14 }}
@@ -724,11 +726,14 @@ export default function ValuationPanel() {
                 <input
                   autoFocus
                   value={newBizName}
-                  onChange={(e) => setNewBizName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddBusiness(); if (e.key === 'Escape') { setAddingBiz(false); setNewBizName(''); } }}
+                  onChange={(e) => { setNewBizName(e.target.value); if (newBizNameError) setNewBizNameError(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddBusiness(); if (e.key === 'Escape') { setAddingBiz(false); setNewBizName(''); setNewBizNameError(false); } }}
                   placeholder="Business name"
-                  style={{ ...inputStyle, margin: 0 }}
+                  aria-required="true"
+                  aria-invalid={newBizNameError}
+                  style={{ ...inputStyle, margin: 0, ...(newBizNameError ? { borderColor: 'var(--color-error)', background: 'var(--color-error-bg)' } : {}) }}
                 />
+                {newBizNameError && <div style={{ fontSize: 11.5, color: 'var(--color-error)', fontWeight: 600, marginTop: -4 }}>Business name is required.</div>}
                 <select
                   value={newBizSector}
                   onChange={(e) => setNewBizSector(e.target.value)}
@@ -740,14 +745,14 @@ export default function ValuationPanel() {
                   <button
                     className="biz-btn primary"
                     onClick={handleAddBusiness}
-                    disabled={savingNewBiz || !newBizName.trim()}
+                    disabled={savingNewBiz}
                     style={{ flex: 1 }}
                   >
                     {savingNewBiz ? 'Adding…' : 'Add Business'}
                   </button>
                   <button
                     className="biz-btn ghost"
-                    onClick={() => { setAddingBiz(false); setNewBizName(''); setNewBizSector('Services'); }}
+                    onClick={() => { setAddingBiz(false); setNewBizName(''); setNewBizSector('Services'); setNewBizNameError(false); }}
                     disabled={savingNewBiz}
                   >
                     Cancel

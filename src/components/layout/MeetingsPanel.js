@@ -111,6 +111,7 @@ export default function MeetingsPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [fTitle, setFTitle] = useState('');
+  const [fTitleError, setFTitleError] = useState(false);
   const [fDate, setFDate] = useState(todayKey);
   const [fTime, setFTime] = useState('10:00');
   const [fDuration, setFDuration] = useState(30);
@@ -227,6 +228,7 @@ export default function MeetingsPanel() {
     setFTitle(''); setFDate(dateKey || todayKey); setFTime('10:00');
     setFDuration(30); setFMeetLink(''); setFDesc(''); setFAttendees([]); setFRepeat('none');
     setConfirmDeleteId(null);
+    setFTitleError(false);
     setModalOpen(true);
   };
 
@@ -243,6 +245,7 @@ export default function MeetingsPanel() {
     setFAttendees(m.attendee_ids || []);
     setFRepeat(m.recurrence === 'weekly' ? 'weekly' : 'none');
     setConfirmDeleteId(null);
+    setFTitleError(false);
     setModalOpen(true);
   };
 
@@ -250,7 +253,7 @@ export default function MeetingsPanel() {
     setFAttendees(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const canSave = fTitle.trim() && fDate && fTime && !saving;
+  const canSave = fDate && fTime && !saving;
 
   const persistDemo = (next) => {
     setMeetings(next);
@@ -258,6 +261,8 @@ export default function MeetingsPanel() {
   };
 
   const saveMeeting = async () => {
+    if (!fTitle.trim()) { setFTitleError(true); return; }
+    setFTitleError(false);
     if (!canSave) return;
     setSaving(true);
     const starts = new Date(`${fDate}T${fTime}`);
@@ -504,7 +509,16 @@ export default function MeetingsPanel() {
             </div>
 
             <label className="mtg-lbl">Title *</label>
-            <input className="mtg-input" value={fTitle} onChange={e => setFTitle(e.target.value)} placeholder="e.g. Weekly team sync" autoFocus />
+            <input
+              className={`mtg-input${fTitleError ? ' error' : ''}`}
+              value={fTitle}
+              onChange={e => { setFTitle(e.target.value); if (fTitleError) setFTitleError(false); }}
+              placeholder="e.g. Weekly team sync"
+              aria-required="true"
+              aria-invalid={fTitleError}
+              autoFocus
+            />
+            {fTitleError && <div className="mtg-field-error">Title is required.</div>}
 
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.2fr 1fr 1fr', gap: 10, marginTop: 12 }}>
               <div>
@@ -610,6 +624,9 @@ export default function MeetingsPanel() {
         textarea.mtg-input { height:auto; }
         .mtg-input::placeholder { color:var(--color-text-tertiary); }
         .mtg-input:focus { border-color:var(--color-border-active); box-shadow:0 0 0 3px rgba(48,108,236,.15); }
+        .mtg-input.error { border-color:var(--color-error); background:var(--color-error-bg); }
+        .mtg-input.error:focus { box-shadow:0 0 0 3px var(--color-error-bg); }
+        .mtg-field-error { font-size:11.5px; color:var(--color-error); font-weight:600; margin-top:5px; }
         .mtg-btn {
           display:inline-flex; align-items:center; gap:6px; padding:0 14px; height:38px; border-radius:10px;
           font-size:13px; font-weight:600; font-family:inherit; cursor:pointer; border:1px solid var(--color-border);

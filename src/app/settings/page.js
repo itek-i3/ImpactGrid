@@ -35,6 +35,8 @@ export default function SettingsPage() {
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [nameError, setNameError] = useState(false);
+  const [wsNameError, setWsNameError] = useState(false);
 
   const [agencyMembers, setAgencyMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -96,7 +98,8 @@ export default function SettingsPage() {
   };
 
   const saveInfo = async () => {
-    if (!fullName.trim()) { flash('Name is required', false); return; }
+    if (!fullName.trim()) { setNameError(true); flash('Name is required', false); return; }
+    setNameError(false);
     setSaving(true);
     const { error } = await createClient().from('profiles').update({
       full_name: fullName.trim(), phone,
@@ -111,6 +114,7 @@ export default function SettingsPage() {
   const cancelEdit = () => {
     setFullName(profile.full_name || '');
     setPhone(profile.phone || '');
+    setNameError(false);
     setEditing(false);
   };
 
@@ -195,7 +199,8 @@ export default function SettingsPage() {
   };
 
   const saveWorkspace = async () => {
-    if (!wsName.trim()) { flash('Workspace name is required', false); return; }
+    if (!wsName.trim()) { setWsNameError(true); flash('Workspace name is required', false); return; }
+    setWsNameError(false);
     if (!workspace?.id) return;
     setWsSaving(true);
     try {
@@ -212,6 +217,7 @@ export default function SettingsPage() {
     setWsName(workspace?.name || '');
     setWsIcon(workspace?.icon || '🚀');
     setWsEditing(false);
+    setWsNameError(false);
     setShowEmojiPicker(false);
   };
 
@@ -246,6 +252,9 @@ export default function SettingsPage() {
           box-shadow: 0 0 0 3px rgba(48,108,236,0.22);
         }
         .ig-field-wrap-disabled { opacity: 0.5; cursor: not-allowed; }
+        .ig-field-wrap-error { border-color: rgba(224,72,90,0.85) !important; background: rgba(224,72,90,0.08) !important; }
+        .ig-field-wrap-error:focus-within { box-shadow: 0 0 0 3px rgba(224,72,90,0.22) !important; }
+        .ig-field-error-msg { display: block; color: #FF6B7A; font-size: 11px; margin-top: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
@@ -366,7 +375,7 @@ export default function SettingsPage() {
             <div style={{ width: 360 }}>
               {editing ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <PillField label="Full Name" value={fullName} onChange={setFullName} placeholder="Your full name" icon={<User size={17} color="rgba(255,255,255,0.85)" />} />
+                  <PillField label="Full Name" value={fullName} onChange={(v) => { setFullName(v); if (nameError) setNameError(false); }} placeholder="Your full name" icon={<User size={17} color="rgba(255,255,255,0.85)" />} error={nameError ? 'Name is required' : null} />
                   <PillField label="Email" value={profile.email} disabled icon={<Mail size={17} color="rgba(255,255,255,0.85)" />} />
                   <PillField label="Phone" value={phone} onChange={setPhone} placeholder="Phone number" icon={<Phone size={17} color="rgba(255,255,255,0.85)" />} />
                   <PillField label="Agency" value={profile.agency?.name || '—'} disabled icon={<Building2 size={17} color="rgba(255,255,255,0.85)" />} />
@@ -515,14 +524,19 @@ export default function SettingsPage() {
                 <div style={{ flex: 1 }}>
                   <div style={lbl}>Workspace Name</div>
                   {wsEditing ? (
-                    <div className="ig-field-wrap" style={pillWrapSt}>
-                      <input
-                        className="ig-input"
-                        value={wsName}
-                        onChange={(e) => setWsName(e.target.value)}
-                        placeholder="Workspace name"
-                        style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '0 16px' }}
-                      />
+                    <div>
+                      <div className={`ig-field-wrap${wsNameError ? ' ig-field-wrap-error' : ''}`} style={pillWrapSt}>
+                        <input
+                          className="ig-input"
+                          value={wsName}
+                          onChange={(e) => { setWsName(e.target.value); if (wsNameError) setWsNameError(false); }}
+                          placeholder="Workspace name"
+                          aria-required="true"
+                          aria-invalid={wsNameError}
+                          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, fontFamily: 'inherit', padding: '0 16px' }}
+                        />
+                      </div>
+                      {wsNameError && <span className="ig-field-error-msg">Workspace name is required</span>}
                     </div>
                   ) : (
                     <div style={{ fontSize: 18, fontWeight: 700, color: '#E2EEFF', marginTop: 6 }}>{workspace.name}</div>
@@ -678,11 +692,11 @@ export default function SettingsPage() {
   );
 }
 
-function PillField({ label, value, onChange, placeholder, disabled, type = 'text', wide, icon }) {
+function PillField({ label, value, onChange, placeholder, disabled, type = 'text', wide, icon, error }) {
   return (
     <div style={wide ? { gridColumn: '1 / -1' } : {}}>
       <div style={lbl}>{label}</div>
-      <div className={`ig-field-wrap${disabled ? ' ig-field-wrap-disabled' : ''}`} style={pillWrapSt}>
+      <div className={`ig-field-wrap${disabled ? ' ig-field-wrap-disabled' : ''}${error ? ' ig-field-wrap-error' : ''}`} style={pillWrapSt}>
         {icon && <div style={iconCircleSt}>{icon}</div>}
         <input
           className="ig-input"
@@ -691,6 +705,7 @@ function PillField({ label, value, onChange, placeholder, disabled, type = 'text
           onChange={onChange ? (e) => onChange(e.target.value) : undefined}
           placeholder={placeholder}
           disabled={disabled}
+          aria-invalid={!!error}
           style={{
             flex: 1, background: 'transparent', border: 'none', outline: 'none',
             fontSize: 14, fontFamily: 'inherit',
@@ -699,6 +714,7 @@ function PillField({ label, value, onChange, placeholder, disabled, type = 'text
           }}
         />
       </div>
+      {error && <span className="ig-field-error-msg">{error}</span>}
     </div>
   );
 }

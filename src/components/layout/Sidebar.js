@@ -25,6 +25,7 @@ import {
   TrendingUp,
   PiggyBank,
   Sparkles,
+  Lock,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -181,6 +182,18 @@ export default function Sidebar() {
 
   const handleNewPage = useCallback(async () => {
     const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false });
+    if (newId) {
+      const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
+      if (freshPage) setCurrentPage(freshPage);
+      if (pathname !== '/') router.push('/');
+      closeMobileSidebar();
+    }
+  }, [addPage, setCurrentPage, pathname, router, closeMobileSidebar]);
+
+  // Personal pages are visible/editable only to the user who made them — open
+  // to every role, unlike the shared Pages tree above which members can only read.
+  const handleNewPersonalPage = useCallback(async () => {
+    const newId = await addPage({ title: '', icon: '📄', parentId: null, isDatabase: false, isPersonal: true });
     if (newId) {
       const freshPage = useWorkspaceStore.getState().pages.find((p) => p.id === newId);
       if (freshPage) setCurrentPage(freshPage);
@@ -398,6 +411,20 @@ export default function Sidebar() {
                 <span>Finance</span>
               </button>
             </nav>
+
+            {/* ── Personal Pages — private notes only the creator can see/edit ── */}
+            <div className={styles.sidebarSectionLabel}>
+              <span className={styles.sidebarSectionTitle} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Lock size={10} />
+                Personal Pages
+              </span>
+              <button className={styles.sidebarSectionAction} onClick={handleNewPersonalPage} aria-label="New personal page">
+                <Plus size={14} />
+              </button>
+            </div>
+            <div className={styles.pageTree} style={{ flex: 'none', overflow: 'visible', marginBottom: 4 }}>
+              <PageTree isPersonal />
+            </div>
 
             {/* ── Favorites section (pinned in sidebar) ── */}
             {favoritePages.length > 0 && (

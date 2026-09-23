@@ -28,6 +28,7 @@ export default function BusinessesPanel() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [fName, setFName] = useState('');
+  const [fNameError, setFNameError] = useState(false);
   const [fSector, setFSector] = useState('Services');
   const [fDomain, setFDomain] = useState('');
   const [fLocation, setFLocation] = useState('');
@@ -91,6 +92,7 @@ export default function BusinessesPanel() {
   const openNew = () => {
     setEditingId(null);
     setFName(''); setFSector('Services'); setFDomain(''); setFLocation(''); setFHandler(''); setFFinancePeriod('daily'); setFLinkedAgencyId(''); setFManaged(true);
+    setFNameError(false);
     setModalOpen(true);
   };
   const openEdit = (b) => {
@@ -99,6 +101,7 @@ export default function BusinessesPanel() {
     setFLocation(b.location || ''); setFHandler(b.handler || ''); setFFinancePeriod(b.finance_period || 'daily');
     setFLinkedAgencyId(b.linked_agency_id || ''); setFManaged(b.managed !== false);
     setConfirmDeleteId(null);
+    setFNameError(false);
     setModalOpen(true);
   };
 
@@ -110,7 +113,8 @@ export default function BusinessesPanel() {
 
   const save = async () => {
     const name = fName.trim();
-    if (!name) return;
+    if (!name) { setFNameError(true); return; }
+    setFNameError(false);
     if (!isDemo && !agencyId) return;
     setSaving(true);
     const base = {
@@ -281,7 +285,16 @@ export default function BusinessesPanel() {
             </div>
 
             <label style={lbl}>Business name *</label>
-            <input className="biz-input" value={fName} onChange={e => setFName(e.target.value)} placeholder="e.g. Sunshine Laundromat" autoFocus />
+            <input
+              className={`biz-input${fNameError ? ' error' : ''}`}
+              value={fName}
+              onChange={e => { setFName(e.target.value); if (fNameError) setFNameError(false); }}
+              placeholder="e.g. Sunshine Laundromat"
+              aria-required="true"
+              aria-invalid={fNameError}
+              autoFocus
+            />
+            {fNameError && <div className="biz-field-error">Business name is required.</div>}
 
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginTop: 12 }}>
               <div>
@@ -352,7 +365,7 @@ export default function BusinessesPanel() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button className="biz-btn ghost" onClick={() => setModalOpen(false)}>Cancel</button>
-              <button className="biz-btn primary" onClick={save} disabled={!fName.trim() || saving}><Plus size={14} /> {editingId ? 'Save changes' : 'Create business'}</button>
+              <button className="biz-btn primary" onClick={save} disabled={saving}><Plus size={14} /> {editingId ? 'Save changes' : 'Create business'}</button>
             </div>
           </div>
         </div>
@@ -366,6 +379,9 @@ export default function BusinessesPanel() {
         }
         .biz-input::placeholder { color: var(--color-text-tertiary); }
         .biz-input:focus { border-color: var(--color-border-active); box-shadow: 0 0 0 3px rgba(48,108,236,.12); }
+        .biz-input.error { border-color: var(--color-error); background: var(--color-error-bg); }
+        .biz-input.error:focus { box-shadow: 0 0 0 3px var(--color-error-bg); }
+        .biz-field-error { font-size: 11.5px; color: var(--color-error); margin-top: 5px; font-weight: 600; }
         .biz-btn {
           display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border-radius: 10px;
           border: 1px solid var(--color-border); background: var(--color-bg-tertiary); color: var(--color-text-primary);

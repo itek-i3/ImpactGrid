@@ -15,7 +15,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
-  const { workspaceId, parentId, title, icon, isDatabase, databaseType, sortOrder, isFavorite } = body;
+  const { workspaceId, parentId, title, icon, isDatabase, databaseType, sortOrder, isFavorite, isPersonal } = body;
 
   if (!workspaceId) return badRequest('workspaceId is required');
 
@@ -28,6 +28,7 @@ export async function POST(request) {
     databaseType,
     sortOrder,
     isFavorite: isFavorite || body.is_favorite,
+    isPersonal: isPersonal || body.is_personal,
   });
 
   if (error) return fromSupabaseError(error);

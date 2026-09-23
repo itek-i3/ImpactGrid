@@ -1,17 +1,27 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { clientForUser } from './clientForUser';
+import { clientForUser, getRequesterContext } from './clientForUser';
 
 export async function listPages(workspaceId, { archived = false } = {}) {
   // Use admin client so RLS doesn't block pages from workspaces in secondary agencies
   const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
   const { data, error } = await client
     .from('pages')
-    .select('id, title, icon, cover_url, parent_id, is_database, database_type, is_archived, is_favorite, is_public, sort_order, created_at, updated_at')
+    .select('id, title, icon, cover_url, parent_id, is_database, database_type, is_archived, is_favorite, is_public, is_personal, created_by, sort_order, created_at, updated_at')
     .eq('workspace_id', workspaceId)
     .eq('is_archived', archived)
     .order('sort_order');
 
-  return { data, error };
+  if (error) return { data, error };
+
+  // The admin client bypasses RLS, so a personal page (is_personal = true) has
+  // to be filtered out of anyone else's list here instead — superadmins keep
+  // seeing everything, matching every other admin-bypass in this file.
+  const { userId, role } = await getRequesterContext();
+  const visible = role === 'superadmin'
+    ? data
+    : (data || []).filter((p) => !p.is_personal || p.created_by === userId);
+
+  return { data: visible, error: null };
 }
 
 export async function getPage(id) {
@@ -25,7 +35,7 @@ export async function getPage(id) {
   return { data, error };
 }
 
-export async function createPage({ workspaceId, parentId = null, title = 'Untitled', icon = '📄', isDatabase = false, databaseType = null, sortOrder = 0, isFavorite = false }) {
+export async function createPage({ workspaceId, parentId = null, title = 'Untitled', icon = '📄', isDatabase = false, databaseType = null, sortOrder = 0, isFavorite = false, isPersonal = false }) {
   const { supabase, userId } = await clientForUser();
 
   const { data, error } = await supabase
@@ -39,6 +49,7 @@ export async function createPage({ workspaceId, parentId = null, title = 'Untitl
       database_type: databaseType,
       sort_order: sortOrder,
       is_favorite: isFavorite,
+      is_personal: isPersonal,
       created_by: userId ?? null,
     })
     .select()

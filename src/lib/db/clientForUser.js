@@ -24,3 +24,24 @@ export async function clientForUser() {
 
   return { supabase, userId: user.id };
 }
+
+/**
+ * Returns { userId, role } for the requesting user, without deciding which
+ * client to use. Needed by read paths (listPages/listBlocks) that always use
+ * the admin client for cross-agency reads and so must filter personal pages
+ * (visible only to their creator) back in manually, in application code,
+ * since that admin client bypasses RLS entirely.
+ */
+export async function getRequesterContext() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { userId: null, role: null };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  return { userId: user.id, role: profile?.role || null };
+}

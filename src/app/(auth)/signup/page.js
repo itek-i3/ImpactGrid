@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [error,        setError]        = useState('');
   const [agencies,     setAgencies]     = useState([]);
   const [selectedAgency, setSelectedAgency] = useState('');
+  const [fieldErrors,  setFieldErrors]  = useState({});
 
   useEffect(() => {
     async function loadAgencies() {
@@ -36,11 +37,16 @@ export default function SignupPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!selectedAgency) {
-      setError('Please select an agency.');
-      return;
-    }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+
+    const errs = {};
+    if (!name.trim()) errs.name = 'Full name is required';
+    if (!email.trim()) errs.email = 'Email is required';
+    if (!password) errs.password = 'Password is required';
+    else if (password.length < 6) errs.password = 'Password must be at least 6 characters';
+    if (!selectedAgency) errs.agency = 'Please select an agency';
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) return;
+
     setLoading(true);
     try {
       const supabase = createClient();
@@ -78,6 +84,9 @@ export default function SignupPage() {
           transition: background-color 9999s ease, color 9999s ease;
         }
         .ig-field-wrap:focus-within { border-color:rgba(91,155,255,0.90) !important; box-shadow:0 0 0 3px rgba(48,108,236,0.25); }
+        .ig-field-wrap-error { border-color:rgba(224,72,90,0.85) !important; background:rgba(224,72,90,0.08) !important; }
+        .ig-field-wrap-error:focus-within { box-shadow:0 0 0 3px rgba(224,72,90,0.25) !important; }
+        .ig-field-error-msg { display:block; color:#FF6B7A; font-size:12px; margin:-10px 2px 0; }
         .ig-btn-signup:hover:not(:disabled) { background:#1E4FB8 !important; transform:translateY(-1px); box-shadow:0 8px 32px rgba(48,108,236,0.50) !important; }
         .ig-btn-signup:active:not(:disabled) { transform:translateY(0); }
         .ig-lnk:hover { color:#5B9BFF !important; }
@@ -133,67 +142,86 @@ export default function SignupPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:18 }}>
+          <form onSubmit={handleSubmit} noValidate style={{ display:'flex', flexDirection:'column', gap:18 }}>
 
             {/* full name */}
-            <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <User size={18} color="rgba(255,255,255,0.85)" />
+            <div>
+              <div className={`ig-field-wrap${fieldErrors.name ? ' ig-field-wrap-error' : ''}`} style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
+                <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <User size={18} color="rgba(255,255,255,0.85)" />
+                </div>
+                <input className="ig-input" type="text" placeholder="Full name" value={name}
+                  onChange={e => { setName(e.target.value); if (fieldErrors.name) setFieldErrors(fe => ({ ...fe, name: undefined })); }}
+                  aria-required="true" aria-invalid={!!fieldErrors.name} autoComplete="name"
+                  style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 8px 0 0' }} />
               </div>
-              <input className="ig-input" type="text" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} required autoComplete="name"
-                style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 8px 0 0' }} />
+              {fieldErrors.name && <span className="ig-field-error-msg">{fieldErrors.name}</span>}
             </div>
 
             {/* email */}
-            <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <Mail size={18} color="rgba(255,255,255,0.85)" />
+            <div>
+              <div className={`ig-field-wrap${fieldErrors.email ? ' ig-field-wrap-error' : ''}`} style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
+                <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Mail size={18} color="rgba(255,255,255,0.85)" />
+                </div>
+                <input className="ig-input" type="email" placeholder="Email address" value={email}
+                  onChange={e => { setEmail(e.target.value); if (fieldErrors.email) setFieldErrors(fe => ({ ...fe, email: undefined })); }}
+                  aria-required="true" aria-invalid={!!fieldErrors.email} autoComplete="email"
+                  style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 8px 0 0' }} />
               </div>
-              <input className="ig-input" type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email"
-                style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 8px 0 0' }} />
+              {fieldErrors.email && <span className="ig-field-error-msg">{fieldErrors.email}</span>}
             </div>
 
             {/* password */}
-            <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
-              <input className="ig-input" type={showPassword ? 'text' : 'password'} placeholder="Password (min. 6 characters)" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} autoComplete="new-password"
-                style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 0 0 18px' }} />
-              <button type="button" onClick={() => setShowPassword(s => !s)}
-                style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'none', cursor:'pointer' }}>
-                {showPassword ? <EyeOff size={17} color="rgba(255,255,255,0.85)" /> : <Lock size={17} color="rgba(255,255,255,0.85)" />}
-              </button>
+            <div>
+              <div className={`ig-field-wrap${fieldErrors.password ? ' ig-field-wrap-error' : ''}`} style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
+                <input className="ig-input" type={showPassword ? 'text' : 'password'} placeholder="Password (min. 6 characters)" value={password}
+                  onChange={e => { setPassword(e.target.value); if (fieldErrors.password) setFieldErrors(fe => ({ ...fe, password: undefined })); }}
+                  aria-required="true" aria-invalid={!!fieldErrors.password} autoComplete="new-password"
+                  style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:14.5, fontFamily:'inherit', padding:'0 0 0 18px' }} />
+                <button type="button" onClick={() => setShowPassword(s => !s)}
+                  style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'none', cursor:'pointer' }}>
+                  {showPassword ? <EyeOff size={17} color="rgba(255,255,255,0.85)" /> : <Lock size={17} color="rgba(255,255,255,0.85)" />}
+                </button>
+              </div>
+              {fieldErrors.password && <span className="ig-field-error-msg">{fieldErrors.password}</span>}
             </div>
 
             {/* agency dropdown */}
-            <div className="ig-field-wrap" style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
-              <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <Building size={17} color="rgba(255,255,255,0.85)" />
+            <div>
+              <div className={`ig-field-wrap${fieldErrors.agency ? ' ig-field-wrap-error' : ''}`} style={{ display:'flex', alignItems:'center', background:'rgba(48,108,236,0.14)', borderRadius:50, border:'1.5px solid rgba(48,108,236,0.55)', padding:'0 6px', height:58, gap:8, transition:'border-color .15s, box-shadow .15s, background .15s' }}>
+                <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(48,108,236,0.22)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Building size={17} color="rgba(255,255,255,0.85)" />
+                </div>
+                <select
+                  value={selectedAgency}
+                  onChange={e => { setSelectedAgency(e.target.value); if (fieldErrors.agency) setFieldErrors(fe => ({ ...fe, agency: undefined })); }}
+                  className="ig-input"
+                  aria-required="true"
+                  aria-invalid={!!fieldErrors.agency}
+                  style={{
+                    flex:1,
+                    background:'transparent',
+                    border:'none',
+                    outline:'none',
+                    fontSize:14.5,
+                    fontFamily:'inherit',
+                    padding:'0 18px',
+                    color:'#B8D4FF',
+                    cursor:'pointer',
+                    appearance:'none',
+                    colorScheme:'dark',
+                  }}
+                >
+                  <option value="" style={{ background: '#070f1e', color: '#B8D4FF' }}>Choose your agency...</option>
+                  {agencies.map((agency) => (
+                    <option key={agency.id} value={agency.slug} style={{ background: '#070f1e', color: '#B8D4FF' }}>
+                      {agency.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                value={selectedAgency}
-                onChange={e => setSelectedAgency(e.target.value)}
-                className="ig-input"
-                required
-                style={{
-                  flex:1,
-                  background:'transparent',
-                  border:'none',
-                  outline:'none',
-                  fontSize:14.5,
-                  fontFamily:'inherit',
-                  padding:'0 18px',
-                  color:'#B8D4FF',
-                  cursor:'pointer',
-                  appearance:'none',
-                  colorScheme:'dark',
-                }}
-              >
-                <option value="" style={{ background: '#070f1e', color: '#B8D4FF' }}>Choose your agency...</option>
-                {agencies.map((agency) => (
-                  <option key={agency.id} value={agency.slug} style={{ background: '#070f1e', color: '#B8D4FF' }}>
-                    {agency.name}
-                  </option>
-                ))}
-              </select>
+              {fieldErrors.agency && <span className="ig-field-error-msg">{fieldErrors.agency}</span>}
             </div>
 
             {/* submit */}

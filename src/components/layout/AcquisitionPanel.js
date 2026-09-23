@@ -571,6 +571,7 @@ export default function AcquisitionPanel() {
   const initScores = Object.fromEntries(CRITERIA.map(c => [c.id, null]));
 
   const [businessName,    setBusinessName]    = useState('');
+  const [businessNameError, setBusinessNameError] = useState(false);
   const [ownerName,       setOwnerName]       = useState('');
   const [registrationDetails, setRegistrationDetails] = useState('');
   const [businessLocation, setBusinessLocation] = useState('');
@@ -952,7 +953,8 @@ export default function AcquisitionPanel() {
   }, [undoStack, redoStack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSave() {
-    if (!businessName.trim()) return;
+    if (!businessName.trim()) { setBusinessNameError(true); return; }
+    setBusinessNameError(false);
     if (!activeAgencyId) { toast.error('No agency', 'Open an agency workspace to save evaluations.'); return; }
     setSaving(true);
     try {
@@ -1054,6 +1056,7 @@ export default function AcquisitionPanel() {
     setHistoryOpen(false);
     setFormReadOnly(readOnly);
     setFormOpen(true);
+    setBusinessNameError(false);
   }
 
   // Open a blank form for a brand-new evaluation.
@@ -1085,6 +1088,7 @@ export default function AcquisitionPanel() {
     setViewedEvalId(null);
     setEditingEvalId(null);
     setFormReadOnly(false);
+    setBusinessNameError(false);
   }
 
   function handleCopy() {
@@ -1780,6 +1784,9 @@ export default function AcquisitionPanel() {
         }
         .acqp-input::placeholder { color:var(--color-text-tertiary); }
         .acqp-input:focus { border-color:var(--color-border-active); box-shadow:0 0 0 3px rgba(48,108,236,.15); }
+        .acqp-input.error { border-color:var(--color-error); background:var(--color-error-bg); }
+        .acqp-input.error:focus { box-shadow:0 0 0 3px var(--color-error-bg); }
+        .acqp-field-error { font-size:11.5px; color:var(--color-error); font-weight:600; margin-top:5px; }
         .acqp-select {
           width:100%; background:var(--color-bg-tertiary); border:1px solid var(--color-border);
           border-radius:var(--radius-lg); height:40px; padding:0 34px 0 13px;
@@ -2284,13 +2291,11 @@ export default function AcquisitionPanel() {
                 ) : (
                   <>
                     <button onClick={handleReset} className="acqp-ghost" style={ghostBtn}><RefreshCw size={12}/> Reset</button>
-                    <button onClick={handleSave} disabled={saving || !businessName.trim()} style={{
+                    <button onClick={handleSave} disabled={saving} style={{
                       display:'flex', alignItems:'center', gap:6, padding:'8px 20px', borderRadius:'var(--radius-lg)',
-                      background: businessName.trim() ? 'var(--color-accent-gradient)' : 'var(--color-bg-tertiary)',
-                      border: businessName.trim() ? 'none' : '1px solid var(--color-border)',
-                      color: businessName.trim() ? '#fff' : 'var(--color-text-muted)',
-                      cursor: businessName.trim() ? 'pointer' : 'not-allowed', fontSize:13, fontWeight:700, fontFamily:'inherit',
-                      boxShadow: businessName.trim() ? '0 4px 14px rgba(48,108,236,0.35)' : 'none', transition:'all .15s',
+                      background: 'var(--color-accent-gradient)', border: 'none', color: '#fff',
+                      cursor: saving ? 'not-allowed' : 'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                      boxShadow: '0 4px 14px rgba(48,108,236,0.35)', opacity: saving ? 0.7 : 1, transition:'all .15s',
                     }}>
                       <Save size={13}/> {saving ? 'Saving…' : (editingEvalId ? 'Update Evaluation' : 'Save Evaluation')}
                     </button>
@@ -2420,7 +2425,15 @@ export default function AcquisitionPanel() {
                   <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                     <div>
                       <label className="acqp-lbl">Business Name *</label>
-                      <input className="acqp-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Sunshine Laundromat"/>
+                      <input
+                        className={`acqp-input${businessNameError ? ' error' : ''}`}
+                        value={businessName}
+                        onChange={e => { setBusinessName(e.target.value); if (businessNameError) setBusinessNameError(false); }}
+                        placeholder="e.g. Sunshine Laundromat"
+                        aria-required="true"
+                        aria-invalid={businessNameError}
+                      />
+                      {businessNameError && <div className="acqp-field-error">Business name is required.</div>}
                     </div>
                     <div>
                       <label className="acqp-lbl">Name of the owner</label>

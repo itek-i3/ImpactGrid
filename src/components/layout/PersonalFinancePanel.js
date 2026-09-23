@@ -1263,6 +1263,9 @@ export default function PersonalFinancePanel() {
         }
         .pfin-input::placeholder { color: var(--color-text-tertiary); }
         .pfin-input:focus { border-color: var(--color-border-active); box-shadow: 0 0 0 3px rgba(48,108,236,.12); transform: translateY(-1px); }
+        .pfin-input.error { border-color: var(--color-error); background: var(--color-error-bg); }
+        .pfin-input.error:focus { box-shadow: 0 0 0 3px var(--color-error-bg); }
+        .pfin-field-error { font-size: 11.5px; color: var(--color-error); font-weight: 600; margin-top: 5px; }
         .pfin-save {
           display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 18px; border-radius: 10px; border: none;
           background: linear-gradient(135deg,#16a34a,#22C55E); color: #fff; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer;

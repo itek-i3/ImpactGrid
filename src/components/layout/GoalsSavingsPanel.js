@@ -57,6 +57,7 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
   const updateRow = (table, state, id, patch) => updateRowShared(table, state, id, patch, crudCtx);
 
   const [showForm, setShowForm] = useState(false);
+  const [nameError, setNameError] = useState(false);
   const [editingPocketId, setEditingPocketId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [contribForPocketId, setContribForPocketId] = useState(null);
@@ -91,7 +92,7 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
 
   const totalBalance = useMemo(() => [...pocketStats.values()].reduce((s, v) => s + v.balance, 0), [pocketStats]);
 
-  const resetForm = () => { setForm({ ...EMPTY_FORM }); setShowForm(false); setEditingPocketId(null); };
+  const resetForm = () => { setForm({ ...EMPTY_FORM }); setShowForm(false); setEditingPocketId(null); setNameError(false); };
 
   const startEditPocket = (p) => {
     setEditingPocketId(p.id);
@@ -99,12 +100,14 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
       name: p.name, kind: p.kind, term: p.term || 'longterm', institution: p.institution || '',
       targetAmount: p.target_amount ? String(p.target_amount) : '', maturityDate: p.maturity_date || '',
     });
+    setNameError(false);
     setShowForm(true);
   };
 
   const submitForm = async () => {
     const name = form.name.trim();
-    if (!name) return;
+    if (!name) { setNameError(true); return; }
+    setNameError(false);
     const base = {
       name, kind: form.kind,
       term: form.kind === 'savings' ? form.term : null,
@@ -185,8 +188,10 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div>
               <label style={lbl}>Name</label>
-              <input className="pfin-input" type="text" placeholder="e.g. Farm project, Emergency fund" value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <input className={`pfin-input${nameError ? ' error' : ''}`} type="text" placeholder="e.g. Farm project, Emergency fund" value={form.name}
+                onChange={e => { setForm(f => ({ ...f, name: e.target.value })); if (nameError) setNameError(false); }}
+                aria-required="true" aria-invalid={nameError} />
+              {nameError && <div className="pfin-field-error">Name is required.</div>}
             </div>
             <div>
               <label style={lbl}>Type</label>
@@ -245,7 +250,7 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button className="pfin-cancel" onClick={resetForm}>Cancel</button>
-            <button className="pfin-save" onClick={submitForm} disabled={!form.name.trim()}>
+            <button className="pfin-save" onClick={submitForm}>
               <Plus size={15} /> {editingPocketId ? 'Save changes' : 'Add'}
             </button>
           </div>

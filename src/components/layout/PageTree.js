@@ -11,8 +11,13 @@ import styles from '@/styles/layout.module.css';
 /**
  * PageTree — recursive page navigation tree for the sidebar.
  * Supports nesting, expand/collapse, and page actions.
+ *
+ * With `isPersonal`, renders the caller's private pages instead of the shared
+ * tree: every page here is already scoped to just the viewer (the API/RLS
+ * layer never returns someone else's personal pages), so unlike the shared
+ * tree it's always fully editable regardless of workspace role.
  */
-export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
+export default function PageTree({ parentId = null, depth = 0, onCopyTo, isPersonal = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const {
@@ -46,6 +51,7 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
       icon: '📄',
       parentId,
       isDatabase: false,
+      isPersonal,
     });
     if (newId) {
       // Auto-expand the parent so the new subpage is immediately visible
@@ -56,13 +62,13 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
   };
 
   const children = pages
-    .filter((p) => p.parentId === parentId && !p.isArchived)
+    .filter((p) => p.parentId === parentId && !p.isArchived && !!p.isPersonal === isPersonal)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   if (children.length === 0 && depth === 0) {
     return (
       <div className={styles.pageTreeEmpty}>
-        {userProfile?.role === 'member' ? 'No pages available' : 'No pages yet. Click + to create one.'}
+        {isPersonal ? 'No personal pages yet. Click + to create one.' : (userProfile?.role === 'member' ? 'No pages available' : 'No pages yet. Click + to create one.')}
       </div>
     );
   }
@@ -92,7 +98,8 @@ export default function PageTree({ parentId = null, depth = 0, onCopyTo }) {
           hasChildren={pages.some(
             (p) => p.parentId === page.id && !p.isArchived
           )}
-          isReadOnly={userProfile?.role === 'member'}
+          isReadOnly={!isPersonal && userProfile?.role === 'member'}
+          isPersonal={isPersonal}
         />
       ))}
     </div>
@@ -113,6 +120,7 @@ function PageTreeItem({
   onCopyTo,
   hasChildren,
   isReadOnly,
+  isPersonal,
 }) {
   const handleClick = useCallback(
     (e) => {
@@ -243,7 +251,7 @@ function PageTreeItem({
 
       {/* Render children if expanded */}
       {isExpanded && hasChildren && (
-        <PageTree parentId={page.id} depth={depth + 1} onCopyTo={onCopyTo} />
+        <PageTree parentId={page.id} depth={depth + 1} onCopyTo={onCopyTo} isPersonal={isPersonal} />
       )}
     </>
   );

@@ -381,9 +381,10 @@ function VerificationTag({ value }) {
 // A single property row: fixed-width mono label on the left, control on the
 // right, verification badge trailing when the field has a value. Rows share
 // one hairline rhythm instead of each field living in its own boxed tile.
-function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint }) {
+function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint, error }) {
   const readOnly = useContext(ViewModeContext);
   const hasValue = (value || '').toString().trim().length > 0;
+  const errClass = error ? ' error' : '';
   return (
     <div className="biz-row">
       <label className="biz-row-label">{label}</label>
@@ -391,16 +392,16 @@ function Field({ label, value, onChange, verification, onVerify, type = 'text', 
         {readOnly ? (
           <div className="biz-static">{hasValue ? value : <span className="biz-static-empty">Not recorded</span>}</div>
         ) : type === 'select' ? (
-          <select className="biz-input" value={value} onChange={(e) => onChange(e.target.value)}>
+          <select className={`biz-input${errClass}`} value={value} onChange={(e) => onChange(e.target.value)}>
             <option value="">Select…</option>
             {options.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         ) : type === 'textarea' ? (
-          <textarea className="biz-input biz-textarea" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows || 2} />
+          <textarea className={`biz-input biz-textarea${errClass}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows || 2} />
         ) : (
-          <input className="biz-input" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+          <input className={`biz-input${errClass}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-invalid={!!error} />
         )}
-        {hint && !readOnly && <div className="biz-hint">{hint}</div>}
+        {error ? <div className="biz-field-error">{error}</div> : (hint && !readOnly && <div className="biz-hint">{hint}</div>)}
       </div>
       {onVerify && hasValue && (readOnly ? <VerificationTag value={verification} /> : <VerificationBadge value={verification} onChange={onVerify} />)}
     </div>
@@ -458,6 +459,7 @@ export default function BusinessIntelPanel() {
 
   const [profile, setProfile] = useState(blankDraft());
   const [saving, setSaving] = useState(false);
+  const [nameError, setNameError] = useState(false);
   const [activeSection, setActiveSection] = useState('identity');
 
   // Registry-list filters — country first (just Kenya for now), city narrows
@@ -517,6 +519,7 @@ export default function BusinessIntelPanel() {
       : (activeEntry.location || '');
     setProfile({ name: activeEntry.name || '', industry: activeEntry.industry || '', location: area, ...merged });
     setActiveSection('identity');
+    setNameError(false);
   }
 
   // Load the registry — its own roster, unrelated to ACR's `businesses` table.
@@ -555,6 +558,7 @@ export default function BusinessIntelPanel() {
     setActiveSection('identity');
     setDetailMode('edit');
     setView('detail');
+    setNameError(false);
   };
 
   // Demo mode only — three fleshed-out sample businesses so the registry
@@ -597,7 +601,8 @@ export default function BusinessIntelPanel() {
 
   const handleSaveProfile = async () => {
     const name = profile.name.trim();
-    if (!name) return;
+    if (!name) { setNameError(true); setActiveSection('identity'); return; }
+    setNameError(false);
     if (!isDemo && !agencyId) return;
     setSaving(true);
     // location keeps its old "Area, City" display shape (used in the record list
@@ -824,7 +829,7 @@ export default function BusinessIntelPanel() {
               {isViewOnly ? (
                 <button className="biz-btn primary" onClick={() => setDetailMode('edit')}><Pencil size={14} /> Edit</button>
               ) : (
-                <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
+                <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving}>
                   {saving ? <RefreshCw size={14} className="animate-spin" /> : isNewDraft ? <Plus size={14} /> : <Save size={14} />} {isNewDraft ? 'Register Business' : 'Save Profile'}
                 </button>
               )}
@@ -839,8 +844,8 @@ export default function BusinessIntelPanel() {
             </div>
           )}
 
-          {!isViewOnly && !profile.name.trim() && (
-            <div className="biz-notice">Give it a business name in the Identity tab before you can save.</div>
+          {!isViewOnly && nameError && (
+            <div className="biz-notice error">Give it a business name in the Identity tab before you can save.</div>
           )}
 
           <ViewModeContext.Provider value={isViewOnly}>
@@ -883,7 +888,7 @@ export default function BusinessIntelPanel() {
               <div className="biz-tabpanel">
                 {activeSection === 'identity' && (
                   <div className="biz-proplist">
-                    <Field label="Business name" value={profile.name} onChange={(v) => setProfile((p) => ({ ...p, name: v }))} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" />
+                    <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" error={nameError ? 'Business name is required.' : undefined} />
                     <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
                     <Field label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
                     <Field label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
@@ -994,7 +999,7 @@ export default function BusinessIntelPanel() {
 
           {!isViewOnly && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-              <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving || !profile.name.trim()}>
+              <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving}>
                 {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save Profile
               </button>
             </div>
@@ -1019,8 +1024,12 @@ export default function BusinessIntelPanel() {
         }
         :global(.biz-input::placeholder) { color: var(--color-text-tertiary); }
         :global(.biz-input:focus) { border-color: var(--color-border-active); box-shadow: 0 0 0 3px var(--color-accent-primary-subtle); }
+        :global(.biz-input.error) { border-color: var(--color-error); background: var(--color-error-bg); }
+        :global(.biz-input.error:focus) { box-shadow: 0 0 0 3px var(--color-error-bg); }
         :global(.biz-textarea) { resize: vertical; min-height: 40px; line-height: 1.5; }
         :global(.biz-hint) { font-size: 11px; color: var(--color-text-secondary); margin-top: 4px; }
+        :global(.biz-field-error) { font-size: 11px; color: var(--color-error); font-weight: 600; margin-top: 4px; }
+        :global(.biz-notice.error) { color: var(--color-error); background: var(--color-error-bg); border-color: var(--color-error); }
         :global(.biz-btn) {
           display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 15px; border-radius: var(--radius-lg, 10px);
           border: 1px solid var(--color-border); background: var(--color-bg-tertiary); color: var(--color-text-primary);
