@@ -269,6 +269,7 @@ const emptyProfile = () => ({
   challenges: { selected: [], other: '' },
   growthNeeds: { selected: [], notes: '' },
   verification: {},
+  registeredBy: '',
   internalNotes: '',
 });
 
@@ -292,6 +293,7 @@ function mergeProfile(saved) {
     challenges: { ...base.challenges, ...(saved.challenges || {}) },
     growthNeeds: { ...base.growthNeeds, ...(saved.growthNeeds || {}) },
     verification: { ...(saved.verification || {}) },
+    registeredBy: saved.registeredBy || '',
     internalNotes: saved.internalNotes || '',
   };
 }
@@ -381,13 +383,13 @@ function VerificationTag({ value }) {
 // A single property row: fixed-width mono label on the left, control on the
 // right, verification badge trailing when the field has a value. Rows share
 // one hairline rhythm instead of each field living in its own boxed tile.
-function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint, error }) {
+function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint, error, required }) {
   const readOnly = useContext(ViewModeContext);
   const hasValue = (value || '').toString().trim().length > 0;
   const errClass = error ? ' error' : '';
   return (
     <div className="biz-row">
-      <label className="biz-row-label">{label}</label>
+      <label className="biz-row-label">{label}{required && !readOnly && <span className="biz-req" aria-hidden="true"> *</span>}</label>
       <div className="biz-row-control">
         {readOnly ? (
           <div className="biz-static">{hasValue ? value : <span className="biz-static-empty">Not recorded</span>}</div>
@@ -460,6 +462,7 @@ export default function BusinessIntelPanel() {
   const [profile, setProfile] = useState(blankDraft());
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState(false);
+  const [registeredByError, setRegisteredByError] = useState(false);
   const [activeSection, setActiveSection] = useState('identity');
 
   // Registry-list filters — country first (just Kenya for now), city narrows
@@ -520,6 +523,7 @@ export default function BusinessIntelPanel() {
     setProfile({ name: activeEntry.name || '', industry: activeEntry.industry || '', location: area, ...merged });
     setActiveSection('identity');
     setNameError(false);
+    setRegisteredByError(false);
   }
 
   // Load the registry — its own roster, unrelated to ACR's `businesses` table.
@@ -559,6 +563,7 @@ export default function BusinessIntelPanel() {
     setDetailMode('edit');
     setView('detail');
     setNameError(false);
+    setRegisteredByError(false);
   };
 
   // Demo mode only — three fleshed-out sample businesses so the registry
@@ -601,8 +606,15 @@ export default function BusinessIntelPanel() {
 
   const handleSaveProfile = async () => {
     const name = profile.name.trim();
-    if (!name) { setNameError(true); setActiveSection('identity'); return; }
+    const registeredBy = profile.registeredBy.trim();
+    if (!name || !registeredBy) {
+      setNameError(!name);
+      setRegisteredByError(!registeredBy);
+      if (!name) setActiveSection('identity');
+      return;
+    }
     setNameError(false);
+    setRegisteredByError(false);
     if (!isDemo && !agencyId) return;
     setSaving(true);
     // location keeps its old "Area, City" display shape (used in the record list
@@ -612,7 +624,7 @@ export default function BusinessIntelPanel() {
     const dataPayload = {
       identity: profile.identity, operations: profile.operations, performance: profile.performance,
       infrastructure: profile.infrastructure, challenges: profile.challenges, growthNeeds: profile.growthNeeds,
-      verification: profile.verification, internalNotes: profile.internalNotes,
+      verification: profile.verification, registeredBy, internalNotes: profile.internalNotes,
     };
     try {
       if (isDemo) {
@@ -620,12 +632,13 @@ export default function BusinessIntelPanel() {
           const created = { ...base, id: crypto.randomUUID(), data: dataPayload, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
           const next = [...entries, created];
           setEntries(next); persistDemoEntries(next);
-          setSelectedId(created.id); setLoadedForId(created.id);
           toast.success('Business registered', `"${name}" added to the registry.`);
+          backToRegistry();
         } else {
           const next = entries.map((e) => (e.id === selectedId ? { ...e, ...base, data: dataPayload, updated_at: new Date().toISOString() } : e));
           setEntries(next); persistDemoEntries(next);
           toast.success('Profile saved', `Growth profile for "${name}" saved locally.`);
+          backToRegistry();
         }
       } else {
         const sb = createClient();
@@ -634,8 +647,9 @@ export default function BusinessIntelPanel() {
             .insert({ ...base, data: dataPayload, created_by: isUuid(userProfile?.id) ? userProfile.id : null })
             .select('*').maybeSingle();
           if (error) throw error;
-          if (data) { setEntries((prev) => [...prev, data]); setSelectedId(data.id); setLoadedForId(data.id); }
+          if (data) setEntries((prev) => [...prev, data]);
           toast.success('Business registered', `"${name}" added to the registry.`);
+          backToRegistry();
         } else {
           const { data, error } = await sb.from('toig_business_registry')
             .update({ ...base, data: dataPayload, updated_by: isUuid(userProfile?.id) ? userProfile.id : null })
@@ -643,6 +657,7 @@ export default function BusinessIntelPanel() {
           if (error) throw error;
           if (data) setEntries((prev) => prev.map((e) => (e.id === data.id ? data : e)));
           toast.success('Profile saved', `Growth profile for "${name}" synced with the team.`);
+          backToRegistry();
         }
       }
     } catch (err) {
@@ -794,6 +809,7 @@ export default function BusinessIntelPanel() {
                         <div className="biz-record-meta">
                           <span>{entry.industry || 'No industry set'}</span>
                           {entry.location && <><span>·</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MapPin size={10} />{entry.location}</span></>}
+                          {entry.data?.registeredBy && <><span>·</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><User size={10} />{entry.data.registeredBy}</span></>}
                         </div>
                       </div>
                       <div className="biz-record-needs">
@@ -844,8 +860,14 @@ export default function BusinessIntelPanel() {
             </div>
           )}
 
-          {!isViewOnly && nameError && (
-            <div className="biz-notice error">Give it a business name in the Identity tab before you can save.</div>
+          {!isViewOnly && (nameError || registeredByError) && (
+            <div className="biz-notice error">
+              {nameError && registeredByError
+                ? 'Add a business name (Identity tab) and who registered it before you can save.'
+                : nameError
+                  ? 'Give it a business name in the Identity tab before you can save.'
+                  : 'Add who registered this business before you can save.'}
+            </div>
           )}
 
           <ViewModeContext.Provider value={isViewOnly}>
@@ -856,6 +878,7 @@ export default function BusinessIntelPanel() {
               <div className="biz-rail-name">{profile.name || 'New business'}</div>
               <div className="biz-rail-meta">{profile.industry || 'No industry set'}</div>
               {profile.location && <div className="biz-rail-meta"><MapPin size={11} /> {profile.location}</div>}
+              {profile.registeredBy.trim() && <div className="biz-rail-meta"><User size={11} /> Registered by {profile.registeredBy.trim()}</div>}
               <div className="biz-rail-ring"><CompletenessRing pct={completeness.pct} /></div>
               <div className="mono" style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'center' }}>{completeness.filled} / {completeness.total} fields</div>
               {lastUpdatedLabel && <div style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', textAlign: 'center', marginTop: 8 }}>Updated {lastUpdatedLabel}</div>}
@@ -888,7 +911,7 @@ export default function BusinessIntelPanel() {
               <div className="biz-tabpanel">
                 {activeSection === 'identity' && (
                   <div className="biz-proplist">
-                    <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" error={nameError ? 'Business name is required.' : undefined} />
+                    <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" required error={nameError ? 'Business name is required.' : undefined} />
                     <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
                     <Field label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
                     <Field label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
@@ -992,6 +1015,7 @@ export default function BusinessIntelPanel() {
 
           <div className="biz-panel" style={{ marginTop: 12 }}>
             <div className="biz-proplist">
+              <Field label="Registered by" required value={profile.registeredBy} onChange={(v) => { setProfile((p) => ({ ...p, registeredBy: v })); if (registeredByError) setRegisteredByError(false); }} placeholder="Name of the person who registered this business" error={registeredByError ? 'Registered by is required.' : undefined} />
               <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="Anything else worth recording — not shared with the business (TOIG team only)" />
             </div>
           </div>
@@ -1028,6 +1052,7 @@ export default function BusinessIntelPanel() {
         :global(.biz-input.error:focus) { box-shadow: 0 0 0 3px var(--color-error-bg); }
         :global(.biz-textarea) { resize: vertical; min-height: 40px; line-height: 1.5; }
         :global(.biz-hint) { font-size: 11px; color: var(--color-text-secondary); margin-top: 4px; }
+        :global(.biz-req) { color: var(--color-error); font-weight: 700; }
         :global(.biz-field-error) { font-size: 11px; color: var(--color-error); font-weight: 600; margin-top: 4px; }
         :global(.biz-notice.error) { color: var(--color-error); background: var(--color-error-bg); border-color: var(--color-error); }
         :global(.biz-btn) {
