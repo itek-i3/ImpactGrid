@@ -1,20 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState, useContext, createContext } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
+import ImgOrFallback from '@/components/ui/ImgOrFallback';
 import {
   Sparkles, Lock, Save, RefreshCw, ChevronLeft,
   Plus, Trash2, User, ShoppingBag, Wrench, DollarSign, AlertTriangle,
-  Rocket, CheckCircle2, Circle, Info, MapPin, TrendingUp, Eye, Pencil,
+  Rocket, CheckCircle2, Circle, Info, MapPin, TrendingUp, Eye, Pencil, ChevronRight, Users, X,
 } from 'lucide-react';
-
-// Whether the detail page is being shown read-only ('view') or editable
-// ('edit') — read by Field/InfraRow so every field call site doesn't need
-// its own readOnly prop.
-const ViewModeContext = createContext(false);
 
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -70,6 +66,7 @@ function buildSampleEntries() {
           'infrastructure.operations': 'observed', 'infrastructure.finance': 'observed', 'infrastructure.marketing': 'observed', 'infrastructure.sales': 'observed',
           'infrastructure.hr': 'observed', 'infrastructure.governance': 'owner_reported', 'infrastructure.customerMgmt': 'observed', 'infrastructure.recordKeeping': 'observed',
         },
+        registeredBy: 'Amina Otieno',
         internalNotes: 'Strong growth candidate — disciplined owner, clean cash flow, just needs equipment financing and a lightweight digital record-keeping tool.',
       },
     }),
@@ -119,6 +116,7 @@ function buildSampleEntries() {
           'infrastructure.operations': 'observed', 'infrastructure.finance': 'observed', 'infrastructure.sales': 'system_verified', 'infrastructure.technology': 'observed',
           'infrastructure.hr': 'document_verified', 'infrastructure.governance': 'owner_reported', 'infrastructure.recordKeeping': 'observed',
         },
+        registeredBy: 'Amina Otieno',
         internalNotes: 'Two-branch operation with real POS data — good candidate for a system-verified performance baseline once we get direct POS export access.',
       },
     }),
@@ -167,6 +165,7 @@ function buildSampleEntries() {
           'performance.growthTrend': 'owner_reported', 'performance.financialChallenges': 'owner_reported',
           'infrastructure.operations': 'owner_reported', 'infrastructure.sales': 'owner_reported', 'infrastructure.hr': 'owner_reported', 'infrastructure.governance': 'owner_reported',
         },
+        registeredBy: 'Peter Kamau',
         internalNotes: 'Not yet site-visited — everything here is from an intake call. Flagging for a field visit to verify yields and firm up the finance picture.',
       },
     }),
@@ -253,6 +252,21 @@ const SECTIONS = [
   { key: 'growth', num: '06', label: 'Growth Needs', icon: Rocket },
 ];
 
+// The edit / new-business form is a stepped wizard. It opens on Registration (who
+// is registering the business + internal notes), then walks the six profile
+// sections; the last step is where it is submitted. The read-only view is the
+// report (BusinessReport), not this form.
+const STEPS = [
+  { key: 'registration', icon: Info, label: 'Registration', title: 'Registration', desc: 'Who is registering this business, plus any internal notes.' },
+  { key: 'identity', icon: User, label: 'Identity', title: 'Business identity', desc: 'Who the business is, who owns it and how to reach them.' },
+  { key: 'operations', icon: ShoppingBag, label: 'Operations', title: 'Operations', desc: 'What the business sells and how it runs day to day.' },
+  { key: 'performance', icon: DollarSign, label: 'Performance', title: 'Performance', desc: 'A high-level read on revenue, customers and growth.' },
+  { key: 'infrastructure', icon: Wrench, label: 'Infrastructure', title: 'Infrastructure', desc: 'How developed each business function is today, from none to established.' },
+  { key: 'challenges', icon: AlertTriangle, label: 'Challenges', title: 'Challenges', desc: 'Select everything that is holding the business back.' },
+  { key: 'growth', icon: Rocket, label: 'Growth needs', title: 'Growth needs', desc: 'Where TOIG support could help this business most.' },
+];
+const STEP_INDEX = Object.fromEntries(STEPS.map((st, i) => [st.key, i]));
+
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
 // are stored as their own top-level registry columns, not inside `data`.
@@ -298,6 +312,17 @@ function mergeProfile(saved) {
   };
 }
 
+// "Registered by" is free text, so people are grouped ignoring case and spacing
+// ("grace  w" and "Grace W" are one person). Records that predate the field fall
+// back to whoever created them (resolved server-side into `creators`).
+const normName = (n) => (n || '').trim().replace(/\s+/g, ' ');
+const nameKey = (n) => normName(n).toLowerCase();
+const NO_REGISTRAR = '__none__';
+// A name as separate lowercase words, for matching a typed "Registered by" to a team
+// member when it isn't spelled exactly like their profile ("Grace", "grace w.").
+const nameTokens = (n) => nameKey(n).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+const registrarNameOf = (entry, creators) => normName(entry?.data?.registeredBy) || normName(creators?.[entry?.created_by]);
+
 const filledCount = (obj) => Object.values(obj).filter((v) => (v || '').toString().trim()).length;
 
 // entry = { name, industry, location, data } — either a registry row or the
@@ -314,13 +339,24 @@ function profileCompleteness(entry) {
 function Avatar({ name, size = 38 }) {
   const tint = avatarTint(name);
   return (
-    <div style={{
-      width: size, height: size, borderRadius: Math.round(size * 0.28), flexShrink: 0,
-      background: `${tint}22`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    <div className="biz-avatar" style={{
+      '--tint': tint, width: size, height: size, borderRadius: Math.round(size * 0.28), flexShrink: 0,
+      background: `${tint}22`, color: 'var(--person-ink, var(--tint))', display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: Math.round(size * 0.42), fontWeight: 700, fontFamily: 'var(--font-display)',
     }}>
       {(name || '?').charAt(0).toUpperCase()}
     </div>
+  );
+}
+
+// A person's profile picture, or a tinted initial when there's no picture (or it
+// fails to load). Round, unlike Avatar which is the rounded-square used for businesses.
+function PersonAvatar({ name, url, size = 34 }) {
+  const tint = avatarTint(name);
+  return (
+    <span className="biz-person" style={{ '--tint': tint, width: size, height: size, background: `${tint}22`, color: 'var(--person-ink, var(--tint))', fontSize: Math.round(size * 0.44) }}>
+      <ImgOrFallback src={url} alt="" fallback={(name || '?').charAt(0).toUpperCase()} />
+    </span>
   );
 }
 
@@ -383,17 +419,14 @@ function VerificationTag({ value }) {
 // A single property row: fixed-width mono label on the left, control on the
 // right, verification badge trailing when the field has a value. Rows share
 // one hairline rhythm instead of each field living in its own boxed tile.
-function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint, error, required }) {
-  const readOnly = useContext(ViewModeContext);
+function Field({ label, value, onChange, verification, onVerify, type = 'text', options, placeholder, rows, hint, error, required, half }) {
   const hasValue = (value || '').toString().trim().length > 0;
   const errClass = error ? ' error' : '';
   return (
-    <div className="biz-row">
-      <label className="biz-row-label">{label}{required && !readOnly && <span className="biz-req" aria-hidden="true"> *</span>}</label>
+    <div className={`biz-row${half ? ' biz-half' : ''}`}>
+      <label className="biz-row-label">{label}{required && <span className="biz-req" aria-hidden="true"> *</span>}</label>
       <div className="biz-row-control">
-        {readOnly ? (
-          <div className="biz-static">{hasValue ? value : <span className="biz-static-empty">Not recorded</span>}</div>
-        ) : type === 'select' ? (
+        {type === 'select' ? (
           <select className={`biz-input${errClass}`} value={value} onChange={(e) => onChange(e.target.value)}>
             <option value="">Select…</option>
             {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -403,41 +436,390 @@ function Field({ label, value, onChange, verification, onVerify, type = 'text', 
         ) : (
           <input className={`biz-input${errClass}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-invalid={!!error} />
         )}
-        {error ? <div className="biz-field-error">{error}</div> : (hint && !readOnly && <div className="biz-hint">{hint}</div>)}
+        {error ? <div className="biz-field-error">{error}</div> : (hint && <div className="biz-hint">{hint}</div>)}
       </div>
-      {onVerify && hasValue && (readOnly ? <VerificationTag value={verification} /> : <VerificationBadge value={verification} onChange={onVerify} />)}
+      {onVerify && hasValue && <VerificationBadge value={verification} onChange={onVerify} />}
     </div>
   );
 }
 
-function InfraRow({ area, value, onChange, verification, onVerify }) {
-  const readOnly = useContext(ViewModeContext);
+function InfraRow({ area, value, onChange, verification, onVerify, half }) {
   const v = value || { level: '', note: '' };
-  const levelLabel = INFRA_LEVELS.find((lv) => lv.key === v.level)?.label;
   return (
-    <div className="biz-row">
+    <div className={`biz-row${half ? ' biz-half' : ''}`}>
       <label className="biz-row-label">{area.label}</label>
       <div className="biz-row-control">
-        {readOnly ? (
-          <div className="biz-static">
-            {levelLabel || <span className="biz-static-empty">Not recorded</span>}
-            {v.note ? ` — ${v.note}` : ''}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {INFRA_LEVELS.map((lv) => (
+            <button key={lv.key} type="button" onClick={() => onChange({ ...v, level: lv.key })} className={`biz-pill ${v.level === lv.key ? 'active' : ''}`}>
+              {lv.label}
+            </button>
+          ))}
+        </div>
+        <input className="biz-input" style={{ marginTop: 8 }} placeholder="What do they use, if anything? (optional)" value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
+      </div>
+      {v.level && <VerificationBadge value={verification} onChange={onVerify} />}
+    </div>
+  );
+}
+
+// Numbered progress indicator: done steps are filled, the current step is ringed,
+// upcoming steps are grey, and the line fills up to the current step. Every dot is
+// clickable so an existing profile can be edited without paging through it.
+function Stepper({ steps, current, onGo }) {
+  return (
+    <ol className="biz-stepper" aria-label="Registration progress">
+      {steps.map((st, i) => {
+        const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+        return (
+          <li key={st.key} className={`biz-step ${state}`} aria-current={i === current ? 'step' : undefined}>
+            <button type="button" className="biz-step-dot" onClick={() => onGo(i)} aria-label={`Step ${i + 1} of ${steps.length}: ${st.label}`}>{i + 1}</button>
+            <span className="biz-step-label">{st.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// ── Read-only report ─────────────────────────────────────────────────────────
+// The view page is a report, not a form: only what has actually been recorded is
+// shown (empty fields and empty sections disappear), grouped into numbered
+// sections, with short facts in a grid and longer answers as paragraphs.
+const has = (v) => (v ?? '').toString().trim().length > 0;
+const pick = (rows) => rows.filter((r) => has(r[1]));
+
+// "Owner-Reported" is the default and stated once in the footer; only a level
+// that says something more (observed / document / system) is called out inline.
+function ReportVerify({ value }) {
+  if (!value || value === 'owner_reported') return null;
+  return <VerificationTag value={value} />;
+}
+
+function ReportGrid({ rows, verification }) {
+  if (!rows.length) return null;
+  return (
+    <div className="rpt-grid">
+      {rows.map(([label, value, vKey]) => (
+        <div key={label} className="rpt-fact">
+          <div className="rpt-label">{label}</div>
+          <div className="rpt-value">{value}<ReportVerify value={vKey && verification[vKey]} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReportNotes({ rows, verification }) {
+  if (!rows.length) return null;
+  return (
+    <div className="rpt-notes">
+      {rows.map(([label, value, vKey]) => (
+        <div key={label} className="rpt-note">
+          <div className="rpt-label">{label}<ReportVerify value={vKey && verification[vKey]} /></div>
+          <p className="rpt-text">{value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
+  const vf = profile.verification || {};
+  const id = profile.identity, ops = profile.operations, perf = profile.performance;
+  const sec = (key) => SECTIONS.find((x) => x.key === key);
+
+  const identityFacts = pick([
+    ['Owner / founder', id.ownerName, 'identity.ownerName'],
+    ['Owner phone', id.ownerPhone, 'identity.ownerPhone'],
+    ['Owner email', id.ownerEmail, 'identity.ownerEmail'],
+    ['Country', id.country, 'identity.country'],
+    ['City', id.city, 'identity.city'],
+    ['Area / Neighbourhood', profile.location, 'identity.location'],
+    ['Industry', profile.industry, 'identity.industry'],
+    ['Year established', id.yearEstablished, 'identity.yearEstablished'],
+    ['Registration status', id.registrationStatus, 'identity.registrationStatus'],
+    ['Business phone', id.businessPhone, 'identity.businessPhone'],
+    ['Business email', id.businessEmail, 'identity.businessEmail'],
+  ]);
+  const opsFacts = pick([
+    ['Employees', ops.employeeCount, 'operations.employeeCount'],
+    ['Locations', ops.locationCount, 'operations.locationCount'],
+    ['Operating model', ops.operatingModel, 'operations.operatingModel'],
+  ]);
+  const opsNotes = pick([
+    ['Products & services', ops.productsServices, 'operations.productsServices'],
+    ['Suppliers', ops.suppliers, 'operations.suppliers'],
+    ['Customer segments', ops.customerSegments, 'operations.customerSegments'],
+    ['Current tech & systems', ops.currentSystems, 'operations.currentSystems'],
+  ]);
+  const perfFacts = pick([
+    ['Revenue range', perf.revenueRange, 'performance.revenueRange'],
+    ['Customer volume', perf.customerVolume, 'performance.customerVolume'],
+    ['Growth trend', perf.growthTrend, 'performance.growthTrend'],
+  ]);
+  const perfNotes = pick([
+    ['Major revenue streams', perf.revenueStreams, 'performance.revenueStreams'],
+    ['Major operating expenses', perf.operatingExpenses, 'performance.operatingExpenses'],
+    ['Financial challenges', perf.financialChallenges, 'performance.financialChallenges'],
+  ]);
+  const infra = INFRA_AREAS
+    .map((a) => ({ area: a, level: profile.infrastructure[a.key]?.level || '', note: profile.infrastructure[a.key]?.note || '', vKey: `infrastructure.${a.key}` }))
+    .filter((x) => x.level || has(x.note));
+  const challenges = profile.challenges.selected;
+  const challengeNotes = pick([['Details', profile.challenges.other]]);
+  const needs = GROWTH_NEEDS.filter((n) => profile.growthNeeds.selected.includes(n.key));
+  const growthNotes = pick([['Growth notes', profile.growthNeeds.notes]]);
+  const regFacts = pick([['Registered by', profile.registeredBy]]);
+  const regNotes = pick([['Internal notes (TOIG team only)', profile.internalNotes]]);
+
+  // Sections that have something to show, in order; numbered after the fact so
+  // skipping an empty one doesn't leave a gap in the numbering.
+  const sections = [];
+  if (identityFacts.length) sections.push({ meta: sec('identity'), body: <ReportGrid rows={identityFacts} verification={vf} /> });
+  if (opsFacts.length || opsNotes.length) sections.push({ meta: sec('operations'), body: <><ReportGrid rows={opsFacts} verification={vf} /><ReportNotes rows={opsNotes} verification={vf} /></> });
+  if (perfFacts.length || perfNotes.length) sections.push({ meta: sec('performance'), body: <><ReportGrid rows={perfFacts} verification={vf} /><ReportNotes rows={perfNotes} verification={vf} /></> });
+  if (infra.length) {
+    sections.push({
+      meta: sec('infrastructure'),
+      body: (
+        <div className="rpt-infra">
+          {infra.map(({ area, level, note, vKey }) => {
+            const idx = INFRA_LEVELS.findIndex((l) => l.key === level);
+            return (
+              <div key={area.key} className="rpt-infra-row">
+                <div className="rpt-infra-name">{area.label}</div>
+                <div className="rpt-infra-level">
+                  {level && (
+                    <>
+                      <span className="rpt-meter" aria-hidden="true">{[1, 2, 3].map((n) => <i key={n} className={n <= idx ? 'on' : ''} />)}</span>
+                      <span>{INFRA_LEVELS[idx]?.label}</span>
+                    </>
+                  )}
+                </div>
+                <div className="rpt-infra-note">{note}<ReportVerify value={vf[vKey]} /></div>
+              </div>
+            );
+          })}
+        </div>
+      ),
+    });
+  }
+  if (challenges.length || challengeNotes.length) {
+    sections.push({
+      meta: sec('challenges'),
+      body: (
+        <>
+          {challenges.length > 0 && <div className="rpt-tags">{challenges.map((c) => <span key={c} className="rpt-tag">{c}</span>)}</div>}
+          <ReportNotes rows={challengeNotes} verification={vf} />
+        </>
+      ),
+    });
+  }
+  if (needs.length || growthNotes.length) {
+    sections.push({
+      meta: sec('growth'),
+      body: (
+        <>
+          {needs.length > 0 && (
+            <div className="rpt-needs">
+              {needs.map((n) => (
+                <div key={n.key} className="rpt-need">
+                  <div className="rpt-need-name">{n.name}</div>
+                  <div className="rpt-need-desc">{n.desc}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <ReportNotes rows={growthNotes} verification={vf} />
+        </>
+      ),
+    });
+  }
+  if (regFacts.length || regNotes.length) {
+    sections.push({ meta: { label: 'Registration', icon: Info }, body: <><ReportGrid rows={regFacts} verification={vf} /><ReportNotes rows={regNotes} verification={vf} /></> });
+  }
+
+  const snapshot = pick([
+    ['Revenue range', perf.revenueRange],
+    ['Growth trend', perf.growthTrend],
+    ['Employees', ops.employeeCount],
+    ['Customer volume', perf.customerVolume],
+  ]);
+  const locationLabel = [profile.location.trim(), id.city].filter(Boolean).join(', ');
+
+  return (
+    <div className="biz-panel rpt">
+      <div className="rpt-head">
+        <Avatar name={profile.name || '?'} size={60} />
+        <div className="rpt-head-main">
+          <div className="biz-eyebrow">Business profile</div>
+          <h2 className="rpt-title">{profile.name || 'Unnamed business'}<ReportVerify value={vf['identity.businessName']} /></h2>
+          {(has(profile.industry) || locationLabel) && (
+            <div className="rpt-sub">
+              {has(profile.industry) && <span>{profile.industry}</span>}
+              {has(profile.industry) && locationLabel && <span aria-hidden="true">·</span>}
+              {locationLabel && <span className="rpt-loc"><MapPin size={13} /> {locationLabel}</span>}
+            </div>
+          )}
+          <div className="rpt-meta">
+            {has(profile.registeredBy) && <span><PersonAvatar name={profile.registeredBy.trim()} url={registrarUrl} size={20} /> Registered by <b>{profile.registeredBy.trim()}</b></span>}
+            {updatedLabel && <span>Updated {updatedLabel}</span>}
           </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {INFRA_LEVELS.map((lv) => (
-                <button key={lv.key} type="button" onClick={() => onChange({ ...v, level: lv.key })} className={`biz-pill ${v.level === lv.key ? 'active' : ''}`}>
-                  {lv.label}
+        </div>
+        <div className="rpt-head-ring">
+          <CompletenessRing pct={completeness.pct} size={68} />
+          <div className="mono" style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)' }}>{completeness.filled} / {completeness.total} fields</div>
+        </div>
+      </div>
+
+      {snapshot.length >= 2 && (
+        <div className="rpt-snap">
+          {snapshot.map(([label, value]) => (
+            <div key={label} className="rpt-snap-tile">
+              <div className="rpt-label">{label}</div>
+              <div className="rpt-snap-value">{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sections.length === 0 ? (
+        <div className="rpt-empty">No further details have been recorded for this business yet. Use Edit to add them.</div>
+      ) : (
+        sections.map((sc, i) => (
+          <section key={sc.meta.label} className="rpt-section">
+            <div className="rpt-section-head">
+              <span className="rpt-section-icon"><sc.meta.icon size={17} /></span>
+              <h3 className="rpt-section-title">{sc.meta.label}</h3>
+              <span className="rpt-num mono">{String(i + 1).padStart(2, '0')}</span>
+            </div>
+            {sc.body}
+          </section>
+        ))
+      )}
+
+      {sections.length > 0 && (
+        <div className="rpt-foot">
+          <Info size={11} /> Values are owner-reported unless marked:
+          {VERIFICATION.slice(1).map((v) => (
+            <span key={v.key} className="rpt-key" style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)` }}>{v.label}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── "Registered by" page ─────────────────────────────────────────────────────
+// A ranked list of everyone in the agency plus anyone whose name was typed into
+// "Registered by": the person with the most registered businesses is #1 (ties share
+// a rank), and people who haven't registered any stay in the list with a 0.
+const ROLE_LABEL = { superadmin: 'Admin', manager: 'Manager' }; // plain members carry no tag
+
+function RegistrantBoard({ index, total, activeId, onBack, onFilter, onOpen }) {
+  const { list, none } = index;
+  const registered = list.filter((p) => p.businesses.length > 0).length;
+  // The person whose businesses are shown in the prompt (null = closed).
+  const [listFor, setListFor] = useState(null);
+  const listPerson = listFor === null ? null : (listFor === NO_REGISTRAR ? none : list.find((p) => p.id === listFor) || null);
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    if (!listPerson) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setListFor(null); };
+    document.addEventListener('keydown', onKey);
+    if (closeRef.current) closeRef.current.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [listPerson]);
+
+  const renderRow = (p, unranked) => {
+    const n = p.businesses.length;
+    const cls = ['biz-rank-row', p.rank === 1 ? 'first' : '', n === 0 ? 'zero' : '', activeId === p.id ? 'active' : ''].filter(Boolean).join(' ');
+    return (
+      <div key={p.id} className={cls}>
+        <div className={`biz-rank-num${p.rank && p.rank <= 3 ? ` r${p.rank}` : ''}`} title={p.rank ? `Rank ${p.rank}` : 'Not ranked'}>{unranked || !p.rank ? '—' : p.rank}</div>
+        <PersonAvatar name={p.id === NO_REGISTRAR ? '?' : p.name} url={p.avatarUrl} size={46} />
+        <div className="biz-rank-main">
+          <div className="biz-rank-name">
+            <span>{p.name}</span>
+            {p.onTeam && ROLE_LABEL[p.role] && <span className="biz-rank-tag">{ROLE_LABEL[p.role]}</span>}
+          </div>
+          <div className="biz-rank-chips">
+            {n === 0
+              ? <span className="biz-reg-more">No businesses registered yet</span>
+              : p.businesses.map((b) => (
+                <button key={b.id} type="button" className="biz-reg-chip" title={`Open ${b.name}`} onClick={() => onOpen(b.id)}>{b.name}</button>
+              ))}
+          </div>
+        </div>
+        <div className="biz-rank-total">
+          <span className="biz-reg-count">{n}</span>
+          <span className="biz-reg-unit">{n === 1 ? 'business' : 'businesses'}</span>
+        </div>
+        <button type="button" className="biz-btn ghost sm" disabled={n === 0} onClick={() => setListFor(p.id)}>View businesses</button>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <button className="biz-back" onClick={onBack}><ChevronLeft size={15} /> Registry</button>
+      </div>
+      <div className="biz-panel biz-rank">
+        <div className="biz-rank-head">
+          <div className="biz-eyebrow"><Users size={11} /> Data Registry</div>
+          <h2 className="biz-rank-title">Registered by</h2>
+          <div className="biz-rank-sub">
+            Everyone in ACR, ranked by how many businesses they have registered — the most is #1.
+            {' '}{registered} of {list.length} {list.length === 1 ? 'person has' : 'people have'} registered at least one · {total} {total === 1 ? 'business' : 'businesses'} in total.
+          </div>
+        </div>
+        <div className="biz-rank-list">
+          {list.map((p) => renderRow(p, false))}
+          {none.businesses.length > 0 && renderRow({ ...none, rank: null }, true)}
+        </div>
+      </div>
+
+      {listPerson && (
+        <div className="ig-scrim biz-prompt-scrim" onClick={() => setListFor(null)}>
+          <div
+            className="ig-dialog biz-prompt" role="dialog" aria-modal="true"
+            aria-label={listPerson.id === NO_REGISTRAR ? 'Businesses with no recorded registrant' : `Businesses registered by ${listPerson.name}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="biz-prompt-head">
+              <PersonAvatar name={listPerson.id === NO_REGISTRAR ? '?' : listPerson.name} url={listPerson.avatarUrl} size={44} />
+              <div className="biz-prompt-title">
+                <div className="biz-prompt-name">{listPerson.id === NO_REGISTRAR ? 'No recorded registrant' : listPerson.name}</div>
+                <div className="biz-prompt-sub">
+                  {listPerson.businesses.length} {listPerson.businesses.length === 1 ? 'business' : 'businesses'} registered
+                </div>
+              </div>
+              <button ref={closeRef} type="button" className="ig-dialog-close biz-prompt-close" aria-label="Close" onClick={() => setListFor(null)}><X size={16} /></button>
+            </div>
+            <div className="biz-prompt-list">
+              {listPerson.businesses.map((b) => (
+                <button key={b.id} type="button" className="biz-prompt-item" onClick={() => onOpen(b.id)}>
+                  <Avatar name={b.name} size={38} />
+                  <span className="biz-prompt-item-main">
+                    <span className="biz-prompt-item-name">{b.name}</span>
+                    <span className="biz-prompt-item-meta">{[b.industry || 'No industry set', b.location].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <span className="biz-prompt-item-pct mono">{profileCompleteness(b).pct}%</span>
+                  <ChevronRight size={15} />
                 </button>
               ))}
             </div>
-            <input className="biz-input" style={{ marginTop: 8 }} placeholder="What do they use, if anything? (optional)" value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
-          </>
-        )}
-      </div>
-      {v.level && (readOnly ? <VerificationTag value={verification} /> : <VerificationBadge value={verification} onChange={onVerify} />)}
-    </div>
+            <div className="biz-prompt-foot">
+              <button type="button" className="biz-btn ghost sm" onClick={() => onFilter(listPerson.id)}>Filter the registry list</button>
+              <button type="button" className="biz-btn sm" onClick={() => setListFor(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -463,17 +845,105 @@ export default function BusinessIntelPanel() {
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState(false);
   const [registeredByError, setRegisteredByError] = useState(false);
-  const [activeSection, setActiveSection] = useState('identity');
+  const [activeSection, setActiveSection] = useState('registration');
+  const wizardRef = useRef(null);
+  // Who created each record, { userId: name } — used to fill "Registered by" on
+  // records made before that field existed. Fetched only when some record needs it.
+  const [creators, setCreators] = useState({});
+  const [creatorFilledFor, setCreatorFilledFor] = useState('');
 
   // Registry-list filters — country first (just Kenya for now), city narrows
   // within it. Both apply to the list, the insight cards, and the count below.
   const [filterCountry, setFilterCountry] = useState('');
   const [filterCity, setFilterCity] = useState('');
+  const [filterRegistrar, setFilterRegistrar] = useState('');
+  // Where the detail page was opened from, so Back returns there (the list or the
+  // "Registered by" page).
+  const [detailFrom, setDetailFrom] = useState('registry');
+  // Agency members: the people the "Registered by" page ranks (including anyone with
+  // none registered yet) and their profile pictures.
+  const [members, setMembers] = useState([]);
+
+  // Everyone who can appear as a registrant: each agency member, plus anyone whose
+  // typed name matches no member. A typed name is matched to a member by name or email
+  // (ignoring case / spacing), and records that predate "Registered by" fall back to
+  // their creator. Ranked by businesses registered, ties sharing a rank.
+  const registrantIndex = useMemo(() => {
+    const idByKey = new Map();
+    const people = new Map();
+    const memberWords = [];
+    members.forEach((m) => {
+      const name = normName(m.full_name) || normName(m.email);
+      if (!name) return;
+      const id = `member:${m.id}`;
+      people.set(id, { id, name, role: m.role || '', avatarUrl: m.avatar_url || '', onTeam: true, spellings: null, businesses: [] });
+      [m.full_name, m.email].forEach((n) => { const k = nameKey(n); if (k && !idByKey.has(k)) idByKey.set(k, id); });
+      memberWords.push({ id, words: nameTokens(m.full_name) });
+    });
+    // A typed name that isn't spelled exactly like a profile still belongs to a member when it
+    // points at exactly one of them: every word typed starts a word of that member's name
+    // ("Grace", "grace w.", "Wanjiru Grace"). Two people who both fit stay unmatched.
+    const resolve = (name) => {
+      const key = nameKey(name);
+      let id = idByKey.get(key);
+      if (id) return id;
+      const typed = nameTokens(name);
+      if (typed.length === 0 || !typed.some((t) => t.length >= 3)) return null;
+      const hits = memberWords.filter(({ words }) => typed.every((t) => words.some((w) => w.startsWith(t))));
+      if (hits.length !== 1) return null;
+      id = hits[0].id;
+      idByKey.set(key, id);
+      return id;
+    };
+    const none = { id: NO_REGISTRAR, name: 'Not recorded', role: '', avatarUrl: '', onTeam: false, spellings: null, businesses: [] };
+    const personOfEntry = new Map();
+    entries.forEach((e) => {
+      const typed = normName(e.data?.registeredBy);
+      // A record that predates "Registered by" belongs to whoever created it — linked
+      // straight to that member by user id, so it doesn't depend on how names are spelled.
+      const creatorId = `member:${e.created_by}`;
+      if (!typed && e.created_by && people.has(creatorId)) {
+        people.get(creatorId).businesses.push(e);
+        personOfEntry.set(e.id, creatorId);
+        return;
+      }
+      const name = typed || normName(creators[e.created_by]);
+      if (!name) { none.businesses.push(e); personOfEntry.set(e.id, NO_REGISTRAR); return; }
+      let id = resolve(name);
+      if (!id) {
+        const key = nameKey(name);
+        id = `name:${key}`;
+        idByKey.set(key, id);
+        people.set(id, { id, name, role: '', avatarUrl: '', onTeam: false, spellings: new Map(), businesses: [] });
+      }
+      const person = people.get(id);
+      if (person.spellings) person.spellings.set(name, (person.spellings.get(name) || 0) + 1);
+      person.businesses.push(e);
+      personOfEntry.set(e.id, id);
+    });
+    const list = [...people.values()]
+      .map((p) => ({ ...p, name: p.spellings ? [...p.spellings.entries()].sort((a, b) => b[1] - a[1])[0][0] : p.name }))
+      .sort((a, b) => b.businesses.length - a.businesses.length || a.name.localeCompare(b.name));
+    list.forEach((p) => { p.rank = p.businesses.length === 0 ? null : list.findIndex((q) => q.businesses.length === p.businesses.length) + 1; });
+    const byId = new Map(list.map((p) => [p.id, p]));
+    byId.set(NO_REGISTRAR, { ...none, rank: null });
+    return {
+      list, none, byId,
+      personIdOf: (e) => personOfEntry.get(e.id) || NO_REGISTRAR,
+      // The person a record belongs to, for its name / picture wherever it's shown.
+      nameOfEntry: (e) => (byId.get(personOfEntry.get(e.id))?.name && personOfEntry.get(e.id) !== NO_REGISTRAR ? byId.get(personOfEntry.get(e.id)).name : ''),
+      avatarOfEntry: (e) => byId.get(personOfEntry.get(e.id))?.avatarUrl || '',
+      avatarOfName: (name) => { const id = resolve(name); return (id && byId.get(id)?.avatarUrl) || ''; },
+    };
+  }, [entries, creators, members]);
 
   const filteredEntries = useMemo(() => entries.filter((e) =>
     (!filterCountry || effectiveCountry(e) === filterCountry) &&
-    (!filterCity || effectiveCity(e) === filterCity)
-  ), [entries, filterCountry, filterCity]);
+    (!filterCity || effectiveCity(e) === filterCity) &&
+    (!filterRegistrar || registrantIndex.personIdOf(e) === filterRegistrar)
+  ), [entries, filterCountry, filterCity, filterRegistrar, registrantIndex]);
+  const selectedRegistrar = filterRegistrar ? registrantIndex.byId.get(filterRegistrar) || null : null;
+  const topRegistrants = registrantIndex.list.filter((p) => p.businesses.length > 0).slice(0, 3);
 
   const activeEntry = useMemo(() => entries.find((e) => e.id === selectedId), [entries, selectedId]);
 
@@ -521,10 +991,41 @@ export default function BusinessIntelPanel() {
       ? activeEntry.location.slice(0, -citySuffix.length)
       : (activeEntry.location || '');
     setProfile({ name: activeEntry.name || '', industry: activeEntry.industry || '', location: area, ...merged });
-    setActiveSection('identity');
+    setActiveSection('registration');
     setNameError(false);
     setRegisteredByError(false);
   }
+
+  // Records made before "Registered by" existed have no name of their own — fill it
+  // in from whoever created the record, once per opened record (so clearing the field
+  // afterwards sticks). Adjusted during render, like the buffer reset above. It only
+  // touches the edit buffer; nothing is written until the record is saved.
+  const creatorName = activeEntry?.created_by ? (creators[activeEntry.created_by] || '') : '';
+  if (activeEntry && loadedForId === selectedId && creatorName && creatorFilledFor !== selectedId) {
+    setCreatorFilledFor(selectedId);
+    if (!profile.registeredBy.trim()) setProfile((p) => (p.registeredBy.trim() ? p : { ...p, registeredBy: creatorName }));
+  }
+
+  const needsCreators = useMemo(() => entries.some((e) => e.created_by && !(e.data?.registeredBy || '').trim()), [entries]);
+  useEffect(() => {
+    if (isDemo || !agencyId || !needsCreators) return;
+    let cancelled = false;
+    fetch(`/os/api/agencies/${agencyId}/registry-creators`).then((r) => r.json())
+      .then((j) => { if (!cancelled && j && j.data) setCreators(j.data); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [agencyId, isDemo, needsCreators]);
+
+  const hasEntries = entries.length > 0;
+  useEffect(() => {
+    if (isDemo || !agencyId || !hasEntries) return;
+    let cancelled = false;
+    // Same source as the Focus Board: includes people whose profile is linked to the agency
+    // (not just agency_members rows) and never 403s an admin who isn't listed themselves.
+    fetch(workspace?.id ? `/os/api/workspaces/${workspace.id}/chat-members` : `/os/api/agencies/${agencyId}/chat-members`).then((r) => r.json())
+      .then((j) => { if (!cancelled && Array.isArray(j.data)) setMembers(j.data); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [agencyId, workspace?.id, isDemo, hasEntries]);
+  const avatarFor = (name) => registrantIndex.avatarOfName(name);
 
   // Load the registry — its own roster, unrelated to ACR's `businesses` table.
   useEffect(() => {
@@ -549,8 +1050,8 @@ export default function BusinessIntelPanel() {
 
   const persistDemoEntries = (next) => { try { localStorage.setItem(demoKey, JSON.stringify(next)); } catch (_) {} };
 
-  const openEntry = (id, mode = 'view') => { setSelectedId(id); setDetailMode(mode); setView('detail'); };
-  const backToRegistry = () => { setView('registry'); setSelectedId(''); setLoadedForId(''); };
+  const openEntry = (id, mode = 'view', from = 'registry') => { setSelectedId(id); setDetailMode(mode); setDetailFrom(from); setView('detail'); };
+  const backToRegistry = () => { setView(detailFrom); setDetailFrom('registry'); setSelectedId(''); setLoadedForId(''); setCreatorFilledFor(''); };
 
   // Opens straight into a blank profile page — nothing is created in the
   // registry until Save is pressed, so there's just one form, not a quick-add
@@ -559,7 +1060,7 @@ export default function BusinessIntelPanel() {
     setProfile(blankDraft());
     setSelectedId('__new__');
     setLoadedForId('__new__');
-    setActiveSection('identity');
+    setActiveSection('registration');
     setDetailMode('edit');
     setView('detail');
     setNameError(false);
@@ -604,13 +1105,32 @@ export default function BusinessIntelPanel() {
   const isNewDraft = selectedId === '__new__';
   const isViewOnly = detailMode === 'view' && !isNewDraft;
 
+  const stepIndex = Math.max(0, STEPS.findIndex((st) => st.key === activeSection));
+  const stepKey = STEPS[stepIndex].key;
+  const isLastStep = stepIndex === STEPS.length - 1;
+  const StepIcon = STEPS[stepIndex].icon;
+
+  // Each required field gates moving past its own step: "Registered by" leaves
+  // Registration, the business name leaves Identity. Going back is never blocked
+  // by a later step, and a jump ahead stops at the first step still incomplete.
+  const goToStep = (i) => {
+    const target = Math.max(0, Math.min(STEPS.length - 1, i));
+    if (target > STEP_INDEX.registration && !profile.registeredBy.trim()) { setRegisteredByError(true); setActiveSection('registration'); return; }
+    if (target > STEP_INDEX.identity && !profile.name.trim()) { setNameError(true); setActiveSection('identity'); return; }
+    setActiveSection(STEPS[target].key);
+    requestAnimationFrame(() => {
+      const el = wizardRef.current;
+      if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' });
+    });
+  };
+
   const handleSaveProfile = async () => {
     const name = profile.name.trim();
     const registeredBy = profile.registeredBy.trim();
     if (!name || !registeredBy) {
       setNameError(!name);
       setRegisteredByError(!registeredBy);
-      if (!name) setActiveSection('identity');
+      setActiveSection(registeredBy ? 'identity' : 'registration');
       return;
     }
     setNameError(false);
@@ -675,15 +1195,6 @@ export default function BusinessIntelPanel() {
   const challengesFilled = profile.challenges.selected.length > 0 ? 1 : 0;
   const growthFilled = profile.growthNeeds.selected.length > 0 ? 1 : 0;
 
-  const sectionCounts = {
-    identity: { filled: identityFilled, total: IDENTITY_FIELD_COUNT },
-    operations: { filled: opsFilled, total: OPERATIONS_FIELD_COUNT },
-    performance: { filled: perfFilled, total: PERFORMANCE_FIELD_COUNT },
-    infrastructure: { filled: infraFilled, total: INFRA_AREAS.length },
-    challenges: { filled: challengesFilled, total: 1 },
-    growth: { filled: growthFilled, total: 1 },
-  };
-
   const completeness = useMemo(() => {
     const filled = identityFilled + opsFilled + perfFilled + infraFilled + challengesFilled + growthFilled;
     return { filled, total: PROFILE_TOTAL_FIELDS, pct: PROFILE_TOTAL_FIELDS ? Math.round((filled / PROFILE_TOTAL_FIELDS) * 100) : 0 };
@@ -694,6 +1205,128 @@ export default function BusinessIntelPanel() {
     if (!ts) return null;
     try { return new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (_) { return null; }
   }, [activeEntry?.updated_at]);
+
+  // Building blocks for the stepped form.
+  const verificationLegend = (
+    <div className="biz-legend">
+      <Info size={11} /> Verification:
+      {VERIFICATION.map((v) => (
+        <span key={v.key} className="biz-legend-tag" style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)` }}>{v.label}</span>
+      ))}
+    </div>
+  );
+
+  const registrationFields = (
+    <div className="biz-proplist">
+      <Field label="Registered by" required value={profile.registeredBy} onChange={(v) => { setProfile((p) => ({ ...p, registeredBy: v })); if (registeredByError) setRegisteredByError(false); }} placeholder="Name of the person who registered this business" error={registeredByError ? 'Registered by is required.' : undefined} />
+      <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="Anything else worth recording — not shared with the business (TOIG team only)" />
+    </div>
+  );
+
+  const renderSection = (sectionKey) => (
+    <>
+      {sectionKey === 'identity' && (
+        <div className="biz-proplist">
+          <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" required error={nameError ? 'Business name is required.' : undefined} />
+          <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
+          <Field half label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
+          <Field half label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
+          <Field
+            half label="Country" type="select" options={COUNTRIES} value={profile.identity.country}
+            onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, country: v, city: citiesFor(v).includes(p.identity.city) ? p.identity.city : '' } }))}
+            verification={profile.verification['identity.country']} onVerify={(v) => setVerify('identity.country', v)}
+          />
+          <Field
+            half label="City" type="select" options={citiesFor(profile.identity.country || 'Kenya')} value={profile.identity.city}
+            onChange={(v) => setField('identity', 'city', v)}
+            verification={profile.verification['identity.city']} onVerify={(v) => setVerify('identity.city', v)}
+          />
+          <Field half label="Area / Neighbourhood" value={profile.location} onChange={(v) => setProfile((p) => ({ ...p, location: v }))} verification={profile.verification['identity.location']} onVerify={(v) => setVerify('identity.location', v)} placeholder="e.g. Westlands" />
+          <Field half label="Industry" value={profile.industry} onChange={(v) => setProfile((p) => ({ ...p, industry: v }))} verification={profile.verification['identity.industry']} onVerify={(v) => setVerify('identity.industry', v)} placeholder="e.g. Laundry & garment care" />
+          <Field half label="Year established" value={profile.identity.yearEstablished} onChange={(v) => setField('identity', 'yearEstablished', v)} verification={profile.verification['identity.yearEstablished']} onVerify={(v) => setVerify('identity.yearEstablished', v)} placeholder="e.g. 2021" />
+          <Field half label="Registration status" type="select" options={REG_STATUS} value={profile.identity.registrationStatus} onChange={(v) => setField('identity', 'registrationStatus', v)} verification={profile.verification['identity.registrationStatus']} onVerify={(v) => setVerify('identity.registrationStatus', v)} />
+          <Field half label="Business phone" value={profile.identity.businessPhone} onChange={(v) => setField('identity', 'businessPhone', v)} verification={profile.verification['identity.businessPhone']} onVerify={(v) => setVerify('identity.businessPhone', v)} placeholder="General business line" />
+          <Field half label="Business email" value={profile.identity.businessEmail} onChange={(v) => setField('identity', 'businessEmail', v)} verification={profile.verification['identity.businessEmail']} onVerify={(v) => setVerify('identity.businessEmail', v)} placeholder="General business email" />
+        </div>
+      )}
+
+      {sectionKey === 'operations' && (
+        <div className="biz-proplist">
+          <Field label="Products & services" type="textarea" value={profile.operations.productsServices} onChange={(v) => setField('operations', 'productsServices', v)} verification={profile.verification['operations.productsServices']} onVerify={(v) => setVerify('operations.productsServices', v)} placeholder="What does the business sell or offer?" />
+          <Field half label="Employees" value={profile.operations.employeeCount} onChange={(v) => setField('operations', 'employeeCount', v)} verification={profile.verification['operations.employeeCount']} onVerify={(v) => setVerify('operations.employeeCount', v)} placeholder="e.g. 5 full-time, 2 part-time" />
+          <Field half label="Locations" value={profile.operations.locationCount} onChange={(v) => setField('operations', 'locationCount', v)} verification={profile.verification['operations.locationCount']} onVerify={(v) => setVerify('operations.locationCount', v)} placeholder="e.g. 1" />
+          <Field label="Operating model" type="select" options={OPERATING_MODELS} value={profile.operations.operatingModel} onChange={(v) => setField('operations', 'operatingModel', v)} verification={profile.verification['operations.operatingModel']} onVerify={(v) => setVerify('operations.operatingModel', v)} />
+          <Field half label="Suppliers" type="textarea" value={profile.operations.suppliers} onChange={(v) => setField('operations', 'suppliers', v)} verification={profile.verification['operations.suppliers']} onVerify={(v) => setVerify('operations.suppliers', v)} placeholder="Key suppliers or vendors relied on" />
+          <Field half label="Customer segments" type="textarea" value={profile.operations.customerSegments} onChange={(v) => setField('operations', 'customerSegments', v)} verification={profile.verification['operations.customerSegments']} onVerify={(v) => setVerify('operations.customerSegments', v)} placeholder="Who buys from this business?" />
+          <Field label="Current tech & systems" type="textarea" value={profile.operations.currentSystems} onChange={(v) => setField('operations', 'currentSystems', v)} verification={profile.verification['operations.currentSystems']} onVerify={(v) => setVerify('operations.currentSystems', v)} placeholder="Any tools/software used day to day (POS, bookkeeping app, etc.)" />
+        </div>
+      )}
+
+      {sectionKey === 'performance' && (
+        <div className="biz-proplist">
+          <Field half label="Revenue range" type="select" options={REVENUE_RANGES} value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} />
+          <Field half label="Customer volume" value={profile.performance.customerVolume} onChange={(v) => setField('performance', 'customerVolume', v)} verification={profile.verification['performance.customerVolume']} onVerify={(v) => setVerify('performance.customerVolume', v)} placeholder="e.g. ~200 customers/month" />
+          <Field half label="Major revenue streams" type="textarea" value={profile.performance.revenueStreams} onChange={(v) => setField('performance', 'revenueStreams', v)} verification={profile.verification['performance.revenueStreams']} onVerify={(v) => setVerify('performance.revenueStreams', v)} />
+          <Field half label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} />
+          <Field label="Growth trend" type="select" options={GROWTH_TRENDS} value={profile.performance.growthTrend} onChange={(v) => setField('performance', 'growthTrend', v)} verification={profile.verification['performance.growthTrend']} onVerify={(v) => setVerify('performance.growthTrend', v)} />
+          <Field label="Financial challenges" type="textarea" value={profile.performance.financialChallenges} onChange={(v) => setField('performance', 'financialChallenges', v)} verification={profile.verification['performance.financialChallenges']} onVerify={(v) => setVerify('performance.financialChallenges', v)} />
+        </div>
+      )}
+
+      {sectionKey === 'infrastructure' && (
+        <div className="biz-proplist">
+          {INFRA_AREAS.map((area, i) => (
+            <InfraRow
+              key={area.key} area={area} half={i < INFRA_AREAS.length - (INFRA_AREAS.length % 2)} value={profile.infrastructure[area.key]}
+              onChange={(v) => setInfra(area.key, v)}
+              verification={profile.verification[`infrastructure.${area.key}`]}
+              onVerify={(v) => setVerify(`infrastructure.${area.key}`, v)}
+            />
+          ))}
+        </div>
+      )}
+
+      {sectionKey === 'challenges' && (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {CHALLENGES.map((c) => {
+              const active = profile.challenges.selected.includes(c);
+              return (
+                <button key={c} type="button" onClick={() => toggleChallenge(c)} className={`biz-chip ${active ? 'active' : ''}`}>
+                  {active ? <CheckCircle2 size={13} /> : <Circle size={13} />} {c}
+                </button>
+              );
+            })}
+          </div>
+          <div className="biz-proplist" style={{ marginTop: 8 }}>
+            <Field label="Other / details" type="textarea" value={profile.challenges.other} onChange={(v) => setProfile((p) => ({ ...p, challenges: { ...p.challenges, other: v } }))} placeholder="Anything not covered above, or more detail on the ones selected" />
+          </div>
+        </div>
+      )}
+
+      {sectionKey === 'growth' && (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 10 }}>
+            {GROWTH_NEEDS.map((need) => {
+              const active = profile.growthNeeds.selected.includes(need.key);
+              return (
+                <button key={need.key} type="button" onClick={() => toggleGrowthNeed(need.key)} className={`biz-need-card ${active ? 'active' : ''}`}>
+                  {active ? <CheckCircle2 size={17} color="var(--color-accent-primary)" style={{ flexShrink: 0 }} /> : <Circle size={17} color="var(--color-text-tertiary)" style={{ flexShrink: 0 }} />}
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>{need.name}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{need.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="biz-proplist" style={{ marginTop: 12 }}>
+            <Field label="Growth notes" type="textarea" value={profile.growthNeeds.notes} onChange={(v) => setProfile((p) => ({ ...p, growthNeeds: { ...p.growthNeeds, notes: v } }))} placeholder="Opportunities, partnerships or next steps to explore with this business" />
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   if (!canAccess) {
     return (
@@ -742,8 +1375,30 @@ export default function BusinessIntelPanel() {
                 <option value="">All cities</option>
                 {citiesFor(filterCountry || 'Kenya').map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              {(filterCountry || filterCity) && (
-                <button className="biz-btn ghost sm" onClick={() => { setFilterCountry(''); setFilterCity(''); }}>Clear filters</button>
+              {registrantIndex.list.length > 0 && (
+                <button
+                  type="button"
+                  className={`biz-btn biz-filter-btn${filterRegistrar ? ' active' : ''}`}
+                  title="See who registered what"
+                  onClick={() => setView('registrants')}
+                >
+                  <Users size={14} /> Registered by
+                  {!selectedRegistrar && topRegistrants.length > 0 && (
+                    <span className="biz-filter-stack" aria-hidden="true">
+                      {topRegistrants.map((p) => <PersonAvatar key={p.id} name={p.name} url={p.avatarUrl} size={20} />)}
+                    </span>
+                  )}
+                  {selectedRegistrar && (
+                    <span className="biz-filter-chip">
+                      <PersonAvatar name={selectedRegistrar.id === NO_REGISTRAR ? '?' : selectedRegistrar.name} url={selectedRegistrar.avatarUrl} size={20} />
+                      <span className="biz-filter-chip-name">{selectedRegistrar.name}</span>
+                    </span>
+                  )}
+                  <ChevronRight size={14} />
+                </button>
+              )}
+              {(filterCountry || filterCity || filterRegistrar) && (
+                <button className="biz-btn ghost sm" onClick={() => { setFilterCountry(''); setFilterCity(''); setFilterRegistrar(''); }}>Clear filters</button>
               )}
               <span className="biz-filter-count mono">{filteredEntries.length} / {entries.length} businesses</span>
             </div>
@@ -789,8 +1444,8 @@ export default function BusinessIntelPanel() {
           ) : filteredEntries.length === 0 ? (
             <div className="biz-panel" style={{ padding: '48px 20px', textAlign: 'center' }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, fontFamily: 'var(--font-display)' }}>No businesses match these filters</div>
-              <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 16 }}>Try a different country or city, or clear the filters.</div>
-              <button className="biz-btn ghost" onClick={() => { setFilterCountry(''); setFilterCity(''); }}>Clear filters</button>
+              <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 16 }}>Try different filters, or clear them.</div>
+              <button className="biz-btn ghost" onClick={() => { setFilterCountry(''); setFilterCity(''); setFilterRegistrar(''); }}>Clear filters</button>
             </div>
           ) : (
             <div className="biz-panel biz-record-list">
@@ -809,7 +1464,7 @@ export default function BusinessIntelPanel() {
                         <div className="biz-record-meta">
                           <span>{entry.industry || 'No industry set'}</span>
                           {entry.location && <><span>·</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MapPin size={10} />{entry.location}</span></>}
-                          {entry.data?.registeredBy && <><span>·</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><User size={10} />{entry.data.registeredBy}</span></>}
+                          {(registrantIndex.nameOfEntry(entry) || registrarNameOf(entry, creators)) && <><span>·</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><PersonAvatar name={registrantIndex.nameOfEntry(entry) || registrarNameOf(entry, creators)} url={registrantIndex.avatarOfEntry(entry) || avatarFor(registrarNameOf(entry, creators))} size={16} />{registrantIndex.nameOfEntry(entry) || registrarNameOf(entry, creators)}</span></>}
                         </div>
                       </div>
                       <div className="biz-record-needs">
@@ -835,18 +1490,25 @@ export default function BusinessIntelPanel() {
             </div>
           )}
         </>
+      ) : view === 'registrants' ? (
+        <RegistrantBoard
+          index={registrantIndex} total={entries.length} activeId={filterRegistrar}
+          onBack={() => setView('registry')}
+          onFilter={(id) => { setFilterRegistrar(id); setView('registry'); }}
+          onOpen={(id) => openEntry(id, 'view', 'registrants')}
+        />
       ) : (
         <>
           {/* Detail top bar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <button className="biz-back" onClick={backToRegistry}><ChevronLeft size={15} /> Registry</button>
+            <button className="biz-back" onClick={backToRegistry}><ChevronLeft size={15} /> {detailFrom === 'registrants' ? 'Registered by' : 'Registry'}</button>
             <div style={{ display: 'flex', gap: 8 }}>
               {!isNewDraft && <button className="biz-icon" title="Delete business" onClick={() => setConfirmDeleteId(selectedId)}><Trash2 size={15} /></button>}
               {isViewOnly ? (
                 <button className="biz-btn primary" onClick={() => setDetailMode('edit')}><Pencil size={14} /> Edit</button>
-              ) : (
+              ) : !isNewDraft && (
                 <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving}>
-                  {saving ? <RefreshCw size={14} className="animate-spin" /> : isNewDraft ? <Plus size={14} /> : <Save size={14} />} {isNewDraft ? 'Register Business' : 'Save Profile'}
+                  {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save changes
                 </button>
               )}
             </div>
@@ -863,170 +1525,60 @@ export default function BusinessIntelPanel() {
           {!isViewOnly && (nameError || registeredByError) && (
             <div className="biz-notice error">
               {nameError && registeredByError
-                ? 'Add a business name (Identity tab) and who registered it before you can save.'
+                ? 'Add who registered this business (Registration step) and a business name (Identity step) to continue.'
                 : nameError
-                  ? 'Give it a business name in the Identity tab before you can save.'
-                  : 'Add who registered this business before you can save.'}
+                  ? 'Give it a business name in the Identity step to continue.'
+                  : 'Add who registered this business in the Registration step to continue.'}
             </div>
           )}
 
-          <ViewModeContext.Provider value={isViewOnly}>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '240px 1fr', gap: 16, alignItems: 'start' }}>
-            {/* Left: identity rail */}
-            <div className="biz-panel biz-rail" style={{ position: isMobile ? 'static' : 'sticky', top: 12 }}>
-              <Avatar name={profile.name || '?'} size={52} />
-              <div className="biz-rail-name">{profile.name || 'New business'}</div>
-              <div className="biz-rail-meta">{profile.industry || 'No industry set'}</div>
-              {profile.location && <div className="biz-rail-meta"><MapPin size={11} /> {profile.location}</div>}
-              {profile.registeredBy.trim() && <div className="biz-rail-meta"><User size={11} /> Registered by {profile.registeredBy.trim()}</div>}
-              <div className="biz-rail-ring"><CompletenessRing pct={completeness.pct} /></div>
-              <div className="mono" style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'center' }}>{completeness.filled} / {completeness.total} fields</div>
-              {lastUpdatedLabel && <div style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', textAlign: 'center', marginTop: 8 }}>Updated {lastUpdatedLabel}</div>}
+          {isViewOnly ? (
+          <BusinessReport profile={profile} completeness={completeness} updatedLabel={lastUpdatedLabel} registrarUrl={(activeEntry && registrantIndex.avatarOfEntry(activeEntry)) || avatarFor(profile.registeredBy)} />
+          ) : (
+          <div ref={wizardRef} className="biz-panel biz-wizard">
+            <div className="biz-wizard-head">
+              <div className="biz-wizard-title">{isNewDraft ? 'Register a business' : 'Edit business profile'}</div>
             </div>
 
-            {/* Right: tabbed sections */}
-            <div className="biz-panel" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="biz-tabstrip">
-                {SECTIONS.map((s) => {
-                  const cnt = sectionCounts[s.key];
-                  const done = cnt.total > 0 && cnt.filled === cnt.total;
-                  return (
-                    <button key={s.key} className={`biz-tab ${activeSection === s.key ? 'active' : ''}`} onClick={() => setActiveSection(s.key)}>
-                      <s.icon size={13} />
-                      <span>{s.label}</span>
-                      <span className={`biz-tab-count mono ${done ? 'done' : ''}`}>{cnt.filled}/{cnt.total}</span>
-                    </button>
-                  );
-                })}
+            <Stepper steps={STEPS} current={stepIndex} onGo={goToStep} />
+
+            <div className="biz-wizard-section-head">
+              <span className="biz-wizard-section-icon"><StepIcon size={20} /></span>
+              <div className="biz-wizard-section-text">
+                <h3 className="biz-wizard-section-title">{STEPS[stepIndex].title}</h3>
+                <p className="biz-wizard-section-desc">{STEPS[stepIndex].desc}</p>
               </div>
+              <div className="biz-wizard-meta mono">Step {stepIndex + 1} of {STEPS.length} · {completeness.pct}% complete</div>
+            </div>
 
-              {/* Verification legend */}
-              <div className="biz-legend">
-                <Info size={11} /> Verification:
-                {VERIFICATION.map((v) => (
-                  <span key={v.key} className="biz-legend-tag" style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)` }}>{v.label}</span>
-                ))}
-              </div>
+            {stepKey !== 'registration' && verificationLegend}
 
-              <div className="biz-tabpanel">
-                {activeSection === 'identity' && (
-                  <div className="biz-proplist">
-                    <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" required error={nameError ? 'Business name is required.' : undefined} />
-                    <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
-                    <Field label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
-                    <Field label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
-                    <Field
-                      label="Country" type="select" options={COUNTRIES} value={profile.identity.country}
-                      onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, country: v, city: citiesFor(v).includes(p.identity.city) ? p.identity.city : '' } }))}
-                      verification={profile.verification['identity.country']} onVerify={(v) => setVerify('identity.country', v)}
-                    />
-                    <Field
-                      label="City" type="select" options={citiesFor(profile.identity.country || 'Kenya')} value={profile.identity.city}
-                      onChange={(v) => setField('identity', 'city', v)}
-                      verification={profile.verification['identity.city']} onVerify={(v) => setVerify('identity.city', v)}
-                    />
-                    <Field label="Area / Neighbourhood" value={profile.location} onChange={(v) => setProfile((p) => ({ ...p, location: v }))} verification={profile.verification['identity.location']} onVerify={(v) => setVerify('identity.location', v)} placeholder="e.g. Westlands" />
-                    <Field label="Industry" value={profile.industry} onChange={(v) => setProfile((p) => ({ ...p, industry: v }))} verification={profile.verification['identity.industry']} onVerify={(v) => setVerify('identity.industry', v)} placeholder="e.g. Laundry & garment care" />
-                    <Field label="Year established" value={profile.identity.yearEstablished} onChange={(v) => setField('identity', 'yearEstablished', v)} verification={profile.verification['identity.yearEstablished']} onVerify={(v) => setVerify('identity.yearEstablished', v)} placeholder="e.g. 2021" />
-                    <Field label="Registration status" type="select" options={REG_STATUS} value={profile.identity.registrationStatus} onChange={(v) => setField('identity', 'registrationStatus', v)} verification={profile.verification['identity.registrationStatus']} onVerify={(v) => setVerify('identity.registrationStatus', v)} />
-                    <Field label="Business phone" value={profile.identity.businessPhone} onChange={(v) => setField('identity', 'businessPhone', v)} verification={profile.verification['identity.businessPhone']} onVerify={(v) => setVerify('identity.businessPhone', v)} placeholder="General business line" />
-                    <Field label="Business email" value={profile.identity.businessEmail} onChange={(v) => setField('identity', 'businessEmail', v)} verification={profile.verification['identity.businessEmail']} onVerify={(v) => setVerify('identity.businessEmail', v)} placeholder="General business email" />
-                  </div>
+            <div className="biz-wizard-body">
+              {stepKey === 'registration' ? registrationFields : renderSection(stepKey)}
+            </div>
+
+            <div className="biz-wizard-foot">
+              {stepIndex > 0
+                ? <button type="button" className="biz-prev" onClick={() => goToStep(stepIndex - 1)}><ChevronLeft size={15} /> Previous</button>
+                : <span />}
+              <div className="biz-wizard-foot-actions">
+                {/* Editing an existing record: save from any step, without paging to the end.
+                    (A new business is only submitted from the last step.) */}
+                {!isNewDraft && !isLastStep && (
+                  <button type="button" className="biz-btn" onClick={handleSaveProfile} disabled={saving}>
+                    {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save changes
+                  </button>
                 )}
-
-                {activeSection === 'operations' && (
-                  <div className="biz-proplist">
-                    <Field label="Products & services" type="textarea" value={profile.operations.productsServices} onChange={(v) => setField('operations', 'productsServices', v)} verification={profile.verification['operations.productsServices']} onVerify={(v) => setVerify('operations.productsServices', v)} placeholder="What does the business sell or offer?" />
-                    <Field label="Employees" value={profile.operations.employeeCount} onChange={(v) => setField('operations', 'employeeCount', v)} verification={profile.verification['operations.employeeCount']} onVerify={(v) => setVerify('operations.employeeCount', v)} placeholder="e.g. 5 full-time, 2 part-time" />
-                    <Field label="Locations" value={profile.operations.locationCount} onChange={(v) => setField('operations', 'locationCount', v)} verification={profile.verification['operations.locationCount']} onVerify={(v) => setVerify('operations.locationCount', v)} placeholder="e.g. 1" />
-                    <Field label="Operating model" type="select" options={OPERATING_MODELS} value={profile.operations.operatingModel} onChange={(v) => setField('operations', 'operatingModel', v)} verification={profile.verification['operations.operatingModel']} onVerify={(v) => setVerify('operations.operatingModel', v)} />
-                    <Field label="Suppliers" type="textarea" value={profile.operations.suppliers} onChange={(v) => setField('operations', 'suppliers', v)} verification={profile.verification['operations.suppliers']} onVerify={(v) => setVerify('operations.suppliers', v)} placeholder="Key suppliers or vendors relied on" />
-                    <Field label="Customer segments" type="textarea" value={profile.operations.customerSegments} onChange={(v) => setField('operations', 'customerSegments', v)} verification={profile.verification['operations.customerSegments']} onVerify={(v) => setVerify('operations.customerSegments', v)} placeholder="Who buys from this business?" />
-                    <Field label="Current tech & systems" type="textarea" value={profile.operations.currentSystems} onChange={(v) => setField('operations', 'currentSystems', v)} verification={profile.verification['operations.currentSystems']} onVerify={(v) => setVerify('operations.currentSystems', v)} placeholder="Any tools/software used day to day (POS, bookkeeping app, etc.)" />
-                  </div>
-                )}
-
-                {activeSection === 'performance' && (
-                  <div className="biz-proplist">
-                    <Field label="Revenue range" type="select" options={REVENUE_RANGES} value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} />
-                    <Field label="Customer volume" value={profile.performance.customerVolume} onChange={(v) => setField('performance', 'customerVolume', v)} verification={profile.verification['performance.customerVolume']} onVerify={(v) => setVerify('performance.customerVolume', v)} placeholder="e.g. ~200 customers/month" />
-                    <Field label="Major revenue streams" type="textarea" value={profile.performance.revenueStreams} onChange={(v) => setField('performance', 'revenueStreams', v)} verification={profile.verification['performance.revenueStreams']} onVerify={(v) => setVerify('performance.revenueStreams', v)} />
-                    <Field label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} />
-                    <Field label="Growth trend" type="select" options={GROWTH_TRENDS} value={profile.performance.growthTrend} onChange={(v) => setField('performance', 'growthTrend', v)} verification={profile.verification['performance.growthTrend']} onVerify={(v) => setVerify('performance.growthTrend', v)} />
-                    <Field label="Financial challenges" type="textarea" value={profile.performance.financialChallenges} onChange={(v) => setField('performance', 'financialChallenges', v)} verification={profile.verification['performance.financialChallenges']} onVerify={(v) => setVerify('performance.financialChallenges', v)} />
-                  </div>
-                )}
-
-                {activeSection === 'infrastructure' && (
-                  <div className="biz-proplist">
-                    {INFRA_AREAS.map((area) => (
-                      <InfraRow
-                        key={area.key} area={area} value={profile.infrastructure[area.key]}
-                        onChange={(v) => setInfra(area.key, v)}
-                        verification={profile.verification[`infrastructure.${area.key}`]}
-                        onVerify={(v) => setVerify(`infrastructure.${area.key}`, v)}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {activeSection === 'challenges' && (
-                  <div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {CHALLENGES.map((c) => {
-                        const active = profile.challenges.selected.includes(c);
-                        return (
-                          <button key={c} type="button" disabled={isViewOnly} onClick={() => toggleChallenge(c)} className={`biz-chip ${active ? 'active' : ''}`}>
-                            {active ? <CheckCircle2 size={13} /> : <Circle size={13} />} {c}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="biz-proplist" style={{ marginTop: 8 }}>
-                      <Field label="Other / details" type="textarea" value={profile.challenges.other} onChange={(v) => setProfile((p) => ({ ...p, challenges: { ...p.challenges, other: v } }))} placeholder="Anything not covered above, or more detail on the ones selected" />
-                    </div>
-                  </div>
-                )}
-
-                {activeSection === 'growth' && (
-                  <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 10 }}>
-                      {GROWTH_NEEDS.map((need) => {
-                        const active = profile.growthNeeds.selected.includes(need.key);
-                        return (
-                          <button key={need.key} type="button" disabled={isViewOnly} onClick={() => toggleGrowthNeed(need.key)} className={`biz-need-card ${active ? 'active' : ''}`}>
-                            {active ? <CheckCircle2 size={17} color="var(--color-accent-primary)" style={{ flexShrink: 0 }} /> : <Circle size={17} color="var(--color-text-tertiary)" style={{ flexShrink: 0 }} />}
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>{need.name}</div>
-                              <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{need.desc}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="biz-proplist" style={{ marginTop: 12 }}>
-                      <Field label="Growth notes" type="textarea" value={profile.growthNeeds.notes} onChange={(v) => setProfile((p) => ({ ...p, growthNeeds: { ...p.growthNeeds, notes: v } }))} placeholder="Opportunities, partnerships or next steps to explore with this business" />
-                    </div>
-                  </div>
+                {isLastStep ? (
+                  <button type="button" className="biz-btn primary" onClick={handleSaveProfile} disabled={saving}>
+                    {saving ? <RefreshCw size={14} className="animate-spin" /> : isNewDraft ? <Plus size={14} /> : <Save size={14} />} {isNewDraft ? 'Register Business' : 'Save changes'}
+                  </button>
+                ) : (
+                  <button type="button" className="biz-btn primary" onClick={() => goToStep(stepIndex + 1)}>Next <ChevronRight size={15} /></button>
                 )}
               </div>
             </div>
           </div>
-
-          <div className="biz-panel" style={{ marginTop: 12 }}>
-            <div className="biz-proplist">
-              <Field label="Registered by" required value={profile.registeredBy} onChange={(v) => { setProfile((p) => ({ ...p, registeredBy: v })); if (registeredByError) setRegisteredByError(false); }} placeholder="Name of the person who registered this business" error={registeredByError ? 'Registered by is required.' : undefined} />
-              <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="Anything else worth recording — not shared with the business (TOIG team only)" />
-            </div>
-          </div>
-          </ViewModeContext.Provider>
-
-          {!isViewOnly && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-              <button className="biz-btn primary" onClick={handleSaveProfile} disabled={saving}>
-                {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save Profile
-              </button>
-            </div>
           )}
         </>
       )}
@@ -1039,8 +1591,9 @@ export default function BusinessIntelPanel() {
         :global(.biz-eyebrow) {
           display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono);
           font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-          color: var(--color-accent-secondary);
+          color: var(--color-accent-text, var(--color-accent-secondary));
         }
+        :global([data-theme="light"] .biz-person), :global([data-theme="light"] .biz-avatar) { --person-ink: color-mix(in srgb, var(--tint) 45%, #0F1C38); }
         :global(.biz-input) {
           width: 100%; padding: 8px 11px; border-radius: var(--radius-md, 8px); font-size: 13px;
           background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
@@ -1081,6 +1634,73 @@ export default function BusinessIntelPanel() {
         :global(.biz-filter-row) { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
         :global(.biz-filter-select) { width: auto; min-width: 140px; }
         :global(.biz-filter-count) { font-size: 11.5px; color: var(--color-text-tertiary); margin-left: auto; }
+
+        /* Registered-by filter button + pictures */
+        :global(.biz-person) { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; font-family: var(--font-display); font-weight: 700; line-height: 1; }
+        :global(.biz-filter-btn) { gap: 7px; }
+        :global(.biz-filter-btn.active) { border-color: var(--color-accent-primary); color: var(--color-accent-text, var(--color-accent-secondary)); background: var(--color-accent-primary-subtle); }
+        :global(.biz-filter-chip) { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; padding: 2px 9px 2px 3px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--color-text-primary); background: var(--color-bg-elevated); border: 1px solid var(--color-border); }
+        :global(.biz-filter-chip-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        :global(.biz-filter-stack) { display: inline-flex; align-items: center; }
+        :global(.biz-filter-stack .biz-person) { box-shadow: 0 0 0 2px var(--color-bg-tertiary); }
+        :global(.biz-filter-stack .biz-person + .biz-person) { margin-left: -7px; }
+
+        /* "Registered by" page: ranked people */
+        :global(.biz-rank) { padding: 28px 30px 10px; }
+        :global(.biz-rank-head) { padding-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+        :global(.biz-rank-title) { margin: 4px 0 0; font-family: var(--font-display); font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--color-text-primary); }
+        :global(.biz-rank-sub) { margin-top: 6px; font-size: 13.5px; line-height: 1.55; color: var(--color-text-secondary); }
+        :global(.biz-rank-row) { display: flex; align-items: center; gap: 14px; padding: 16px 6px; border-top: 1px solid var(--color-border); }
+        :global(.biz-rank-row:first-child) { border-top: none; }
+        :global(.biz-rank-row.first) { margin: 8px 0; padding: 16px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--color-accent-primary) 40%, transparent); background: var(--color-accent-primary-subtle); }
+        :global(.biz-rank-row.first + .biz-rank-row) { border-top: none; }
+        :global(.biz-rank-row.zero) { opacity: .8; }
+        :global(.biz-rank-row .biz-btn:disabled) { opacity: .4; cursor: not-allowed; }
+        :global(.biz-rank-row.active:not(.first)) { border-radius: 12px; outline: 1px solid var(--color-accent-primary); border-top-color: transparent; }
+        :global(.biz-rank-num) {
+          flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
+          font-family: var(--font-display); font-size: 15px; font-weight: 800; color: var(--color-text-tertiary);
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
+        }
+        :global(.biz-rank-num.r1) { color: #3B2600; border: none; background: linear-gradient(135deg, #F5A623, #F0B429); box-shadow: 0 2px 10px rgba(245, 166, 35, .4); }
+        :global(.biz-rank-num.r2) { color: var(--color-text-primary); background: color-mix(in srgb, #9AA7BD 28%, transparent); border-color: color-mix(in srgb, #9AA7BD 55%, transparent); }
+        :global(.biz-rank-num.r3) { color: var(--color-text-primary); background: color-mix(in srgb, #C8814B 26%, transparent); border-color: color-mix(in srgb, #C8814B 55%, transparent); }
+        :global(.biz-rank-main) { flex: 1; min-width: 0; }
+        :global(.biz-rank-name) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+        :global(.biz-rank-tag) { padding: 1px 8px; border-radius: 999px; font-family: var(--font-sans); font-size: 10.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-secondary); background: var(--color-bg-tertiary); border: 1px solid var(--color-border); }
+        :global(.biz-rank-chips) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+        :global(.biz-rank-total) { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; min-width: 76px; line-height: 1.1; }
+        :global(.biz-reg-count) { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--color-accent-text, var(--color-accent-secondary)); }
+        :global(.biz-reg-unit) { font-size: 10px; color: var(--color-text-tertiary); }
+        :global(.biz-reg-chip) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-family: var(--font-sans); font-size: 11.5px; font-weight: 600; color: var(--color-text-secondary); background: var(--color-bg-tertiary); border: 1px solid var(--color-border); cursor: pointer; transition: var(--transition-fast, .12s); }
+        :global(.biz-reg-chip:hover) { color: var(--color-text-primary); border-color: var(--color-border-active); }
+        :global(.biz-reg-more) { font-size: 12px; color: var(--color-text-tertiary); }
+        @media (max-width: 640px) {
+          :global(.biz-rank) { padding: 18px 14px 6px; }
+          :global(.biz-rank-title) { font-size: 22px; }
+          :global(.biz-rank-row) { flex-wrap: wrap; gap: 10px 12px; }
+          :global(.biz-rank-main) { flex: 1 1 130px; }
+          :global(.biz-rank-row.first) { padding: 14px 10px; }
+          :global(.biz-rank-total) { align-items: flex-start; flex-direction: row; gap: 6px; min-width: 0; margin-left: 48px; }
+          :global(.biz-rank-total .biz-reg-unit) { align-self: flex-end; }
+        }
+
+        /* "Registered by" page: the businesses prompt */
+        :global(.biz-prompt-scrim) { position: fixed; inset: 0; z-index: 10050; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(3px); }
+        :global(.biz-prompt) { display: flex; flex-direction: column; width: min(480px, 100%); max-height: min(640px, 86vh); overflow: hidden; border: 1px solid rgba(48,108,236,0.3); border-radius: 16px; }
+        :global(.biz-prompt-head) { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid rgba(48,108,236,0.18); }
+        :global(.biz-prompt-title) { flex: 1; min-width: 0; }
+        :global(.biz-prompt-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-display); font-size: 16px; font-weight: 800; color: var(--color-text-primary); }
+        :global(.biz-prompt-sub) { margin-top: 2px; font-size: 12.5px; color: var(--color-text-secondary); }
+        :global(.biz-prompt-close) { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 8px; cursor: pointer; }
+        :global(.biz-prompt-list) { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
+        :global(.biz-prompt-item) { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border: none; border-radius: 12px; background: none; cursor: pointer; text-align: left; font-family: var(--font-sans); color: var(--color-text-tertiary); transition: background var(--transition-fast, .12s); }
+        :global(.biz-prompt-item:hover), :global(.biz-prompt-item:focus-visible) { background: var(--color-bg-hover); outline: none; }
+        :global(.biz-prompt-item-main) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        :global(.biz-prompt-item-name) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; color: var(--color-text-primary); }
+        :global(.biz-prompt-item-meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--color-text-tertiary); }
+        :global(.biz-prompt-item-pct) { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
+        :global(.biz-prompt-foot) { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid rgba(48,108,236,0.18); }
 
         /* Registry insight cards */
         :global(.biz-insight-row) { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
@@ -1125,30 +1745,11 @@ export default function BusinessIntelPanel() {
           border: 1px solid var(--color-warning); border-radius: var(--radius-lg, 10px); padding: 9px 13px; margin-bottom: 14px;
         }
 
-        /* Identity rail */
-        :global(.biz-rail) { padding: 20px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-        :global(.biz-rail-name) { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--color-text-primary); margin-top: 8px; }
-        :global(.biz-rail-meta) { font-size: 11.5px; color: var(--color-text-tertiary); display: flex; align-items: center; gap: 4px; }
-        :global(.biz-rail-ring) { margin: 12px 0 2px; }
-
-        /* Section tab strip */
-        :global(.biz-tabstrip) { display: flex; overflow-x: auto; border-bottom: 1px solid var(--color-border); padding: 0 8px; }
-        :global(.biz-tab) {
-          display: flex; align-items: center; gap: 6px; padding: 13px 12px; background: none; border: none; border-bottom: 2px solid transparent;
-          color: var(--color-text-tertiary); font-size: 12.5px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; white-space: nowrap; transition: var(--transition-fast, .12s);
-        }
-        :global(.biz-tab:hover) { color: var(--color-text-secondary); }
-        :global(.biz-tab.active) { color: var(--color-accent-secondary); border-bottom-color: var(--color-accent-primary); }
-        :global(.biz-tab-count) { font-size: 10px; color: var(--color-text-tertiary); }
-        :global(.biz-tab-count.done) { color: var(--color-success); }
-
         :global(.biz-legend) {
           display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 16px; font-size: 10.5px;
           color: var(--color-text-tertiary); border-bottom: 1px solid var(--color-border); font-family: var(--font-mono);
         }
         :global(.biz-legend-tag) { padding: 2px 8px; border-radius: 999px; font-weight: 700; }
-
-        :global(.biz-tabpanel) { padding: 4px 16px 16px; }
 
         /* Property row */
         :global(.biz-proplist) { display: flex; flex-direction: column; }
@@ -1163,8 +1764,6 @@ export default function BusinessIntelPanel() {
           color: var(--color-text-secondary); padding-top: 9px;
         }
         :global(.biz-row-control) { min-width: 0; }
-        :global(.biz-static) { padding: 9px 0; font-size: 13.5px; font-weight: 500; color: var(--color-text-primary); white-space: pre-wrap; line-height: 1.5; }
-        :global(.biz-static-empty) { color: var(--color-text-tertiary); font-style: italic; }
         @media (max-width: 640px) {
           :global(.biz-row) { grid-template-columns: 1fr; }
           :global(.biz-row-label) { padding-top: 0; }
@@ -1184,12 +1783,168 @@ export default function BusinessIntelPanel() {
           color: var(--color-text-secondary); border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); transition: var(--transition-fast, .12s);
         }
         :global(.biz-chip.active) { border-color: var(--color-error); background: var(--color-error-bg); color: var(--color-error); }
-        :global(.biz-chip:disabled), :global(.biz-need-card:disabled) { cursor: default; }
         :global(.biz-need-card) {
           display: flex; gap: 10px; align-items: flex-start; text-align: left; cursor: pointer; font-family: var(--font-sans);
           border: 1px solid var(--color-border); background: var(--color-bg-tertiary); border-radius: var(--radius-lg, 12px); padding: 13px; transition: var(--transition-fast, .12s);
         }
         :global(.biz-need-card.active) { border-color: var(--color-accent-primary); background: var(--color-accent-primary-subtle); }
+
+        /* Stepped edit / new-business form — deliberately roomy: one column, generous
+           row and section spacing, taller controls, so a long step doesn't read as a
+           wall of fields. Scoped to .biz-wizard so the read-only view is unaffected. */
+        :global(.biz-wizard) { max-width: 900px; margin: 0 auto; padding: 40px 56px 32px; }
+        :global(.biz-wizard-head) { text-align: center; margin-bottom: 30px; }
+        :global(.biz-wizard-title) { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
+
+        :global(.biz-stepper) { list-style: none; display: flex; margin: 0 0 44px; padding: 0; }
+        :global(.biz-step) { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        :global(.biz-step::before) { content: ''; position: absolute; top: 15px; right: 50%; width: 100%; height: 2px; background: var(--color-border-hover); }
+        :global(.biz-step:first-child::before) { display: none; }
+        :global(.biz-step.done::before), :global(.biz-step.current::before) { background: var(--color-accent-primary); }
+        :global(.biz-step-dot) {
+          position: relative; z-index: 1; width: 32px; height: 32px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+          font-size: 13px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; transition: var(--transition-fast, .12s);
+          border: 2px solid var(--color-border-hover); background: var(--color-bg-secondary); color: var(--color-text-tertiary);
+        }
+        :global(.biz-step-dot:hover) { border-color: var(--color-accent-primary); }
+        :global(.biz-step.done .biz-step-dot) { background: var(--color-accent-primary); border-color: var(--color-accent-primary); color: #fff; }
+        :global(.biz-step.current .biz-step-dot) { border-color: var(--color-accent-primary); color: var(--color-accent-primary); box-shadow: 0 0 0 4px var(--color-accent-primary-subtle); }
+        :global(.biz-step-label) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--color-text-tertiary); }
+        :global(.biz-step.done .biz-step-label), :global(.biz-step.current .biz-step-label) { color: var(--color-accent-text, var(--color-accent-secondary)); }
+
+        /* Step heading: the same tinted band + solid icon tile as the report's section
+           headings, with a large title and a description in a readable (secondary)
+           colour rather than the faint tertiary grey. */
+        :global(.biz-wizard-section-head) {
+          display: flex; align-items: center; gap: 14px; padding: 14px 18px 14px 14px; border-radius: 12px;
+          background: var(--color-accent-primary-subtle); border: 1px solid color-mix(in srgb, var(--color-accent-primary) 24%, transparent);
+        }
+        :global(.biz-wizard-section-icon) { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 11px; background: var(--color-accent-primary); color: #fff; }
+        :global(.biz-wizard-section-text) { min-width: 0; flex: 1; }
+        :global(.biz-wizard-section-title) { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; color: var(--color-text-primary); }
+        :global(.biz-wizard-section-desc) { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); }
+        :global(.biz-wizard-meta) { flex-shrink: 0; align-self: flex-start; font-size: 11.5px; font-weight: 700; color: var(--color-accent-text, var(--color-accent-secondary)); white-space: nowrap; }
+        :global(.biz-wizard .biz-legend) { padding: 14px 2px 0; border-bottom: none; font-size: 11px; color: var(--color-text-secondary); }
+        :global(.biz-wizard-body) { padding: 22px 0 8px; min-height: 320px; }
+
+        /* Two-column field grid: a field is full width unless it's marked as a half, in which
+           case consecutive halves sit side by side. Labels sit above their field (there is
+           no room for a left-hand label in a half-width cell), with the verification badge
+           at the right end of the label line so it never squeezes the input. */
+        :global(.biz-wizard .biz-proplist) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 32px; }
+        :global(.biz-wizard .biz-proplist > .biz-row:not(.biz-half)) { grid-column: 1 / -1; }
+        :global(.biz-wizard .biz-row) {
+          display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'label badge' 'control control';
+          align-items: center; gap: 8px 12px; padding: 0; border-top: none;
+        }
+        :global(.biz-wizard .biz-row:hover) { background: none; }
+        :global(.biz-wizard .biz-row-label) { grid-area: label; min-height: 24px; padding-top: 0; line-height: 24px; text-align: left; text-transform: none; letter-spacing: 0; font-size: 13px; }
+        :global(.biz-wizard .biz-row-control) { grid-area: control; }
+        :global(.biz-wizard .biz-input) { padding: 10px 14px; font-size: 14px; border-radius: 10px; }
+        :global(.biz-wizard .biz-textarea) { min-height: 88px; }
+        :global(.biz-wizard .biz-pill) { padding: 7px 14px; font-size: 12px; }
+        :global(.biz-wizard .biz-chip) { padding: 9px 15px; font-size: 12.5px; }
+        :global(.biz-wizard .biz-need-card) { padding: 16px; }
+        :global(.biz-wizard .biz-verify) { grid-area: badge; margin-top: 0; }
+
+        :global(.biz-wizard-foot) { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 36px; }
+        :global(.biz-wizard-foot-actions) { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-left: auto; }
+        :global(.biz-wizard-foot .biz-btn) { height: 42px; padding: 0 24px; font-size: 14px; }
+        :global(.biz-prev) {
+          display: inline-flex; align-items: center; gap: 4px; padding: 10px 6px; background: none; border: none; cursor: pointer;
+          color: var(--color-accent-text, var(--color-accent-secondary)); font-size: 14px; font-weight: 600; font-family: var(--font-sans);
+        }
+        :global(.biz-prev:hover) { text-decoration: underline; }
+        @media (max-width: 900px) {
+          :global(.biz-wizard) { padding: 32px 28px 26px; }
+          :global(.biz-wizard .biz-proplist) { column-gap: 20px; }
+        }
+        @media (max-width: 640px) {
+          :global(.biz-wizard) { padding: 22px 16px 20px; }
+          :global(.biz-stepper) { margin-bottom: 30px; }
+          :global(.biz-step::before) { top: 13px; }
+          :global(.biz-step-dot) { width: 28px; height: 28px; font-size: 12px; }
+          :global(.biz-step-label) { display: none; }
+          :global(.biz-wizard-section-head) { flex-wrap: wrap; gap: 10px 12px; padding: 12px; }
+          :global(.biz-wizard-section-icon) { width: 38px; height: 38px; }
+          :global(.biz-wizard-section-title) { font-size: 18px; }
+          :global(.biz-wizard-section-desc) { font-size: 13.5px; }
+          :global(.biz-wizard-meta) { flex-basis: 100%; align-self: auto; }
+          :global(.biz-wizard-body) { min-height: 0; padding-top: 16px; }
+          :global(.biz-wizard .biz-proplist) { grid-template-columns: 1fr; gap: 20px; }
+          :global(.biz-wizard-foot) { margin-top: 26px; }
+          :global(.biz-wizard-foot .biz-btn) { padding: 0 16px; }
+        }
+
+        /* Read-only report */
+        :global(.rpt) { max-width: 920px; margin: 0 auto; padding: 36px 46px 30px; }
+        :global(.rpt-head) { display: flex; align-items: center; gap: 20px; padding-bottom: 26px; border-bottom: 1px solid var(--color-border); }
+        :global(.rpt-head-main) { min-width: 0; flex: 1; }
+        :global(.rpt-title) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 5px 0 0; font-family: var(--font-display); font-size: 27px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; color: var(--color-text-primary); }
+        :global(.rpt-sub) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 14px; color: var(--color-text-secondary); }
+        :global(.rpt-loc) { display: inline-flex; align-items: center; gap: 4px; }
+        :global(.rpt-meta) { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 12px; font-size: 12px; color: var(--color-text-tertiary); }
+        :global(.rpt-meta span) { display: inline-flex; align-items: center; gap: 5px; }
+        :global(.rpt-meta b) { font-weight: 600; color: var(--color-text-secondary); }
+        :global(.rpt-head-ring) { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+
+        :global(.rpt-snap) { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 26px; }
+        :global(.rpt-snap-tile) { padding: 14px 16px; border-radius: var(--radius-lg, 10px); background: var(--color-bg-tertiary); border: 1px solid var(--color-border); }
+        :global(.rpt-snap-value) { margin-top: 5px; font-family: var(--font-display); font-size: 16px; font-weight: 800; line-height: 1.3; color: var(--color-text-primary); }
+
+        /* Section headings are a tinted band with a solid icon tile and a large title, so
+           they clearly outrank the small uppercase field labels and are easy to spot when
+           scanning down a long report. */
+        :global(.rpt-section) { margin-top: 40px; }
+        :global(.rpt-section-head) {
+          display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding: 10px 16px 10px 10px; border-radius: 12px;
+          background: var(--color-accent-primary-subtle); border: 1px solid color-mix(in srgb, var(--color-accent-primary) 24%, transparent);
+        }
+        :global(.rpt-section-icon) { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; background: var(--color-accent-primary); color: #fff; }
+        :global(.rpt-section-title) { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; color: var(--color-text-primary); }
+        :global(.rpt-num) { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--color-accent-text, var(--color-accent-secondary)); }
+
+        :global(.rpt-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 32px; }
+        :global(.rpt-label) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-tertiary); }
+        :global(.rpt-value) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 5px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: var(--color-text-primary); word-break: break-word; }
+        :global(.rpt-value .biz-verify), :global(.rpt-label .biz-verify), :global(.rpt-title .biz-verify), :global(.rpt-infra-note .biz-verify) { margin-top: 0; }
+        :global(.rpt-notes) { display: flex; flex-direction: column; gap: 20px; margin-top: 24px; }
+        :global(.rpt-section-head + .rpt-notes) { margin-top: 0; }
+        :global(.rpt-text) { margin: 6px 0 0; font-size: 14px; line-height: 1.65; color: var(--color-text-primary); white-space: pre-wrap; }
+
+        :global(.rpt-infra) { display: flex; flex-direction: column; }
+        :global(.rpt-infra-row) { display: grid; grid-template-columns: 190px 170px 1fr; align-items: center; gap: 6px 18px; padding: 12px 0; border-top: 1px solid var(--color-border); }
+        :global(.rpt-infra-row:first-child) { padding-top: 0; border-top: none; }
+        :global(.rpt-infra-name) { font-size: 13.5px; font-weight: 600; color: var(--color-text-primary); }
+        :global(.rpt-infra-level) { display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
+        :global(.rpt-meter) { display: inline-flex; gap: 3px; }
+        :global(.rpt-meter i) { display: block; width: 18px; height: 6px; border-radius: 3px; background: var(--color-border-hover); }
+        :global(.rpt-meter i.on) { background: var(--color-accent-primary); }
+        :global(.rpt-infra-note) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; line-height: 1.5; color: var(--color-text-secondary); }
+
+        :global(.rpt-tags) { display: flex; flex-wrap: wrap; gap: 8px; }
+        :global(.rpt-tag) { padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--color-error-text, var(--color-error)); background: var(--color-error-bg); border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent); }
+        :global(.rpt-tags + .rpt-notes) { margin-top: 22px; }
+        :global(.rpt-needs) { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        :global(.rpt-needs + .rpt-notes) { margin-top: 22px; }
+        :global(.rpt-need) { padding: 13px 15px; border-radius: var(--radius-lg, 10px); border: 1px solid var(--color-accent-primary); background: var(--color-accent-primary-subtle); }
+        :global(.rpt-need-name) { font-family: var(--font-display); font-size: 13.5px; font-weight: 700; color: var(--color-text-primary); }
+        :global(.rpt-need-desc) { margin-top: 2px; font-size: 12px; color: var(--color-text-tertiary); }
+
+        :global(.rpt-foot) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 38px; padding-top: 14px; border-top: 1px solid var(--color-border); font-size: 11px; color: var(--color-text-tertiary); }
+        :global(.rpt-key) { padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+        :global(.rpt-empty) { margin-top: 28px; padding: 30px; text-align: center; font-size: 13.5px; color: var(--color-text-tertiary); border: 1px dashed var(--color-border-hover); border-radius: var(--radius-lg, 10px); }
+        @media (max-width: 900px) { :global(.rpt) { padding: 30px 28px 26px; } }
+        @media (max-width: 640px) {
+          :global(.rpt) { padding: 22px 16px 20px; }
+          :global(.rpt-head) { flex-wrap: wrap; align-items: flex-start; }
+          :global(.rpt-head-main) { flex-basis: calc(100% - 80px); }
+          :global(.rpt-head-ring) { flex-direction: row; gap: 10px; }
+          :global(.rpt-title) { font-size: 22px; }
+          :global(.rpt-section) { margin-top: 32px; }
+          :global(.rpt-section-title) { font-size: 17px; }
+          :global(.rpt-infra-row) { grid-template-columns: 1fr; }
+        }
       `}</style>
     </div>
   );
