@@ -10,6 +10,7 @@ import {
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { useToast } from '@/components/ui/Toast';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
@@ -32,6 +33,7 @@ export default function HomeDashboard() {
   const { userProfile, workspace, agencies, activeAgencyId, isDemo, setCurrentView, unreadChatChannels, chatNotifs, clearChatNotifications } = useWorkspaceStore();
   const isMobile = useIsMobile();
   const router = useRouter();
+  const toast = useToast();
 
   const [now] = useState(() => new Date());
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
@@ -39,6 +41,9 @@ export default function HomeDashboard() {
 
   const agencyId = workspace?.agency_id || activeAgencyId || null;
   const agency = agencies?.find((a) => a.id === activeAgencyId) || null;
+  // Every other agency I belong to (a superadmin is a member of all of them), so
+  // a mission can be set in each in one go. Nothing to write to in demo mode.
+  const otherAgencies = isDemo ? [] : (agencies || []).filter((a) => a?.id && a.id !== agencyId);
   const canEdit = isDemo || ['manager', 'superadmin'].includes(userProfile?.role);
   const name = userProfile?.full_name?.split(' ')[0] || 'there';
 
@@ -56,6 +61,7 @@ export default function HomeDashboard() {
   const [missionSaving, setMissionSaving] = useState(false);
   const [missionError, setMissionError] = useState(false);
   const [missionSaveError, setMissionSaveError] = useState('');
+  const [missionApplyAll, setMissionApplyAll] = useState(false);
 
   // Strategy content for this agency.
   useEffect(() => {
@@ -201,6 +207,7 @@ export default function HomeDashboard() {
     setMissionForm({ department: myMission?.department || '', mission: myMission?.mission || '', priorities: priorities.length ? priorities : [''] });
     setMissionError(false);
     setMissionSaveError('');
+    setMissionApplyAll(false);
     setMissionOpen(true);
   };
   const saveMyMission = async () => {
@@ -228,6 +235,24 @@ export default function HomeDashboard() {
     }
     setMyMission((m) => ({ ...(m || {}), ...patch }));
     setTeamMissions((list) => [...list.filter((r) => r.user_id !== userProfile.id), { ...(list.find((r) => r.user_id === userProfile.id) || {}), ...row }]);
+
+    // Optionally set the same mission in every other agency I belong to. Only
+    // department / mission / priorities are sent, so the upsert merges into an
+    // existing row (outcomes, KPIs, tasks there are untouched) and a missing row
+    // gets the column defaults. One request, so it's all-or-nothing.
+    if (missionApplyAll && otherAgencies.length > 0) {
+      const { error } = await createClient().from('member_missions').upsert(
+        otherAgencies.map((a) => ({ agency_id: a.id, user_id: userProfile.id, ...patch, updated_at: row.updated_at })),
+        { onConflict: 'agency_id,user_id' },
+      );
+      if (error) {
+        console.error('[home] mission save to other agencies failed', error);
+        setMissionSaveError('Saved here, but could not update your other agencies. Please try again.');
+        setMissionSaving(false);
+        return;
+      }
+      toast.success('Mission saved', `Set in ${otherAgencies.length + 1} of your agencies.`);
+    }
     setMissionSaving(false);
     setMissionOpen(false);
   };
@@ -294,11 +319,17 @@ export default function HomeDashboard() {
   };
   const stage = strategy?.stage || null;
   const stageTint = STAGE_TINT[stage] || '#5B9BFF';
+  // Light mode swaps the bright dark-theme tints for text-safe shades (the var falls back to the tint in dark).
+  const INK = {
+    '#22C55E': 'var(--color-success-text, #22C55E)', '#EC4899': 'var(--color-pink-text, #EC4899)', '#F5A623': 'var(--color-warning-text, #F5A623)', '#F5C542': 'var(--color-warning-text, #F5A623)',
+    '#14B8A6': 'var(--color-teal-text, #14B8A6)', '#E0485A': 'var(--color-error-text, #E0485A)', '#5B9BFF': 'var(--color-accent-text, #5B9BFF)',
+  };
+  const ink = (tint) => INK[tint] || tint;
 
   const cardHeader = (Icon, tint, title, right) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="card-icon-badge" style={{ width: 30, height: 30, borderRadius: 9, background: `${tint}22`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={16} /></div>
+        <div className="card-icon-badge" style={{ width: 30, height: 30, borderRadius: 9, background: `${tint}22`, color: ink(tint), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={16} /></div>
         <h2 style={{ fontSize: 14.5, fontWeight: 800, color: tKey, margin: 0, letterSpacing: '-.01em' }}>{title}</h2>
       </div>
       {right}
@@ -339,7 +370,7 @@ export default function HomeDashboard() {
             </div>
             <span style={{ fontSize: isMobile ? 19 : 22, fontWeight: 800, color: tKey }}>{agency?.name || 'Your agency'}</span>
             {stage ? (
-              <span style={{ fontSize: 11, fontWeight: 800, color: stageTint, background: `${stageTint}20`, border: `1px solid ${stageTint}44`, padding: '3px 10px', borderRadius: 999 }}>{stage}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: ink(stageTint), background: `${stageTint}20`, border: `1px solid ${stageTint}44`, padding: '3px 10px', borderRadius: 999 }}>{stage}</span>
             ) : canEdit ? (
               <span style={{ fontSize: 11, fontWeight: 700, color: tSub, border: '1px dashed var(--color-border-subtle, rgba(48,108,236,0.3))', padding: '3px 10px', borderRadius: 999, fontStyle: 'italic' }}>Add phase</span>
             ) : null}
@@ -367,7 +398,7 @@ export default function HomeDashboard() {
               { label: 'Profit', value: fin.profit, Icon: Sigma, tint: fin.profit >= 0 ? '#22C55E' : '#E0485A' },
             ].map((t) => (
               <div key={t.label} className="dash-card" style={{ ...card, padding: isMobile ? 12 : 16 }}>
-                <t.Icon size={26} style={{ color: t.tint }} />
+                <t.Icon size={26} style={{ color: ink(t.tint) }} />
                 <div style={{ fontSize: isMobile ? 13 : 15, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', marginTop: 10 }}>{money(t.value)}</div>
                 <div style={{ fontSize: 11, color: tSub, marginTop: 2 }}>{t.label}</div>
               </div>
@@ -387,7 +418,7 @@ export default function HomeDashboard() {
 
           <div className="dash-card" style={{ ...card, minHeight: isMobile ? undefined : 150 }}>
             {cardHeader(Target, '#22C55E', 'Mission')}
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: '#22C55E', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Why do we exist?</div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Why do we exist?</div>
             <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, fontWeight: 600, color: strategy?.mission ? tKey : tSub, fontStyle: strategy?.mission ? 'normal' : 'italic' }}>
               {strategy?.mission || (canEdit ? 'Define how this agency delivers on the vision, via "Edit strategy".' : 'How this agency delivers on the vision.')}
             </p>
@@ -401,21 +432,21 @@ export default function HomeDashboard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
         <div className="dash-card" style={{ ...card, minHeight: isMobile ? undefined : 280 }}>
           {cardHeader(ListChecks, '#EC4899', 'My Tasks This Week',
-            <button onClick={() => setCurrentView('team')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#EC4899', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
+            <button onClick={() => setCurrentView('team')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pink-text, #EC4899)', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
               Full mission <ArrowRight size={11} />
             </button>
           )}
           {myTasks.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: tSub, marginBottom: 6 }}><span>Progress</span><span style={{ fontWeight: 800, color: tKey }}>{myProgress}%</span></div>
-              <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}><div style={{ width: `${myProgress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#DB2777,#EC4899)', transition: 'width .3s' }} /></div>
+              <div style={{ height: 8, borderRadius: 999, background: 'var(--color-track, rgba(255,255,255,0.06))', overflow: 'hidden' }}><div style={{ width: `${myProgress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#DB2777,#EC4899)', transition: 'width .3s' }} /></div>
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {myTasks.length === 0 && <div style={{ fontSize: 13, color: tSub, fontStyle: 'italic', marginBottom: 4 }}>No tasks yet.</div>}
             {myTasks.map((t, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => toggleMyTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#22C55E' : tSub, display: 'flex', padding: 0, flexShrink: 0 }}>{t.done ? <CheckSquare size={16} /> : <Square size={16} />}</button>
+                <button onClick={() => toggleMyTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? 'var(--color-success-text, #22C55E)' : tSub, display: 'flex', padding: 0, flexShrink: 0 }}>{t.done ? <CheckSquare size={16} /> : <Square size={16} />}</button>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.done ? tSub : tKey, textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
                 <button onClick={() => removeMyTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tSub, display: 'flex', padding: 0, flexShrink: 0 }}><X size={13} /></button>
               </div>
@@ -423,16 +454,16 @@ export default function HomeDashboard() {
             <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
               <input value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addMyTask(); } }} placeholder="Add a task…"
                 style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, color: tKey, fontFamily: 'inherit', outline: 'none' }} />
-              <button onClick={addMyTask} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 11px', borderRadius: 9, border: '1px dashed var(--color-border-subtle, rgba(48,108,236,0.3))', background: 'transparent', color: '#EC4899', cursor: 'pointer' }}><Plus size={13} /></button>
+              <button onClick={addMyTask} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 11px', borderRadius: 9, border: '1px dashed var(--color-border-subtle, rgba(48,108,236,0.3))', background: 'transparent', color: 'var(--color-pink-text, #EC4899)', cursor: 'pointer' }}><Plus size={13} /></button>
             </div>
           </div>
           {myOutcomes.length > 0 && (
-            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--color-divider, rgba(255,255,255,0.06))' }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 9 }}>Expected outcome</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {myOutcomes.map((o, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <CheckSquare size={15} style={{ color: '#22C55E', flexShrink: 0, marginTop: 1 }} />
+                    <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 1 }} />
                     <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{o}</span>
                   </div>
                 ))}
@@ -451,7 +482,7 @@ export default function HomeDashboard() {
               {objectives.map((o, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 6, background: 'rgba(245,166,35,0.16)', color: '#F5A623', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{i + 1}</span>
+                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 6, background: 'rgba(245,166,35,0.16)', color: 'var(--color-warning-text, #F5A623)', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{i + 1}</span>
                     <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{o.text}</span>
                   </div>
                   {o.successMeasures.length > 0 && (
@@ -526,7 +557,7 @@ export default function HomeDashboard() {
                   const mm = missionByUser.get(m.id) || {};
                   const priorities = Array.isArray(mm.priorities) ? mm.priorities.filter(Boolean) : [];
                   return (
-                    <div key={m.id} style={{ display: 'flex', gap: 12, paddingTop: i === 0 ? 0 : 16, borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)' }}>
+                    <div key={m.id} style={{ display: 'flex', gap: 12, paddingTop: i === 0 ? 0 : 16, borderTop: i === 0 ? 'none' : '1px solid var(--color-divider, rgba(255,255,255,0.06))' }}>
                       <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
                         <ImgOrFallback src={m.avatar_url} fallback={(m.full_name || m.email || '?').charAt(0).toUpperCase()} />
                       </div>
@@ -577,7 +608,7 @@ export default function HomeDashboard() {
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: tKey, fontVariantNumeric: 'tabular-nums' }}>{money(latest.revenue)}</span>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: latest.growth == null ? tSub : latest.growth < 0 ? '#E0485A' : '#22C55E' }}>{latest.growth == null ? '—' : `${latest.growth > 0 ? '+' : ''}${latest.growth}%`}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: latest.growth == null ? tSub : latest.growth < 0 ? 'var(--color-error-text, #E0485A)' : 'var(--color-success-text, #22C55E)' }}>{latest.growth == null ? '—' : `${latest.growth > 0 ? '+' : ''}${latest.growth}%`}</span>
                   </div>
                 );
               })()}
@@ -612,7 +643,7 @@ export default function HomeDashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {monthlyGoals.map((g, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: '#14B8A6', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{i + 1}</span>
+                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 6, background: 'rgba(20,184,166,0.16)', color: 'var(--color-teal-text, #14B8A6)', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{i + 1}</span>
                     <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{g}</span>
                   </div>
                 ))}
@@ -735,6 +766,15 @@ export default function HomeDashboard() {
                   <button onClick={() => setMissionForm((f) => ({ ...f, priorities: [...f.priorities, ''] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add priority</button>
                 </div>
               </Field>
+              {otherAgencies.length > 0 && (
+                <label className="strat-apply">
+                  <input type="checkbox" checked={missionApplyAll} onChange={(e) => setMissionApplyAll(e.target.checked)} />
+                  <span>
+                    <span className="strat-apply-title">Also set this in my other {otherAgencies.length === 1 ? 'agency' : `${otherAgencies.length} agencies`}</span>
+                    <span className="strat-apply-sub">{otherAgencies.map((a) => a.name).filter(Boolean).join(', ')}. Replaces the mission, department and priorities you have there; your outcomes, KPIs and tasks are not touched.</span>
+                  </span>
+                </label>
+              )}
               {missionSaveError && <div className="strat-error" style={{ marginTop: 0 }}>{missionSaveError}</div>}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
@@ -749,6 +789,10 @@ export default function HomeDashboard() {
         .strat-in.error { border-color: var(--color-error); background: var(--color-error-bg); }
         .strat-in.error:focus { box-shadow: 0 0 0 3px var(--color-error-bg); }
         .strat-error { font-size: 11.5px; font-weight: 600; margin-top: 5px; color: var(--color-error-text, var(--color-error)); }
+        .strat-apply { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; cursor: pointer; border: 1px solid var(--color-border-subtle, rgba(48,108,236,0.16)); background: var(--color-bg-tertiary, rgba(255,255,255,0.04)); }
+        .strat-apply input { margin-top: 2px; width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--color-accent-primary, #306CEC); cursor: pointer; }
+        .strat-apply-title { display: block; font-size: 13px; font-weight: 700; color: var(--color-text-primary, #E2EEFF); }
+        .strat-apply-sub { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: var(--color-text-tertiary, #6C82A3); }
         .strat-in {
           width: 100%; box-sizing: border-box; background: var(--color-bg-tertiary, rgba(255,255,255,0.04));
           border: 1px solid var(--color-border-subtle, rgba(48,108,236,0.16)); border-radius: 10px;
