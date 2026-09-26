@@ -19,6 +19,12 @@ export default function ThemeInitializer() {
               const theme = localStorage.getItem('impactnotion-theme') || 'dark';
               document.documentElement.setAttribute('data-theme', theme);
             } catch (e) {}
+            try {
+              // Saved sidebar width (see SIDEBAR_WIDTH in useWorkspaceStore), applied before
+              // first paint so the sidebar doesn't jump. Keep min/max/key in sync with it.
+              const w = parseInt(localStorage.getItem('impactgrid-sidebar-width'), 10);
+              if (w) document.documentElement.style.setProperty('--sidebar-width', Math.min(480, Math.max(220, w)) + 'px');
+            } catch (e) {}
           `,
         }}
       />

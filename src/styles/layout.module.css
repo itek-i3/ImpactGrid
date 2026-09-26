@@ -33,6 +33,42 @@
   min-width: var(--sidebar-collapsed);
 }
 
+/* Drag-to-resize: a wide, invisible hit area on the right edge with a thin accent
+   line that appears on hover / focus / while dragging. Width changes track the
+   pointer, so the sidebar's width transition is switched off during a drag. */
+.sidebarResizing {
+  transition: none !important;
+}
+
+.sidebarResizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sidebarResizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background .15s;
+}
+
+.sidebarResizer:hover::after,
+.sidebarResizer:focus-visible::after,
+.sidebarResizerActive::after {
+  background: var(--color-accent-primary);
+}
+
 /* ── Sidebar Header ── */
 .sidebarHeader {
   display: flex;
@@ -678,6 +714,16 @@
 
   .sidebar:not(.sidebarCollapsed) {
     transform: translateX(0);
+  }
+
+  /* The drawer keeps its own fixed width, whatever was chosen on desktop. */
+  .sidebar {
+    width: min(288px, 88vw);
+    min-width: min(288px, 88vw);
+  }
+
+  .sidebarResizer {
+    display: none;
   }
 
   .sidebarOverlay {

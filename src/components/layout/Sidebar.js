@@ -27,7 +27,7 @@ import {
   Sparkles,
   Lock,
 } from 'lucide-react';
-import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { useWorkspaceStore, SIDEBAR_WIDTH, clampSidebarWidth } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import PageTree from './PageTree';
@@ -75,6 +75,10 @@ export default function Sidebar() {
     agencies,
     activeAgencyId,
     switchAgency,
+    sidebarWidth,
+    setSidebarWidth,
+    resetSidebarWidth,
+    hydrateSidebarWidth,
   } = useWorkspaceStore();
 
   const { session: activeSession, teamSessions, openSessionModal } = useSessionStore();
@@ -84,6 +88,58 @@ export default function Sidebar() {
   // On phones the sidebar is an overlay drawer — anything that navigates away
   // or opens its own modal should close it, or it's left covering the screen.
   const closeMobileSidebar = useCallback(() => { if (isMobile) setSidebarOpen(false); }, [isMobile, setSidebarOpen]);
+
+  // ── Resizable width ──
+  // Dragging writes the width straight to the --sidebar-width variable on <html> (no
+  // React re-render per pointer move) and commits it to the store — which persists
+  // it — once on release. The keyboard steps it, Enter / double-click resets it.
+  const asideRef = useRef(null);
+  const liveWidthRef = useRef(sidebarWidth);
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => { hydrateSidebarWidth(); }, [hydrateSidebarWidth]);
+
+  const startResize = useCallback((e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const left = asideRef.current ? asideRef.current.getBoundingClientRect().left : 0;
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    liveWidthRef.current = useWorkspaceStore.getState().sidebarWidth;
+    let moved = false;
+    let done = false;
+    setResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const move = (ev) => {
+      moved = true;
+      const w = clampSidebarWidth(ev.clientX - left);
+      liveWidthRef.current = w;
+      document.documentElement.style.setProperty('--sidebar-width', `${w}px`);
+    };
+    const end = () => {
+      if (done) return;
+      done = true;
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      handle.removeEventListener('lostpointercapture', end);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setResizing(false);
+      if (moved) setSidebarWidth(liveWidthRef.current);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+    handle.addEventListener('lostpointercapture', end);
+  }, [setSidebarWidth]);
+
+  const onResizeKey = (e) => {
+    const step = e.shiftKey ? 48 : 16;
+    const target = { ArrowLeft: sidebarWidth - step, ArrowRight: sidebarWidth + step, Home: SIDEBAR_WIDTH.min, End: SIDEBAR_WIDTH.max }[e.key];
+    if (target !== undefined) { e.preventDefault(); setSidebarWidth(target); }
+    else if (e.key === 'Enter') { e.preventDefault(); resetSidebarWidth(); }
+  };
 
   const [agencySwitcherOpen, setAgencySwitcherOpen] = useState(false);
   const agencyPickerRef = useRef(null);
@@ -205,7 +261,8 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`${styles.sidebar} ${!sidebarOpen ? styles.sidebarCollapsed : ''}`}
+        ref={asideRef}
+        className={`${styles.sidebar} ${!sidebarOpen ? styles.sidebarCollapsed : ''} ${resizing ? styles.sidebarResizing : ''}`}
         style={{
           background: 'var(--color-sidebar-surface, rgba(0,0,0,0.88))',
           backdropFilter: 'blur(20px)',
@@ -567,6 +624,20 @@ export default function Sidebar() {
 
             </div>
           </>
+        )}
+
+        {/* Drag handle on the right edge — desktop only (phones use the drawer). */}
+        {sidebarOpen && !isMobile && (
+          <div
+            className={`${styles.sidebarResizer} ${resizing ? styles.sidebarResizerActive : ''}`}
+            role="separator" aria-orientation="vertical" aria-label="Resize sidebar"
+            aria-valuemin={SIDEBAR_WIDTH.min} aria-valuemax={SIDEBAR_WIDTH.max} aria-valuenow={sidebarWidth}
+            tabIndex={0}
+            title="Drag to resize · double-click to reset"
+            onPointerDown={startResize}
+            onDoubleClick={resetSidebarWidth}
+            onKeyDown={onResizeKey}
+          />
         )}
       </aside>
 

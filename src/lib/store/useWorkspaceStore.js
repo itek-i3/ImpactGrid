@@ -2,6 +2,14 @@
 
 import { create } from 'zustand';
 
+// The sidebar's width is user-adjustable (drag its right edge). It lives in a CSS
+// variable on <html>, so resizing never re-renders the app, and is remembered in
+// localStorage; ThemeInitializer applies the saved width before first paint.
+// (Keep min / max / key in sync with the inline script in ThemeInitializer.)
+export const SIDEBAR_WIDTH = { min: 220, max: 480, default: 288, storageKey: 'impactgrid-sidebar-width' };
+export const clampSidebarWidth = (w) => Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, Math.round(Number(w)) || SIDEBAR_WIDTH.default));
+const applySidebarWidth = (w) => { try { document.documentElement.style.setProperty('--sidebar-width', `${w}px`); } catch {} };
+
 const isDemoMode = () => {
   try {
     const isDemo = useWorkspaceStore.getState().isDemo;
@@ -61,7 +69,7 @@ export const useWorkspaceStore = create((set, get) => ({
 
   // UI state
   sidebarOpen: true,
-  sidebarWidth: 260,
+  sidebarWidth: SIDEBAR_WIDTH.default,
   searchOpen: false,
   isLoading: false,
   theme: 'dark',
@@ -134,6 +142,25 @@ export const useWorkspaceStore = create((set, get) => ({
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  setSidebarWidth: (w) => {
+    const width = clampSidebarWidth(w);
+    applySidebarWidth(width);
+    try { localStorage.setItem(SIDEBAR_WIDTH.storageKey, String(width)); } catch {}
+    set({ sidebarWidth: width });
+  },
+  // Back to the stylesheet default, and forget the saved width.
+  resetSidebarWidth: () => {
+    try { document.documentElement.style.removeProperty('--sidebar-width'); localStorage.removeItem(SIDEBAR_WIDTH.storageKey); } catch {}
+    set({ sidebarWidth: SIDEBAR_WIDTH.default });
+  },
+  // Sync state with the width the pre-paint script already applied to <html>.
+  hydrateSidebarWidth: () => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_WIDTH.storageKey);
+      if (raw) set({ sidebarWidth: clampSidebarWidth(raw) });
+    } catch {}
+  },
 
   toggleSearch: () =>
     set((state) => ({ searchOpen: !state.searchOpen })),
