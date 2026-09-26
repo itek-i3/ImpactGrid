@@ -216,6 +216,10 @@
   --color-text-control: #3D5070;
   /* Result card on the Valuation page — a fixed dark-navy gradient otherwise. */
   --gradient-hero: linear-gradient(135deg, rgba(48, 108, 236, 0.12) 0%, #FFFFFF 100%);
+  /* Floating menus that hard-code a dark-navy popup surface (profile menu, emoji
+     picker) — write var(--color-popover-bg, <dark literal>) so dark is unchanged. */
+  --color-popover-bg: #FFFFFF;
+  --shadow-popover: 0 16px 48px rgba(20, 33, 61, 0.18), 0 4px 12px rgba(20, 33, 61, 0.08);
 
   --color-accent-primary: #306CEC;
   --color-accent-primary-hover: #1E4FB8;

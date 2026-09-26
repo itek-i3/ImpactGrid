@@ -16,6 +16,73 @@ const WORKSPACE_EMOJIS = [
   '🧠','💪','🤝','🌱','🔮','🎵','📱','🖥️',
 ];
 
+// Page-scoped tokens. The dark values are the literals this page always used, so
+// dark mode is unchanged; the light block maps them onto the shared theme tokens.
+// Everything else on the page uses shared tokens directly (--color-text-primary,
+// --color-text-tertiary, ...) whose dark values already match these literals.
+const PROFILE_CSS = `
+  .ig-pf {
+    --pf-page-bg: #000;
+    --pf-card-bg: #000;
+    --pf-nav-bg: rgba(0,0,0,0.95);
+    --pf-strong: #fff;
+    --pf-empty: #2A3F60;
+    --pf-input-text: #B8D4FF;
+    --pf-placeholder: rgba(148,180,255,0.40);
+    --pf-error-msg: #FF6B7A;
+    --pf-cancel-border: rgba(255,255,255,0.12);
+    --pf-icon-bg: rgba(48,108,236,0.22);
+    --pf-card-shadow: none;
+    --pf-toast-base: transparent;
+    --pf-toast-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  [data-theme="light"] .ig-pf {
+    --pf-page-bg: var(--color-bg-primary);
+    --pf-card-bg: var(--color-bg-secondary);
+    --pf-nav-bg: rgba(245,247,255,0.92);
+    --pf-strong: var(--color-text-primary);
+    --pf-empty: var(--color-text-muted);
+    --pf-input-text: var(--color-text-primary);
+    --pf-placeholder: var(--color-text-muted);
+    --pf-error-msg: var(--color-error-text);
+    --pf-cancel-border: var(--color-border-hover);
+    --pf-icon-bg: var(--color-accent-primary);
+    --pf-card-shadow: var(--shadow-sm);
+    --pf-toast-base: var(--color-bg-secondary);
+    --pf-toast-shadow: var(--shadow-lg);
+  }
+  .ig-input::placeholder { color: var(--pf-placeholder); }
+  .ig-input:focus { outline: none; }
+  .ig-input { color: var(--pf-input-text); color-scheme: dark; }
+  [data-theme="light"] .ig-pf .ig-input { color-scheme: light; }
+  .ig-input:-webkit-autofill,
+  .ig-input:-webkit-autofill:hover,
+  .ig-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0px 9999px transparent inset !important;
+    -webkit-text-fill-color: var(--pf-input-text) !important;
+    background-color: transparent !important;
+    transition: background-color 9999s ease;
+  }
+  .ig-field-wrap:focus-within {
+    border-color: rgba(91,155,255,0.90) !important;
+    box-shadow: 0 0 0 3px rgba(48,108,236,0.22);
+  }
+  .ig-field-wrap-disabled { opacity: 0.5; cursor: not-allowed; }
+  .ig-field-wrap-error { border-color: rgba(224,72,90,0.85) !important; background: rgba(224,72,90,0.08) !important; }
+  .ig-field-wrap-error:focus-within { box-shadow: 0 0 0 3px rgba(224,72,90,0.22) !important; }
+  .ig-field-error-msg { display: block; color: var(--pf-error-msg); font-size: 11px; margin-top: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+`;
+
+// Text-safe role colours: the bright dark-mode shades stay as the fallback, light
+// mode picks the darker -text variants. (Tinted backgrounds/borders still use the
+// hex in roleColor, since a var() can't take an alpha suffix.)
+const ROLE_TEXT = {
+  superadmin: 'var(--color-warning-text, #F5A623)',
+  manager:    'var(--color-accent-text, #5B9BFF)',
+  member:     'var(--color-success-text, #22C55E)',
+};
+
 export default function SettingsPage() {
   const router = useRouter();
   const fileInputRef = useRef(null);
@@ -222,55 +289,38 @@ export default function SettingsPage() {
   };
 
   if (!profile) return (
-    <div style={{ minHeight: '100vh', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ color: '#3D5A8A', fontSize: 14 }}>Loading…</span>
-    </div>
+    <>
+      <style>{PROFILE_CSS}</style>
+      <div className="ig-pf" style={{ minHeight: '100vh', background: 'var(--pf-page-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: 'var(--color-text-tertiary)', fontSize: 14 }}>Loading…</span>
+      </div>
+    </>
   );
 
   const avatarSrc = profile.avatar_url;
   const initial = (profile.full_name || profile.email || '?').charAt(0).toUpperCase();
   const roleColor = { superadmin: '#F5A623', manager: '#5B9BFF', member: '#22C55E' }[profile.role] || '#5B9BFF';
+  const roleText = ROLE_TEXT[profile.role] || ROLE_TEXT.manager;
   const roleLabel = { superadmin: 'Super Admin', manager: 'Manager', member: 'Member' }[profile.role] || 'Member';
-  const val = (v) => v || <span style={{ color: '#2A3F60' }}>—</span>;
+  const val = (v) => v || <span style={{ color: 'var(--pf-empty)' }}>—</span>;
 
   return (
     <>
-      <style>{`
-        .ig-input::placeholder { color: rgba(148,180,255,0.40); }
-        .ig-input:focus { outline: none; }
-        .ig-input { color: #B8D4FF; color-scheme: dark; }
-        .ig-input:-webkit-autofill,
-        .ig-input:-webkit-autofill:hover,
-        .ig-input:-webkit-autofill:focus {
-          -webkit-box-shadow: 0 0 0px 9999px transparent inset !important;
-          -webkit-text-fill-color: #B8D4FF !important;
-          background-color: transparent !important;
-          transition: background-color 9999s ease;
-        }
-        .ig-field-wrap:focus-within {
-          border-color: rgba(91,155,255,0.90) !important;
-          box-shadow: 0 0 0 3px rgba(48,108,236,0.22);
-        }
-        .ig-field-wrap-disabled { opacity: 0.5; cursor: not-allowed; }
-        .ig-field-wrap-error { border-color: rgba(224,72,90,0.85) !important; background: rgba(224,72,90,0.08) !important; }
-        .ig-field-wrap-error:focus-within { box-shadow: 0 0 0 3px rgba(224,72,90,0.22) !important; }
-        .ig-field-error-msg { display: block; color: #FF6B7A; font-size: 11px; margin-top: 6px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{PROFILE_CSS}</style>
 
-      <div style={{ minHeight: '100vh', background: '#000', fontFamily: 'var(--font-sans,system-ui)', color: '#E2EEFF' }}>
+      <div className="ig-pf" style={{ minHeight: '100vh', background: 'var(--pf-page-bg)', fontFamily: 'var(--font-sans,system-ui)', color: 'var(--color-text-primary)' }}>
 
         {/* Nav */}
         <div style={{
           height: 54, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '0 28px', borderBottom: '1px solid rgba(48,108,236,0.18)',
-          background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(12px)',
+          background: 'var(--pf-nav-bg)', backdropFilter: 'blur(12px)',
           position: 'sticky', top: 0, zIndex: 50,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={() => router.back()} style={{
               display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none',
-              color: '#7EB3FF', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', padding: '4px 8px', borderRadius: 7,
+              color: 'var(--color-accent-text, #7EB3FF)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', padding: '4px 8px', borderRadius: 7,
             }}>
               <ArrowLeft size={15} /> Back
             </button>
@@ -281,7 +331,7 @@ export default function SettingsPage() {
             <button onClick={() => setEditing(true)} style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px',
               background: 'rgba(48,108,236,0.14)', border: '1.5px solid rgba(48,108,236,0.55)',
-              borderRadius: 50, color: '#7EB3FF', cursor: 'pointer', fontSize: 13,
+              borderRadius: 50, color: 'var(--color-accent-text, #7EB3FF)', cursor: 'pointer', fontSize: 13,
               fontFamily: 'inherit', fontWeight: 600,
             }}>
               <Pencil size={13} /> Edit Profile
@@ -290,8 +340,8 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={cancelEdit} style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px',
-                background: 'none', border: '1.5px solid rgba(255,255,255,0.12)',
-                borderRadius: 50, color: '#6B8BB5', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+                background: 'none', border: '1.5px solid var(--pf-cancel-border)',
+                borderRadius: 50, color: 'var(--color-text-control, #6B8BB5)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
               }}>
                 <X size={13} /> Cancel
               </button>
@@ -312,10 +362,11 @@ export default function SettingsPage() {
           <div style={{
             position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
             padding: '10px 22px', borderRadius: 50, fontSize: 13, fontWeight: 600,
-            background: msg.ok ? 'rgba(22,163,107,0.15)' : 'rgba(224,72,90,0.15)',
+            // Tint over an opaque base in light mode so page text can't show through.
+            background: `linear-gradient(${msg.ok ? 'rgba(22,163,107,0.15)' : 'rgba(224,72,90,0.15)'}, ${msg.ok ? 'rgba(22,163,107,0.15)' : 'rgba(224,72,90,0.15)'}), var(--pf-toast-base)`,
             border: `1px solid ${msg.ok ? '#16A36B' : '#E0485A'}`,
-            color: msg.ok ? '#16A36B' : '#E0485A',
-            zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.6)', whiteSpace: 'nowrap',
+            color: msg.ok ? 'var(--color-success-text, #16A36B)' : 'var(--color-error-text, #E0485A)',
+            zIndex: 9999, boxShadow: 'var(--pf-toast-shadow)', whiteSpace: 'nowrap',
           }}>
             {msg.text}
           </div>
@@ -325,7 +376,7 @@ export default function SettingsPage() {
 
           {/* Profile card */}
           <div style={{
-            background: '#000', border: '1px solid rgba(48,108,236,0.22)',
+            background: 'var(--pf-card-bg)', boxShadow: 'var(--pf-card-shadow)', border: '1px solid rgba(48,108,236,0.22)',
             borderRadius: 20, padding: '36px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 360,
           }}>
 
@@ -346,7 +397,7 @@ export default function SettingsPage() {
                 <button onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Change photo" style={{
                   position: 'absolute', bottom: 4, right: 4,
                   width: 30, height: 30, borderRadius: '50%',
-                  background: '#306CEC', border: '2px solid #000',
+                  background: '#306CEC', border: '2px solid var(--pf-card-bg)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: uploading ? 'wait' : 'pointer',
                 }}>
@@ -358,11 +409,11 @@ export default function SettingsPage() {
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
 
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#E2EEFF' }}>{profile.full_name || '—'}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>{profile.full_name || '—'}</div>
                 <div style={{
                   marginTop: 6, fontSize: 10, fontWeight: 700, padding: '3px 10px',
                   borderRadius: 99, textTransform: 'uppercase', letterSpacing: '.06em',
-                  background: `${roleColor}18`, color: roleColor, border: `1px solid ${roleColor}30`,
+                  background: `${roleColor}18`, color: roleText, border: `1px solid ${roleColor}30`,
                   display: 'inline-block',
                 }}>
                   {roleLabel}
@@ -395,14 +446,14 @@ export default function SettingsPage() {
           <div style={{ marginTop: 12, borderRadius: 14, border: '1px solid rgba(48,108,236,0.18)', overflow: 'hidden' }}>
             <button onClick={() => setShowPwRow((v) => !v)} style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '15px 24px', background: '#000', border: 'none',
-              cursor: 'pointer', fontFamily: 'inherit', color: '#6B8BB5', fontSize: 13, fontWeight: 600,
+              padding: '15px 24px', background: 'var(--pf-card-bg)', border: 'none',
+              cursor: 'pointer', fontFamily: 'inherit', color: 'var(--color-text-control, #6B8BB5)', fontSize: 13, fontWeight: 600,
             }}>
               <span>Change Password</span>
-              <span style={{ fontSize: 18, lineHeight: 1, color: '#3D5A8A', transform: showPwRow ? 'rotate(45deg)' : 'none', transition: 'transform .2s', display: 'inline-block' }}>+</span>
+              <span style={{ fontSize: 18, lineHeight: 1, color: 'var(--color-text-tertiary)', transform: showPwRow ? 'rotate(45deg)' : 'none', transition: 'transform .2s', display: 'inline-block' }}>+</span>
             </button>
             {showPwRow && (
-              <div style={{ padding: '18px 24px 24px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.08)', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{ padding: '18px 24px 24px', background: 'var(--pf-card-bg)', borderTop: '1px solid rgba(48,108,236,0.08)', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
                 <div style={{ flex: 1 }}>
                   <div style={lbl}>New Password</div>
                   <div className="ig-field-wrap" style={pillWrapSt}>
@@ -433,15 +484,15 @@ export default function SettingsPage() {
           {/* Workspace Settings card */}
           {workspace && (
             <div style={{
-              marginTop: 32, background: '#000', border: '1px solid rgba(48,108,236,0.22)',
+              marginTop: 32, background: 'var(--pf-card-bg)', boxShadow: 'var(--pf-card-shadow)', border: '1px solid rgba(48,108,236,0.22)',
               borderRadius: 20, padding: '36px 40px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
                 <div>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <LayoutDashboard size={20} style={{ color: '#5B9BFF' }} /> Workspace Settings
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--pf-strong)', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <LayoutDashboard size={20} style={{ color: 'var(--color-text-link)' }} /> Workspace Settings
                   </h3>
-                  <p style={{ color: '#3D5A8A', margin: '6px 0 0', fontSize: 13 }}>
+                  <p style={{ color: 'var(--color-text-tertiary)', margin: '6px 0 0', fontSize: 13 }}>
                     {['manager', 'superadmin'].includes(profile?.role)
                       ? 'Customize how your workspace looks to the team.'
                       : 'Your current workspace details.'}
@@ -451,7 +502,7 @@ export default function SettingsPage() {
                   <button onClick={() => setWsEditing(true)} style={{
                     display: 'flex', alignItems: 'center', gap: 6, padding: '6px 16px',
                     background: 'rgba(48,108,236,0.14)', border: '1.5px solid rgba(48,108,236,0.55)',
-                    borderRadius: 50, color: '#7EB3FF', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
+                    borderRadius: 50, color: 'var(--color-accent-text, #7EB3FF)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600,
                   }}>
                     <Pencil size={13} /> Edit
                   </button>
@@ -460,8 +511,8 @@ export default function SettingsPage() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={cancelWsEdit} style={{
                       display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px',
-                      background: 'none', border: '1.5px solid rgba(255,255,255,0.12)',
-                      borderRadius: 50, color: '#6B8BB5', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+                      background: 'none', border: '1.5px solid var(--pf-cancel-border)',
+                      borderRadius: 50, color: 'var(--color-text-control, #6B8BB5)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
                     }}>
                       <X size={13} /> Cancel
                     </button>
@@ -496,15 +547,15 @@ export default function SettingsPage() {
                   </div>
                   {wsEditing && (
                     <div style={{
-                      position: 'absolute', fontSize: 10, color: '#5B9BFF', textAlign: 'center',
+                      position: 'absolute', fontSize: 10, color: 'var(--color-text-link)', textAlign: 'center',
                       width: '100%', marginTop: 4,
                     }}>tap to change</div>
                   )}
                   {showEmojiPicker && wsEditing && (
                     <div style={{
                       position: 'absolute', top: '110%', left: 0, zIndex: 100,
-                      background: '#0A1628', border: '1.5px solid rgba(48,108,236,0.35)',
-                      borderRadius: 16, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                      background: 'var(--color-popover-bg, #0A1628)', border: '1.5px solid rgba(48,108,236,0.35)',
+                      borderRadius: 16, padding: 16, boxShadow: 'var(--shadow-popover, 0 8px 32px rgba(0,0,0,0.6))',
                       display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, width: 288,
                     }}>
                       {WORKSPACE_EMOJIS.map((e) => (
@@ -539,7 +590,7 @@ export default function SettingsPage() {
                       {wsNameError && <span className="ig-field-error-msg">Workspace name is required</span>}
                     </div>
                   ) : (
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E2EEFF', marginTop: 6 }}>{workspace.name}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', marginTop: 6 }}>{workspace.name}</div>
                   )}
                 </div>
               </div>
@@ -549,14 +600,14 @@ export default function SettingsPage() {
           {/* Agency Members card */}
           {profile && ['manager', 'superadmin'].includes(profile.role) && profile.agency_id && (
             <div style={{
-              marginTop: 32, background: '#000', border: '1px solid rgba(48,108,236,0.22)',
+              marginTop: 32, background: 'var(--pf-card-bg)', boxShadow: 'var(--pf-card-shadow)', border: '1px solid rgba(48,108,236,0.22)',
               borderRadius: 20, padding: '36px 40px', display: 'flex', flexDirection: 'column', gap: 24,
             }}>
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Building2 size={20} style={{ color: '#5B9BFF' }} /> Agency Members
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--pf-strong)', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Building2 size={20} style={{ color: 'var(--color-text-link)' }} /> Agency Members
                 </h3>
-                <p style={{ color: '#3D5A8A', margin: '6px 0 0', fontSize: 13 }}>
+                <p style={{ color: 'var(--color-text-tertiary)', margin: '6px 0 0', fontSize: 13 }}>
                   View and manage team memberships for your agency.
                 </p>
               </div>
@@ -564,10 +615,10 @@ export default function SettingsPage() {
               {loadingMembers ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 0', gap: 10 }}>
                   <div style={{ width: 20, height: 20, border: '2px solid rgba(48,108,236,0.15)', borderTopColor: '#5B9BFF', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
-                  <span style={{ fontSize: 13, color: '#3D5A8A' }}>Loading members…</span>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>Loading members…</span>
                 </div>
               ) : agencyMembers.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: 'rgba(148,180,255,0.40)', fontSize: 13 }}>
+                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--pf-placeholder)', fontSize: 13 }}>
                   No members in this agency.
                 </div>
               ) : (
@@ -576,7 +627,7 @@ export default function SettingsPage() {
                     <thead>
                       <tr style={{ borderBottom: '1.5px solid rgba(48,108,236,0.20)' }}>
                         {['Member', 'Email', 'Role', 'Status', 'Actions'].map((h) => (
-                          <th key={h} style={{ padding: '0 12px 12px', fontSize: 11, fontWeight: 700, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
+                          <th key={h} style={{ padding: '0 12px 12px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -586,7 +637,7 @@ export default function SettingsPage() {
                         const initial = (member.full_name || member.email || '?').charAt(0).toUpperCase();
                         return (
                           <tr key={member.id} style={{ borderBottom: '1px solid rgba(48,108,236,0.10)' }}>
-                            <td style={{ padding: '13px 12px', fontWeight: 600, color: '#fff', fontSize: 13.5 }}>
+                            <td style={{ padding: '13px 12px', fontWeight: 600, color: 'var(--pf-strong)', fontSize: 13.5 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <div style={{
                                   width: 28, height: 28, borderRadius: '50%',
@@ -601,16 +652,16 @@ export default function SettingsPage() {
                                     initial
                                   )}
                                 </div>
-                                <span>{member.full_name || '—'} {isSelf && <span style={{ color: '#3D5A8A', fontSize: 11 }}>(you)</span>}</span>
+                                <span>{member.full_name || '—'} {isSelf && <span style={{ color: 'var(--color-text-tertiary)', fontSize: 11 }}>(you)</span>}</span>
                               </div>
                             </td>
-                            <td style={{ padding: '13px 12px', fontSize: 13, color: '#7EB3FF' }}>{member.email}</td>
+                            <td style={{ padding: '13px 12px', fontSize: 13, color: 'var(--color-accent-text, #7EB3FF)' }}>{member.email}</td>
                             <td style={{ padding: '13px 12px' }}>
                               {isSelf ? (
                                 <span style={{
                                   fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 99,
                                   background: member.role === 'superadmin' ? 'rgba(245,166,35,0.18)' : 'rgba(91,155,255,0.18)',
-                                  color: member.role === 'superadmin' ? '#F5A623' : '#5B9BFF',
+                                  color: member.role === 'superadmin' ? ROLE_TEXT.superadmin : ROLE_TEXT.manager,
                                   border: member.role === 'superadmin' ? '1px solid rgba(245,166,35,0.30)' : '1px solid rgba(91,155,255,0.30)',
                                   textTransform: 'uppercase', letterSpacing: '.05em'
                                 }}>
@@ -622,8 +673,8 @@ export default function SettingsPage() {
                                   disabled={updatingMember === member.id}
                                   onChange={(e) => handleRoleChange(member.id, e.target.value)}
                                   style={{
-                                    background: '#0d1b38', border: '1px solid rgba(48,108,236,0.35)',
-                                    borderRadius: 8, color: member.role === 'superadmin' ? '#F5A623' : member.role === 'manager' ? '#5B9BFF' : '#22C55E',
+                                    background: 'var(--color-bg-tertiary)', border: '1px solid rgba(48,108,236,0.35)',
+                                    borderRadius: 8, color: ROLE_TEXT[member.role] || ROLE_TEXT.member,
                                     fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
                                     fontFamily: 'inherit', outline: 'none',
                                     opacity: updatingMember === member.id ? 0.5 : 1,
@@ -638,7 +689,7 @@ export default function SettingsPage() {
                               <span style={{
                                 fontSize: 10.5, fontWeight: 600, padding: '3px 9px', borderRadius: 99,
                                 background: member.approved ? 'rgba(22,163,107,0.18)' : 'rgba(245,166,35,0.18)',
-                                color: member.approved ? '#16A36B' : '#F5A623',
+                                color: member.approved ? 'var(--color-success-text, #16A36B)' : 'var(--color-warning-text, #F5A623)',
                                 border: member.approved ? '1px solid rgba(22,163,107,0.30)' : '1px solid rgba(245,166,35,0.30)',
                                 textTransform: 'uppercase', letterSpacing: '.05em'
                               }}>
@@ -653,7 +704,7 @@ export default function SettingsPage() {
                                     disabled={updatingMember === member.id}
                                     style={{
                                       padding: '4px 12px', borderRadius: 50, fontSize: 11.5, fontWeight: 600,
-                                      background: 'rgba(22,163,107,0.18)', color: '#16A36B', border: '1px solid rgba(22,163,107,0.35)',
+                                      background: 'rgba(22,163,107,0.18)', color: 'var(--color-success-text, #16A36B)', border: '1px solid rgba(22,163,107,0.35)',
                                       cursor: 'pointer', transition: '.15s',
                                     }}
                                   >
@@ -666,14 +717,14 @@ export default function SettingsPage() {
                                     disabled={updatingMember === member.id}
                                     style={{
                                       padding: '4px 12px', borderRadius: 50, fontSize: 11.5, fontWeight: 600,
-                                      background: 'rgba(224,72,90,0.12)', color: '#E0485A', border: '1px solid rgba(224,72,90,0.25)',
+                                      background: 'rgba(224,72,90,0.12)', color: 'var(--color-error-text, #E0485A)', border: '1px solid rgba(224,72,90,0.25)',
                                       cursor: 'pointer', transition: '.15s',
                                     }}
                                   >
                                     Remove
                                   </button>
                                 )}
-                                {isSelf && <span style={{ fontSize: 12, color: '#3D5A8A' }}>—</span>}
+                                {isSelf && <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>—</span>}
                               </div>
                             </td>
                           </tr>
@@ -722,13 +773,13 @@ function PillField({ label, value, onChange, placeholder, disabled, type = 'text
 function InfoRow({ label, value }) {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#3D5A8A', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#7EB3FF' }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-accent-text, #7EB3FF)' }}>{value}</div>
     </div>
   );
 }
 
-const lbl = { fontSize: 11, fontWeight: 700, color: '#3D5A8A', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em' };
+const lbl = { fontSize: 11, fontWeight: 700, color: 'var(--color-text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em' };
 
 const pillWrapSt = {
   display: 'flex', alignItems: 'center',
@@ -743,7 +794,7 @@ const pillWrapSt = {
 
 const iconCircleSt = {
   width: 38, height: 38, borderRadius: '50%',
-  background: 'rgba(48,108,236,0.22)',
+  background: 'var(--pf-icon-bg)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   flexShrink: 0,
 };

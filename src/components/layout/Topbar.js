@@ -535,15 +535,15 @@ export default function Topbar() {
           {showProfileMenu && (
             <div ref={profileMenuRef} style={isMobile ? {
               position: 'fixed', top: profileMenuPos.top, left: '50%', transform: 'translateX(-50%)',
-              background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+              background: 'var(--color-popover-bg, rgba(8,14,34,0.97))', backdropFilter: 'blur(20px)',
               border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 'min(280px, calc(100vw - 24px))', overflow: 'hidden',
+              boxShadow: 'var(--shadow-popover, 0 16px 48px rgba(0,0,0,0.7))', width: 'min(280px, calc(100vw - 24px))', overflow: 'hidden',
               zIndex: 9999,
             } : {
               position: 'fixed', top: profileMenuPos.top, right: profileMenuPos.right,
-              background: 'rgba(8,14,34,0.97)', backdropFilter: 'blur(20px)',
+              background: 'var(--color-popover-bg, rgba(8,14,34,0.97))', backdropFilter: 'blur(20px)',
               border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.7)', width: 240, overflow: 'hidden',
+              boxShadow: 'var(--shadow-popover, 0 16px 48px rgba(0,0,0,0.7))', width: 240, overflow: 'hidden',
               zIndex: 9999,
             }}>
               {/* Header */}
@@ -561,10 +561,10 @@ export default function Topbar() {
                     }
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E2EEFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {userProfile.full_name || 'No name set'}
                     </div>
-                    <div style={{ fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {userProfile.email}
                     </div>
                   </div>
@@ -572,7 +572,7 @@ export default function Topbar() {
                 <div style={{
                   marginTop: 10, display: 'inline-flex', alignItems: 'center',
                   padding: '2px 10px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-                  background: 'rgba(48,108,236,0.15)', color: '#7EB3FF',
+                  background: 'rgba(48,108,236,0.15)', color: 'var(--color-accent-text, #7EB3FF)',
                   border: '1px solid rgba(48,108,236,0.25)', textTransform: 'capitalize',
                 }}>
                   {userProfile.role || 'member'}
@@ -588,11 +588,11 @@ export default function Topbar() {
                   <button key={item.label} type="button" onClick={item.onClick} style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                     padding: '9px 16px', background: 'none', border: 'none',
-                    color: '#9DB8DD', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                    color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
                     transition: '.12s', textAlign: 'left',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; e.currentTarget.style.color = '#E2EEFF'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#9DB8DD'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(48,108,236,0.10)'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-control, #9DB8DD)'; }}
                   >
                     <span style={{ color: '#4A6FA5' }}>{item.icon}</span>
                     {item.label}
@@ -604,7 +604,7 @@ export default function Topbar() {
                 <button type="button" onClick={handleSignOut} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 16px', background: 'none', border: 'none',
-                  color: '#E0485A', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                  color: 'var(--color-error-text, #E0485A)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
                   transition: '.12s', textAlign: 'left',
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(224,72,90,0.10)'}
