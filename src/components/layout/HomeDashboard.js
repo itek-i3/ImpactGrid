@@ -51,6 +51,11 @@ export default function HomeDashboard() {
   const [taskDraft, setTaskDraft] = useState('');
   const [members, setMembers] = useState([]);
   const [teamMissions, setTeamMissions] = useState([]);
+  const [missionOpen, setMissionOpen] = useState(false);
+  const [missionForm, setMissionForm] = useState({ department: '', mission: '', priorities: [''] });
+  const [missionSaving, setMissionSaving] = useState(false);
+  const [missionError, setMissionError] = useState(false);
+  const [missionSaveError, setMissionSaveError] = useState('');
 
   // Strategy content for this agency.
   useEffect(() => {
@@ -170,18 +175,61 @@ export default function HomeDashboard() {
   // mission — priorities, KPIs, department — lives).
   const myTasks = Array.isArray(myMission?.tasks) ? myMission.tasks : [];
   const myOutcomes = Array.isArray(myMission?.outcomes) ? myMission.outcomes.filter(Boolean) : [];
+  // The full member_missions row for me with `patch` applied — every column is
+  // sent so an upsert from here never blanks fields edited on the Team tab.
+  const myMissionRow = (patch) => ({
+    agency_id: agencyId, user_id: userProfile.id,
+    department: myMission?.department ?? null, mission: myMission?.mission ?? null,
+    priorities: myMission?.priorities ?? [], outcomes: myMission?.outcomes ?? [],
+    weekly_objectives: myMission?.weekly_objectives ?? [], kpis: myMission?.kpis ?? [],
+    tasks: myMission?.tasks ?? [], ...patch, updated_at: new Date().toISOString(),
+  });
   const persistMyTasks = async (nextTasks) => {
     setMyMission((m) => ({ ...(m || {}), tasks: nextTasks }));
     if (isDemo || !agencyId || !userProfile?.id) return;
     try {
-      await createClient().from('member_missions').upsert({
-        agency_id: agencyId, user_id: userProfile.id,
-        department: myMission?.department ?? null, mission: myMission?.mission ?? null,
-        priorities: myMission?.priorities ?? [], outcomes: myMission?.outcomes ?? [],
-        weekly_objectives: myMission?.weekly_objectives ?? [], kpis: myMission?.kpis ?? [],
-        tasks: nextTasks, updated_at: new Date().toISOString(),
-      }, { onConflict: 'agency_id,user_id' });
+      await createClient().from('member_missions').upsert(myMissionRow({ tasks: nextTasks }), { onConflict: 'agency_id,user_id' });
     } catch (err) { console.error('[home] task save failed', err); }
+  };
+
+  // Set / edit my own mission from the Focus Board. A mission is editable only
+  // by the member it belongs to — managers and superadmins included — which the
+  // member_missions_write policy enforces; the button is only offered for me.
+  const canSetMission = !!userProfile?.id && (isDemo || !!agencyId);
+  const openMissionEditor = () => {
+    const priorities = Array.isArray(myMission?.priorities) ? myMission.priorities.filter(Boolean) : [];
+    setMissionForm({ department: myMission?.department || '', mission: myMission?.mission || '', priorities: priorities.length ? priorities : [''] });
+    setMissionError(false);
+    setMissionSaveError('');
+    setMissionOpen(true);
+  };
+  const saveMyMission = async () => {
+    const mission = missionForm.mission.trim();
+    if (!mission) { setMissionError(true); return; }
+    const patch = {
+      department: missionForm.department.trim() || null,
+      mission,
+      priorities: missionForm.priorities.map((s) => s.trim()).filter(Boolean),
+    };
+    const row = myMissionRow(patch);
+    setMissionSaving(true);
+    setMissionSaveError('');
+    if (!isDemo && agencyId) {
+      // supabase-js reports failures (e.g. an RLS rejection) in `error` rather
+      // than throwing, so check it and keep the modal open instead of silently
+      // showing a mission that never saved.
+      const { error } = await createClient().from('member_missions').upsert(row, { onConflict: 'agency_id,user_id' });
+      if (error) {
+        console.error('[home] mission save failed', error);
+        setMissionSaveError('Could not save your mission. Please try again.');
+        setMissionSaving(false);
+        return;
+      }
+    }
+    setMyMission((m) => ({ ...(m || {}), ...patch }));
+    setTeamMissions((list) => [...list.filter((r) => r.user_id !== userProfile.id), { ...(list.find((r) => r.user_id === userProfile.id) || {}), ...row }]);
+    setMissionSaving(false);
+    setMissionOpen(false);
   };
   const toggleMyTask = (i) => persistMyTasks(myTasks.map((t, idx) => (idx === i ? { ...t, done: !t.done } : t)));
   const removeMyTask = (i) => persistMyTasks(myTasks.filter((_, idx) => idx !== i));
@@ -465,7 +513,11 @@ export default function HomeDashboard() {
         <div className="card-col" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* Team Member Focus Board */}
           <div className="dash-card" style={card}>
-            {cardHeader(Users, '#5B9BFF', 'Team Member Focus Board')}
+            {cardHeader(Users, '#5B9BFF', 'Team Member Focus Board', canSetMission && (
+              <button onClick={openMissionEditor} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.35)', flexShrink: 0 }}>
+                {myMission?.mission ? <Pencil size={12} /> : <Plus size={13} />} {myMission?.mission ? 'Edit my mission' : 'Set my mission'}
+              </button>
+            ))}
             {members.length === 0 ? (
               <div style={{ fontSize: 13.5, color: tSub, fontStyle: 'italic' }}>No team members loaded.</div>
             ) : (
@@ -652,7 +704,51 @@ export default function HomeDashboard() {
         </div>
       )}
 
+      {/* My mission modal (opened from the Team Member Focus Board) */}
+      {missionOpen && (
+        <div className="ig-scrim" onClick={() => setMissionOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10050, backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
+          <div className="ig-dialog" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 100%)', margin: '20px 0', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
+              <span style={{ fontSize: 15, fontWeight: 800 }}>My mission</span>
+              <button className="ig-dialog-close" onClick={() => setMissionOpen(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '68vh', overflowY: 'auto' }}>
+              <Field label="Department"><input className="strat-in" value={missionForm.department} onChange={(e) => setMissionForm((f) => ({ ...f, department: e.target.value }))} placeholder="e.g. Marketing" /></Field>
+              <Field label="Mission">
+                <textarea
+                  className={`strat-in${missionError ? ' error' : ''}`} rows={3} autoFocus
+                  value={missionForm.mission}
+                  onChange={(e) => { setMissionForm((f) => ({ ...f, mission: e.target.value })); if (missionError) setMissionError(false); }}
+                  placeholder="The outcome you exist to create"
+                  aria-required="true" aria-invalid={missionError}
+                />
+                {missionError && <div className="strat-error">Mission is required.</div>}
+              </Field>
+              <Field label="Monthly priorities">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {missionForm.priorities.map((p, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 7 }}>
+                      <input className="strat-in" value={p} onChange={(e) => setMissionForm((f) => ({ ...f, priorities: f.priorities.map((x, j) => (j === i ? e.target.value : x)) }))} placeholder={`Priority ${i + 1}`} />
+                      <button onClick={() => setMissionForm((f) => ({ ...f, priorities: f.priorities.length > 1 ? f.priorities.filter((_, j) => j !== i) : [''] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
+                    </div>
+                  ))}
+                  <button onClick={() => setMissionForm((f) => ({ ...f, priorities: [...f.priorities, ''] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add priority</button>
+                </div>
+              </Field>
+              {missionSaveError && <div className="strat-error" style={{ marginTop: 0 }}>{missionSaveError}</div>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
+              <button onClick={() => setMissionOpen(false)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={saveMyMission} disabled={missionSaving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: missionSaving ? 0.6 : 1 }}><Check size={15} /> {missionSaving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
+        .strat-in.error { border-color: var(--color-error); background: var(--color-error-bg); }
+        .strat-in.error:focus { box-shadow: 0 0 0 3px var(--color-error-bg); }
+        .strat-error { font-size: 11.5px; font-weight: 600; margin-top: 5px; color: var(--color-error-text, var(--color-error)); }
         .strat-in {
           width: 100%; box-sizing: border-box; background: var(--color-bg-tertiary, rgba(255,255,255,0.04));
           border: 1px solid var(--color-border-subtle, rgba(48,108,236,0.16)); border-radius: 10px;
