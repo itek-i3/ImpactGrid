@@ -1,17 +1,44 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { clientForUser } from './clientForUser';
 
+// Only the owner's browser ever moves a session on to 'expired' / 'completed'.
+// If they close the tab or lose power mid-session the row stays 'active' forever,
+// so teammates would see them as live indefinitely. Reconcile on read instead:
+//  - an 'active' session past its end_time is reported as 'expired', and
+//  - a session nobody has touched for STALE_AFTER_MS past its last activity is
+//    dropped from the team list (the row is kept — if the owner returns and
+//    resumes/completes it, their PATCH brings it straight back).
+const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
+
+function reconcileTeamSession(s, now) {
+  const endMs = new Date(s.end_time).getTime();
+  const pausedMs = s.paused_at ? new Date(s.paused_at).getTime() : NaN;
+  const updatedMs = new Date(s.updated_at).getTime();
+
+  // A paused session's end_time is frozen until resume, so its last activity is
+  // when it was paused, not when it would have ended.
+  const lastActivity = s.status === 'paused' ? (Number.isNaN(pausedMs) ? updatedMs : pausedMs) : endMs;
+  if (!Number.isNaN(lastActivity) && now - lastActivity > STALE_AFTER_MS) return null;
+
+  if (s.status === 'active' && !Number.isNaN(endMs) && endMs <= now) return { ...s, status: 'expired' };
+  return s;
+}
+
 export async function listSessionsForWorkspace(workspaceId) {
   const admin = createAdminClient();
 
-  const { data: sessions, error } = await admin
+  const { data: rows, error } = await admin
     .from('sessions')
     .select('id, workspace_id, user_id, task_description, duration_seconds, started_at, end_time, paused_at, status, snooze_count, completion_note, completed_at, created_at, updated_at')
     .eq('workspace_id', workspaceId)
     .neq('status', 'completed')
     .order('started_at', { ascending: false });
 
-  if (error || !sessions?.length) return { data: sessions || [], error };
+  if (error) return { data: [], error };
+
+  const now = Date.now();
+  const sessions = (rows || []).map((s) => reconcileTeamSession(s, now)).filter(Boolean);
+  if (!sessions.length) return { data: [], error: null };
 
   const userIds = [...new Set(sessions.map((s) => s.user_id))];
   const { data: profiles } = await admin
