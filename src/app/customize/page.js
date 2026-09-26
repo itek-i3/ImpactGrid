@@ -83,15 +83,15 @@ export default function CustomizePage() {
   };
 
   const isLight = theme === 'light';
-  const cardBg   = isLight ? '#FFFFFF' : '#000';
-  const pageBg   = isLight ? '#F5F7FF' : '#000';
-  const navBg    = isLight ? 'rgba(255,255,255,0.97)' : 'rgba(0,0,0,0.96)';
+  const cardBg   = isLight ? '#F3F6FD' : '#000';
+  const pageBg   = isLight ? '#E6ECF8' : '#000';
+  const navBg    = isLight ? 'rgba(243,246,253,0.97)' : 'rgba(0,0,0,0.96)';
   const navBdr   = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(48,108,236,0.18)';
   const cardBdr  = isLight ? 'rgba(0,0,0,0.09)' : 'rgba(48,108,236,0.20)';
-  const optBg    = isLight ? '#F5F7FF' : 'rgba(255,255,255,0.03)';
+  const optBg    = isLight ? '#E6ECF8' : 'rgba(255,255,255,0.03)';
   const optBdr   = isLight ? 'rgba(0,0,0,0.10)' : 'rgba(48,108,236,0.18)';
-  const titleClr = isLight ? '#0F1C38' : '#E2EEFF';
-  const descClr  = isLight ? '#7A8EB0' : '#3D5A8A';
+  const titleClr = isLight ? '#0B1630' : '#E2EEFF';
+  const descClr  = isLight ? '#586B8F' : '#3D5A8A';
 
   return (
     <>

@@ -187,7 +187,7 @@ export default function Topbar() {
       display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 14,
       padding: isMobile ? '12px 12px' : '20px 48px',
       borderBottom: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(48,108,236,0.18)',
-      background: isLight ? 'rgba(255,255,255,0.97)' : 'rgba(2,4,10,0.80)',
+      background: isLight ? 'rgba(243,246,253,0.97)' : 'rgba(2,4,10,0.80)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       flexShrink: 0, position: 'sticky', top: 0, zIndex: 200,
@@ -254,7 +254,7 @@ export default function Topbar() {
             onClick={toggleSearch}
             style={{ border: 'none', background: 'transparent', outline: 'none', fontFamily: 'inherit', fontSize: 13, color: isLight ? '#0F1C38' : '#E2EEFF', width: '100%', cursor: 'pointer' }}
           />
-          <span style={{ fontSize: 11, color: isLight ? '#7A8EB0' : '#3D5A8A', background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
+          <span style={{ fontSize: 11, color: isLight ? '#586B8F' : '#3D5A8A', background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 5, flexShrink: 0 }}>⌘K</span>
         </div>
       )}
 

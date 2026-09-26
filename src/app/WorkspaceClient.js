@@ -124,10 +124,10 @@ function WorkspaceContent() {
   const isLight = theme === 'light';
 
   return (
-    <div className={styles.workspaceShell} style={{ background: isLight ? '#FFFFFF' : 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
+    <div className={styles.workspaceShell} style={{ background: isLight ? 'var(--color-bg-primary)' : 'linear-gradient(135deg,#000000 0%,#010408 50%,#000000 100%)' }}>
       <Sidebar />
 
-      <div className={styles.mainContent} style={{ position: 'relative', background: isLight ? '#FFFFFF' : '#000' }}>
+      <div className={styles.mainContent} style={{ position: 'relative', background: isLight ? 'var(--color-bg-primary)' : '#000' }}>
         {!isLight && (
           <>
             <div style={{

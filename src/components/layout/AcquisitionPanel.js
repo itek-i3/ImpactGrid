@@ -1707,7 +1707,7 @@ export default function AcquisitionPanel() {
     display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:12,
     fontSize:12.5, fontWeight:600, fontFamily:'inherit', cursor:'pointer',
     border:'1px solid var(--color-border)',
-    background: isLight ? '#FFFFFF' : 'var(--color-bg-elevated)',
+    background: 'var(--color-bg-elevated)',
     color:'var(--color-text-secondary)',
     boxShadow: isLight ? '0 1px 2px rgba(16,24,40,0.05)' : 'none',
     transition:'all .15s',
@@ -1715,7 +1715,7 @@ export default function AcquisitionPanel() {
 
   // Clean SaaS card: white, rounded, soft shadow (light) / elevated glass (dark)
   const card = {
-    background: isLight ? '#FFFFFF' : 'var(--color-bg-elevated)',
+    background: 'var(--color-bg-elevated)',
     border: `1px solid ${isLight ? 'rgba(16,24,40,0.06)' : 'var(--color-border)'}`,
     borderRadius: 16,
     boxShadow: isLight ? '0 1px 3px rgba(16,24,40,0.05), 0 8px 24px rgba(16,24,40,0.05)' : 'none',
@@ -1813,7 +1813,7 @@ export default function AcquisitionPanel() {
         }
       `}</style>
 
-      <div style={{ background: isLight ? '#F5F6FB' : 'transparent', minHeight:'100%' }}>
+      <div style={{ background: isLight ? 'var(--color-bg-primary)' : 'transparent', minHeight:'100%' }}>
       <div ref={panelRef} className="acqp-root" style={{ maxWidth:1220, margin:'0 auto', padding:'26px 36px 96px', fontFamily:'var(--font-sans)', position:'relative' }}>
 
         {/* Auto-sync happens on load; this only appears if that sync failed. */}
@@ -1956,7 +1956,7 @@ export default function AcquisitionPanel() {
             <div style={{ marginTop:'auto', paddingTop:14 }}>
               <span style={{
                 display:'inline-flex', alignItems:'center', gap:7, padding:'7px 13px', borderRadius:10,
-                background: snapStarted ? `${snapColor}16` : (isLight ? '#F2F4F9' : 'var(--color-bg-tertiary)'),
+                background: snapStarted ? `${snapColor}16` : 'var(--color-bg-tertiary)',
                 border: `1px solid ${snapStarted ? `${snapColor}33` : 'var(--color-border-subtle)'}`,
                 fontSize:12, fontWeight:700, color: snapStarted ? snapColor : 'var(--color-text-secondary)',
               }}>

@@ -172,16 +172,16 @@
 
 /* ── Light Mode Override ── */
 [data-theme="light"] {
-  --color-bg-primary:   #F5F7FF;
-  --color-bg-secondary: #FFFFFF;
-  --color-bg-tertiary:  #EDF0FA;
-  --color-bg-elevated:  #FFFFFF;
+  --color-bg-primary:   #E6ECF8;
+  --color-bg-secondary: #F3F6FD;
+  --color-bg-tertiary:  #D9E2F3;
+  --color-bg-elevated:  #F6F8FE;
   --color-bg-hover:     rgba(20, 33, 61, 0.05);
   --color-bg-active:    rgba(48, 108, 236, 0.09);
   --color-bg-selected:  rgba(48, 108, 236, 0.09);
 
-  --color-surface:         rgba(255, 255, 255, 0.95);
-  --color-surface-glass:   rgba(255, 255, 255, 0.80);
+  --color-surface:         rgba(243, 246, 253, 0.95);
+  --color-surface-glass:   rgba(243, 246, 253, 0.80);
   /* A dim scrim, not a pale wash — a 96%-opaque near-white backdrop leaves a
      white modal with almost no separation from the page behind it. */
   --color-surface-overlay: rgba(15, 28, 56, 0.38);
@@ -191,15 +191,16 @@
   --color-border-active: rgba(48, 108, 236, 0.50);
   --color-border-subtle: rgba(20, 33, 61, 0.06);
 
-  /* Contrast on white / #F5F7FF: secondary 8.1 / 7.6, tertiary 5.2 / 4.8,
-     muted 3.9 / 3.6 (hints and placeholders only). tertiary and muted were
-     3.3 and 2.0 — below AA and too faint to read as real text. */
-  --color-text-primary:   #0F1C38;
-  --color-text-secondary: #3D5070;
-  --color-text-tertiary:  #5A6E92;
-  --color-text-muted:     #71829F;
+  /* The page is a soft blue-grey and cards a blue-white rather than pure white, which
+     was glaring over long sessions. Text is a shade darker to keep contrast up on the
+     tinted surfaces. Contrast on card / page: primary 16.6 / 15.1, secondary 9.7 / 8.8,
+     tertiary 6.7 / 6.1, muted 5.0 / 4.5 (hints and placeholders only). */
+  --color-text-primary:   #0B1630;
+  --color-text-secondary: #2C3F64;
+  --color-text-tertiary:  #42577D;
+  --color-text-muted:     #586B8F;
   --color-text-inverse:   #F5F7FF;
-  --color-text-link:      #1A56D6;
+  --color-text-link:      #173FA0;
 
   /* Text-safe variants of the accent and status colors. Light-only on purpose:
      the dark palette's bright shades already read fine on dark surfaces, so
@@ -207,18 +208,23 @@
      dark literal as the fallback) and dark mode keeps its current color. The
      base status colors stay as they are for fills, dots and bars, where the
      brighter shade looks right. */
-  --color-accent-text:  #1E4FB8;
-  --color-success-text: #0B7A4F;
-  --color-warning-text: #9A5B00;
-  --color-error-text:   #C62F42;
+  --color-accent-text:  #1B47A6;
+  --color-success-text: #096B44;
+  --color-warning-text: #7C4900;
+  --color-error-text:   #B82A3D;
+  --color-pink-text:    #B3205F;
+  /* Hairlines and progress tracks that are white-on-dark in the dark theme. */
+  --color-divider:      rgba(20, 33, 61, 0.10);
+  --color-track:        rgba(20, 33, 61, 0.10);
+  --color-teal-text:    #095A54;
   /* Quiet text for cancel / remove controls; the dark palette uses a few pale
      blues (#9DB8DD, #8FB4E8) there that vanish on white. */
-  --color-text-control: #3D5070;
+  --color-text-control: #2C3F64;
   /* Result card on the Valuation page — a fixed dark-navy gradient otherwise. */
-  --gradient-hero: linear-gradient(135deg, rgba(48, 108, 236, 0.12) 0%, #FFFFFF 100%);
+  --gradient-hero: linear-gradient(135deg, rgba(48, 108, 236, 0.12) 0%, #F3F6FD 100%);
   /* Floating menus that hard-code a dark-navy popup surface (profile menu, emoji
      picker) — write var(--color-popover-bg, <dark literal>) so dark is unchanged. */
-  --color-popover-bg: #FFFFFF;
+  --color-popover-bg: #F6F8FE;
   --shadow-popover: 0 16px 48px rgba(20, 33, 61, 0.18), 0 4px 12px rgba(20, 33, 61, 0.08);
 
   --color-accent-primary: #306CEC;
@@ -244,8 +250,8 @@
   --shadow-xl: 0 16px 48px rgba(20, 33, 61, 0.13), 0 8px 16px rgba(20, 33, 61, 0.07);
   --shadow-glow: 0 0 20px rgba(48, 108, 236, 0.18);
 
-  --glass-bg: rgba(255, 255, 255, 0.8);
-  --glass-bg-heavy: rgba(255, 255, 255, 0.92);
+  --glass-bg: rgba(243, 246, 253, 0.8);
+  --glass-bg-heavy: rgba(243, 246, 253, 0.92);
   --glass-border: rgba(20, 33, 61, 0.08);
 
   --color-callout-blue: rgba(48, 108, 236, 0.08);
@@ -367,7 +373,7 @@ body {
   pointer-events: none;
 }
 [data-theme="light"] .ig-card {
-  background: #FFFFFF;
+  background: var(--color-bg-secondary);
   border-color: rgba(20,33,61,0.08);
   box-shadow: 0 1px 6px rgba(20,33,61,0.07), 0 4px 20px rgba(20,33,61,0.05);
 }
@@ -388,12 +394,12 @@ body {
 }
 .ig-search input::placeholder { color: #3D5A8A; }
 [data-theme="light"] .ig-search {
-  background: #FFFFFF;
+  background: var(--color-bg-secondary);
   border-color: rgba(20,33,61,0.10);
   color: #93A0B8;
 }
-[data-theme="light"] .ig-search input { color: #14213D; }
-[data-theme="light"] .ig-search input::placeholder { color: #93A0B8; }
+[data-theme="light"] .ig-search input { color: #0B1630; }
+[data-theme="light"] .ig-search input::placeholder { color: #6A7C9C; }
 
 .ig-kbtn {
   width: 38px; height: 38px; border-radius: 11px;
@@ -404,9 +410,9 @@ body {
 }
 .ig-kbtn:hover { color: #fff; border-color: rgba(48,108,236,.70); background: rgba(48,108,236,0.25); }
 [data-theme="light"] .ig-kbtn {
-  background: #FFFFFF; border-color: rgba(20,33,61,0.10); color: #5B6B86;
+  background: var(--color-bg-secondary); border-color: rgba(20,33,61,0.10); color: #42577D;
 }
-[data-theme="light"] .ig-kbtn:hover { color: #306CEC; border-color: rgba(48,108,236,.4); background: #FFFFFF; }
+[data-theme="light"] .ig-kbtn:hover { color: #306CEC; border-color: rgba(48,108,236,.4); background: var(--color-bg-elevated); }
 
 .ig-hover { transition: transform .18s, box-shadow .18s, border-color .18s; }
 .ig-hover:hover {
@@ -438,7 +444,7 @@ body {
 .ig-dialog { background: #0b1120; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7); }
 .ig-dialog-close { background: rgba(255, 255, 255, 0.06); color: #D8E8FF; }
 [data-theme="light"] .ig-scrim { background: rgba(15, 28, 56, 0.38); }
-[data-theme="light"] .ig-dialog { background: #FFFFFF; box-shadow: 0 24px 70px rgba(15, 28, 56, 0.28); }
+[data-theme="light"] .ig-dialog { background: var(--color-bg-elevated); box-shadow: 0 24px 70px rgba(15, 28, 56, 0.28); }
 [data-theme="light"] .ig-dialog-close { background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
 
 @keyframes rise {
@@ -546,8 +552,8 @@ select option:hover {
 }
 
 [data-theme="light"] select option {
-  background-color: #FFFFFF;
-  color: #0F1C38;
+  background-color: var(--color-bg-elevated);
+  color: #0B1630;
 }
 
 [data-theme="light"] select option:checked,
