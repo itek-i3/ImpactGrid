@@ -44,6 +44,77 @@ const UNREAD_BADGE = { flexShrink: 0, minWidth: 18, height: 18, padding: '0 5px'
 // "@all" — a special mention that pings everyone in the conversation.
 const ALL_MENTION = { id: '__all__', label: 'Everyone', token: 'all', role: 'Notify everyone in this chat', __all: true };
 
+// Chat theme tokens. Dark values are the literals this page has always used, so dark
+// mode is unchanged; the light block maps them onto the shared theme tokens. The blue
+// "my message" bubbles, their ticks and the blue buttons are theme-independent and keep
+// their white text in both modes.
+const CHAT_CSS = `
+  .ig-chat {
+    --ch-bg: #000;
+    --ch-panel: #000;
+    --ch-text: #E2EEFF;
+    --ch-text-2: #D8E8FF;
+    --ch-text-bubble: #D0E4FF;
+    --ch-text-edit: #E8F2FF;
+    --ch-text-3: #B8D0F0;
+    --ch-text-search: #B8D4FF;
+    --ch-accent: #7EB3FF;
+    --ch-sub: #8FB4E8;
+    --ch-soft: #4A6FA5;
+    --ch-dim: #2A3F60;
+    --ch-mute: #6C82A3;
+    --ch-time: rgba(160,190,240,0.45);
+    --ch-time-2: rgba(160,190,240,0.42);
+    --ch-hover: rgba(255,255,255,0.04);
+    --ch-hover-2: rgba(255,255,255,0.12);
+    --ch-f05: rgba(255,255,255,0.05);
+    --ch-f06: rgba(255,255,255,0.06);
+    --ch-bubble: rgba(255,255,255,0.07);
+    --ch-bubble-border: rgba(255,255,255,0.09);
+    --ch-bubble-shadow: 0 1px 4px rgba(0,0,0,0.30);
+    --ch-line: rgba(255,255,255,0.10);
+    --ch-line-2: rgba(255,255,255,0.08);
+    --ch-btn-border: rgba(255,255,255,0.14);
+    --ch-img-border: rgba(255,255,255,0.12);
+    --ch-pill-bg: rgba(10,15,30,0.85);
+    --ch-scrim: rgba(0,0,0,0.6);
+    --ch-drop-bg: rgba(6,12,26,0.85);
+    --ch-send-off: rgba(255,255,255,0.20);
+  }
+  [data-theme="light"] .ig-chat {
+    --ch-bg: var(--color-bg-primary);
+    --ch-panel: var(--color-bg-secondary);
+    --ch-text: var(--color-text-primary);
+    --ch-text-2: var(--color-text-primary);
+    --ch-text-bubble: var(--color-text-primary);
+    --ch-text-edit: var(--color-text-primary);
+    --ch-text-3: var(--color-text-secondary);
+    --ch-text-search: var(--color-text-primary);
+    --ch-accent: var(--color-accent-text);
+    --ch-sub: var(--color-text-control);
+    --ch-soft: var(--color-text-tertiary);
+    --ch-dim: var(--color-text-tertiary);
+    --ch-mute: var(--color-text-tertiary);
+    --ch-time: var(--color-text-tertiary);
+    --ch-time-2: var(--color-text-tertiary);
+    --ch-hover: var(--color-bg-hover);
+    --ch-hover-2: rgba(20,33,61,0.08);
+    --ch-f05: var(--color-bg-tertiary);
+    --ch-f06: var(--color-bg-tertiary);
+    --ch-bubble: var(--color-bg-secondary);
+    --ch-bubble-border: rgba(20,33,61,0.10);
+    --ch-bubble-shadow: 0 1px 3px rgba(20,33,61,0.10);
+    --ch-line: rgba(20,33,61,0.12);
+    --ch-line-2: rgba(20,33,61,0.10);
+    --ch-btn-border: rgba(20,33,61,0.20);
+    --ch-img-border: rgba(20,33,61,0.12);
+    --ch-pill-bg: rgba(243,246,253,0.92);
+    --ch-scrim: rgba(15,28,56,0.38);
+    --ch-drop-bg: rgba(245,247,255,0.92);
+    --ch-send-off: var(--color-text-muted);
+  }
+`;
+
 function ChatContent() {
   const searchParams = useSearchParams();
   const targetWorkspaceId = searchParams.get('workspaceId');
@@ -496,10 +567,10 @@ function ChatContent() {
   const attachOption = (label, Icon, color, accept, capture) => (
     <button key={label} type="button" onClick={() => { setAttachMenuOpen(false); pickFiles(accept, capture); }}
       style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '9px 10px', borderRadius: 10, fontFamily: 'inherit', textAlign: 'left', transition: 'background .1s' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--ch-f06)'}
       onMouseLeave={e => e.currentTarget.style.background = 'none'}>
       <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: `${color}22`, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={17} /></span>
-      <span style={{ fontSize: 13.5, fontWeight: 600, color: '#E2EEFF' }}>{label}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ch-text)' }}>{label}</span>
     </button>
   );
 
@@ -541,7 +612,7 @@ function ChatContent() {
           isImageType(a.type) ? (
             <div key={i} style={{ position: 'relative', display: 'inline-block', lineHeight: 0 }}>
               <a href={a.url} target="_blank" rel="noreferrer" style={{ display: 'block', lineHeight: 0 }}>
-                <img src={a.url} alt={a.name} style={{ maxWidth: 260, maxHeight: 280, borderRadius: 10, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.12)' }} />
+                <img src={a.url} alt={a.name} style={{ maxWidth: 260, maxHeight: 280, borderRadius: 10, objectFit: 'cover', border: '1px solid var(--ch-img-border)' }} />
               </a>
               <a href={dl(a)} download={a.name} title={`Download ${a.name}`}
                 style={{ position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
@@ -556,17 +627,17 @@ function ChatContent() {
           ) : isAudioType(a.type) ? (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8, borderRadius: 10, background: isOwn ? 'rgba(255,255,255,0.12)' : 'rgba(48,108,236,0.12)', maxWidth: 290 }}>
               <audio src={a.url} controls style={{ width: 270, maxWidth: '100%' }} />
-              <a href={dl(a)} download={a.name} style={{ fontSize: 11, color: isOwn ? 'rgba(255,255,255,0.8)' : '#8FB4E8', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}><Download size={12} style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span></a>
+              <a href={dl(a)} download={a.name} style={{ fontSize: 11, color: isOwn ? 'rgba(255,255,255,0.8)' : 'var(--ch-sub)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}><Download size={12} style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span></a>
             </div>
           ) : (
             <a key={i} href={dl(a)} rel="noreferrer" download={a.name}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, textDecoration: 'none', background: isOwn ? 'rgba(255,255,255,0.14)' : 'rgba(48,108,236,0.14)', border: '1px solid rgba(255,255,255,0.1)', maxWidth: 260 }}>
-              <span style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isOwn ? '#fff' : '#7EB3FF' }}><FileText size={17} /></span>
+              <span style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isOwn ? '#fff' : 'var(--ch-accent)' }}><FileText size={17} /></span>
               <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: isOwn ? '#fff' : '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                <span style={{ display: 'block', fontSize: 10.5, color: isOwn ? 'rgba(255,255,255,0.6)' : '#8FB4E8' }}>{formatBytes(a.size)}</span>
+                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: isOwn ? '#fff' : 'var(--ch-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <span style={{ display: 'block', fontSize: 10.5, color: isOwn ? 'rgba(255,255,255,0.6)' : 'var(--ch-sub)' }}>{formatBytes(a.size)}</span>
               </span>
-              <Download size={15} style={{ flexShrink: 0, color: isOwn ? 'rgba(255,255,255,0.7)' : '#7EB3FF' }} />
+              <Download size={15} style={{ flexShrink: 0, color: isOwn ? 'rgba(255,255,255,0.7)' : 'var(--ch-accent)' }} />
             </a>
           )
         ))}
@@ -655,7 +726,7 @@ function ChatContent() {
       out.push(
         <span key={`mn-${key++}`} style={{
           fontWeight: 700,
-          color: mentionsMe ? '#052e16' : (isOwn ? '#EAF3FF' : '#7EB3FF'),
+          color: mentionsMe ? '#052e16' : (isOwn ? '#EAF3FF' : 'var(--ch-accent)'),
           background: mentionsMe ? '#5BE59A' : (isOwn ? 'rgba(255,255,255,0.16)' : 'rgba(48,108,236,0.20)'),
           borderRadius: 5, padding: '0 3px',
         }}>{token}</span>
@@ -778,7 +849,14 @@ function ChatContent() {
   const EMOJIS = ['😀','😂','😍','🥰','😎','🤔','😅','🙏','👍','👏','🔥','❤️','✅','🎉','💡','📌','⚡','🚀','💪','😢'];
   const QUICK_REACTIONS = ['👍','❤️','😂','😮','🔥','✅'];
   const roleColor = { superadmin: '#F5A623', manager: '#5B9BFF', member: '#4ECDC4' };
-  const ACT_BTN = { width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: '#8FB4E8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 };
+  // Text-safe variant of a role colour: light mode gets the darker -text tokens, dark
+  // keeps the bright hex as the fallback.
+  const roleTextOf = (hex) => ({
+    '#F5A623': 'var(--color-warning-text, #F5A623)',
+    '#5B9BFF': 'var(--color-accent-text, #5B9BFF)',
+    '#4ECDC4': 'var(--color-success-text, #4ECDC4)',
+  }[hex] || hex);
+  const ACT_BTN = { width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'var(--ch-f06)', border: '1px solid var(--ch-line)', color: 'var(--ch-sub)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 };
 
   // Resolve selected chat info
   const groupCh = GROUP_CHANNELS.find(c => c.id === activeChannel);
@@ -883,9 +961,10 @@ function ChatContent() {
   });
 
   return (
-    <div className={styles.workspaceShell} style={{ background: '#000' }}>
+    <div className={`${styles.workspaceShell} ig-chat`} style={{ background: 'var(--ch-bg)' }}>
+      <style>{CHAT_CSS}</style>
       <Sidebar />
-      <div className={styles.mainContent} style={{ background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className={styles.mainContent} style={{ background: 'var(--ch-bg)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Topbar />
 
         {workspaceId ? (
@@ -895,19 +974,19 @@ function ChatContent() {
             <div style={{
               width: isMobile ? '100%' : 220, flexShrink: 0,
               display: (isMobile && mobileChatOpen) ? 'none' : 'flex', flexDirection: 'column',
-              background: '#000', borderRight: isMobile ? 'none' : '1px solid rgba(48,108,236,0.15)',
+              background: 'var(--ch-panel)', borderRight: isMobile ? 'none' : '1px solid rgba(48,108,236,0.15)',
               overflow: 'hidden',
             }}>
               {/* Panel header */}
               <div style={{ padding: '12px 10px 10px', borderBottom: '1px solid rgba(48,108,236,0.12)', flexShrink: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#E2EEFF', marginBottom: 8 }}>Messages</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '6px 10px' }}>
-                  <Search size={12} style={{ color: '#3D5A8A', flexShrink: 0 }} />
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ch-text)', marginBottom: 8 }}>Messages</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--ch-f05)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '6px 10px' }}>
+                  <Search size={12} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
                   <input
                     value={panelSearch}
                     onChange={e => setPanelSearch(e.target.value)}
                     placeholder="Search…"
-                    style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12, color: '#B8D4FF', fontFamily: 'inherit' }}
+                    style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12, color: 'var(--ch-text-search)', fontFamily: 'inherit' }}
                   />
                 </div>
               </div>
@@ -915,7 +994,7 @@ function ChatContent() {
               {/* Conversation list */}
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {/* Group channels label */}
-                <div style={{ padding: '8px 10px 3px', fontSize: 9.5, fontWeight: 700, color: '#2A3F60', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                <div style={{ padding: '8px 10px 3px', fontSize: 9.5, fontWeight: 700, color: 'var(--ch-dim)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                   Channels
                 </div>
                 {allConversations.filter(c => c.isGroup).map(conv => {
@@ -926,18 +1005,18 @@ function ChatContent() {
                       padding: '8px 10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: isActive ? 'rgba(48,108,236,0.18)' : 'none', transition: '.12s',
                     }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--ch-hover)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none'; }}>
                       <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: isActive ? 'rgba(48,108,236,0.30)' : 'rgba(48,108,236,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
                         {conv.icon}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? '#E2EEFF' : '#B8D0F0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
-                          {conv.lastMsg && <span style={{ fontSize: 9.5, color: '#2A3F60', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
+                          <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? 'var(--ch-text)' : 'var(--ch-text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
+                          {conv.lastMsg && <span style={{ fontSize: 9.5, color: 'var(--ch-dim)', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {conv.lastMsg ? `${conv.lastMsg.userName?.split(' ')[0] || ''}: ${previewText(conv.lastMsg)}` : 'No messages yet'}
                           </span>
                           {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
@@ -951,7 +1030,7 @@ function ChatContent() {
 
                 {/* DMs label */}
                 {otherMembers.length > 0 && (
-                  <div style={{ padding: '8px 10px 3px', fontSize: 9.5, fontWeight: 700, color: '#2A3F60', textTransform: 'uppercase', letterSpacing: '.08em', borderTop: '1px solid rgba(48,108,236,0.08)', marginTop: 4 }}>
+                  <div style={{ padding: '8px 10px 3px', fontSize: 9.5, fontWeight: 700, color: 'var(--ch-dim)', textTransform: 'uppercase', letterSpacing: '.08em', borderTop: '1px solid rgba(48,108,236,0.08)', marginTop: 4 }}>
                     Direct Messages
                   </div>
                 )}
@@ -965,23 +1044,23 @@ function ChatContent() {
                       padding: '8px 10px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: isActive ? 'rgba(48,108,236,0.18)' : 'none', transition: '.12s',
                     }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--ch-hover)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none'; }}>
                       <div style={{ position: 'relative', flexShrink: 0 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${rc}22`, border: `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: rc, overflow: 'hidden' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${rc}22`, border: `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: roleTextOf(rc), overflow: 'hidden' }}>
                           {conv.avatar ? <img src={conv.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
                         </div>
                         {conv.online && (
-                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid #000' }} />
+                          <span style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--ch-panel)' }} />
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? '#E2EEFF' : '#B8D0F0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
-                          {conv.lastMsg && <span style={{ fontSize: 9.5, color: '#2A3F60', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
+                          <span style={{ fontSize: 12.5, fontWeight: 600, color: isActive ? 'var(--ch-text)' : 'var(--ch-text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{conv.name}</span>
+                          {conv.lastMsg && <span style={{ fontSize: 9.5, color: 'var(--ch-dim)', flexShrink: 0 }}>{formatPanelTime(conv.lastMsg.createdAt)}</span>}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: '#3D5A8A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {conv.lastMsg ? previewText(conv.lastMsg) : `${chatSub || 'Say hello!'}`}
                           </span>
                           {(chatNotifs?.[conv.id]?.count || 0) > 0 && (
@@ -1003,28 +1082,28 @@ function ChatContent() {
               onDrop={canPost ? (e) => { e.preventDefault(); setDragOver(false); const files = e.dataTransfer?.files; if (files?.length) uploadFiles(files); } : undefined}
             >
               {dragOver && (
-                <div style={{ position: 'absolute', inset: 8, zIndex: 200, pointerEvents: 'none', background: 'rgba(6,12,26,0.85)', backdropFilter: 'blur(3px)', border: '2px dashed rgba(48,108,236,0.7)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(48,108,236,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7EB3FF' }}><Plus size={30} /></div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#E2EEFF' }}>Drop files to send</div>
-                  <div style={{ fontSize: 12.5, color: '#8FB4E8' }}>Photos, videos, documents &amp; audio</div>
+                <div style={{ position: 'absolute', inset: 8, zIndex: 200, pointerEvents: 'none', background: 'var(--ch-drop-bg)', backdropFilter: 'blur(3px)', border: '2px dashed rgba(48,108,236,0.7)', borderRadius: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(48,108,236,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ch-accent)' }}><Plus size={30} /></div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ch-text)' }}>Drop files to send</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ch-sub)' }}>Photos, videos, documents &amp; audio</div>
                 </div>
               )}
 
               {/* Chat header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, flexShrink: 0, background: '#000', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, flexShrink: 0, background: 'var(--ch-panel)', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
                 {isMobile && (
                   <button onClick={() => setMobileChatOpen(false)} title="Back to conversations"
-                    style={{ background: 'none', border: 'none', color: '#7EB3FF', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, marginLeft: -4, flexShrink: 0 }}>
+                    style={{ background: 'none', border: 'none', color: 'var(--ch-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, marginLeft: -4, flexShrink: 0 }}>
                     <ChevronLeft size={22} />
                   </button>
                 )}
                 {isDm && dmPartner ? (
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: `${roleColor[dmPartner.role] || '#5B9BFF'}22`, border: `2px solid ${roleColor[dmPartner.role] || '#5B9BFF'}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: roleColor[dmPartner.role] || '#5B9BFF', overflow: 'hidden' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: `${roleColor[dmPartner.role] || '#5B9BFF'}22`, border: `2px solid ${roleColor[dmPartner.role] || '#5B9BFF'}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: roleTextOf(roleColor[dmPartner.role] || '#5B9BFF'), overflow: 'hidden' }}>
                       {dmPartner.avatar_url ? <img src={dmPartner.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : chatName.charAt(0).toUpperCase()}
                     </div>
                     {isUserOnline(dmPartnerId) && (
-                      <span style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%', background: '#22C55E', border: '2px solid #000' }} />
+                      <span style={{ position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--ch-panel)' }} />
                     )}
                   </div>
                 ) : (
@@ -1033,19 +1112,19 @@ function ChatContent() {
                   </div>
                 )}
                 <div>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, color: '#E2EEFF', lineHeight: 1.2 }}>{chatName}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ch-text)', lineHeight: 1.2 }}>{chatName}</div>
                   {isDm ? (
                     isUserOnline(dmPartnerId) ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#22C55E', marginTop: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--color-success-text, #22C55E)', marginTop: 1 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E' }} /> Online
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11.5, color: '#3D5A8A', marginTop: 1 }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 1 }}>
                         {presence[dmPartnerId] ? `Last seen ${relativeTime(presence[dmPartnerId])}` : chatSub}
                       </div>
                     )
                   ) : (
-                    chatSub && <div style={{ fontSize: 11.5, color: '#3D5A8A', marginTop: 1 }}>{chatSub}</div>
+                    chatSub && <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 1 }}>{chatSub}</div>
                   )}
                 </div>
               </div>
@@ -1053,8 +1132,8 @@ function ChatContent() {
               {/* Notification permission banner */}
               {notifPermission === 'default' && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'rgba(48,108,236,0.12)', borderBottom: '1px solid rgba(48,108,236,0.18)', flexShrink: 0 }}>
-                  <span style={{ fontSize: 12, color: '#7EB3FF' }}>🔔 Enable notifications to get alerted for new messages</span>
-                  <button onClick={() => Notification.requestPermission().then(p => setNotifPermission(p))} style={{ fontSize: 11, padding: '3px 12px', borderRadius: 8, border: '1px solid rgba(48,108,236,0.40)', background: 'rgba(48,108,236,0.20)', color: '#7EB3FF', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--ch-accent)' }}>🔔 Enable notifications to get alerted for new messages</span>
+                  <button onClick={() => Notification.requestPermission().then(p => setNotifPermission(p))} style={{ fontSize: 11, padding: '3px 12px', borderRadius: 8, border: '1px solid rgba(48,108,236,0.40)', background: 'rgba(48,108,236,0.20)', color: 'var(--ch-accent)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                     Enable
                   </button>
                 </div>
@@ -1064,7 +1143,7 @@ function ChatContent() {
               <div style={{
                 flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 16px 8px',
                 display: 'flex', flexDirection: 'column', gap: 0,
-                background: '#000',
+                background: 'var(--ch-bg)',
               }}>
                 {messages.length === 0 ? (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -1072,10 +1151,10 @@ function ChatContent() {
                       {isDm ? '👋' : (groupCh?.icon || '💬')}
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#4A6FA5', marginBottom: 5 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ch-soft)', marginBottom: 5 }}>
                         {isDm ? `Start chatting with ${chatName}` : `Welcome to ${chatName}`}
                       </div>
-                      <div style={{ fontSize: 12.5, color: '#2A3F60' }}>
+                      <div style={{ fontSize: 12.5, color: 'var(--ch-dim)' }}>
                         {isDm ? 'This is a private conversation.' : chatSub}
                       </div>
                     </div>
@@ -1091,13 +1170,13 @@ function ChatContent() {
                       <div key={msg.id}>
                         {msg.showDate && (
                           <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 8px' }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: '#4A6FA5', background: 'rgba(10,15,30,0.85)', border: '1px solid rgba(48,108,236,0.18)', padding: '3px 12px', borderRadius: 10 }}>{msg.dateLabel}</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ch-soft)', background: 'var(--ch-pill-bg)', border: '1px solid rgba(48,108,236,0.18)', padding: '3px 12px', borderRadius: 10 }}>{msg.dateLabel}</span>
                           </div>
                         )}
 
                         {/* Sender name for group chats (not DMs, not own) */}
                         {!isOwn && !msg.isContinuation && !isDm && (
-                          <div style={{ fontSize: 11.5, fontWeight: 700, color: rc, marginLeft: 14, marginBottom: 2, marginTop: msg.showDate ? 0 : 6 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: roleTextOf(rc), marginLeft: 14, marginBottom: 2, marginTop: msg.showDate ? 0 : 6 }}>
                             {msg.userName || 'Unknown'}
                           </div>
                         )}
@@ -1120,16 +1199,16 @@ function ChatContent() {
 
                             {editingId === msg.id ? (
                               /* Edit box */
-                              <div style={{ width: 380, maxWidth: '100%', minWidth: 260, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(48,108,236,0.45)', borderRadius: 14, padding: '8px 10px' }}>
+                              <div style={{ width: 380, maxWidth: '100%', minWidth: 260, background: 'var(--ch-bubble)', border: '1px solid rgba(48,108,236,0.45)', borderRadius: 14, padding: '8px 10px' }}>
                                 <textarea
                                   ref={editRef}
                                   value={editText}
                                   onChange={(e) => { setEditText(e.target.value); autosizeEdit(e.target); }}
                                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msg); } if (e.key === 'Escape') cancelEdit(); }}
-                                  style={{ width: '100%', minHeight: 40, maxHeight: 320, overflowY: 'auto', background: 'transparent', border: 'none', outline: 'none', color: '#E8F2FF', fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                  style={{ width: '100%', minHeight: 40, maxHeight: 320, overflowY: 'auto', background: 'transparent', border: 'none', outline: 'none', color: 'var(--ch-text-edit)', fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                                 />
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
-                                  <button type="button" onClick={cancelEdit} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9DB8DD', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><X size={12} /> Cancel</button>
+                                  <button type="button" onClick={cancelEdit} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 8, border: '1px solid var(--ch-btn-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><X size={12} /> Cancel</button>
                                   <button type="button" onClick={() => saveEdit(msg)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}><Check size={12} /> Save</button>
                                 </div>
                               </div>
@@ -1150,21 +1229,21 @@ function ChatContent() {
                                     : (msg.isContinuation ? '4px 16px 16px 16px' : '4px 16px 16px 16px'),
                                   background: isOwn
                                     ? 'linear-gradient(135deg, #1a45a8, #2960d8)'
-                                    : 'rgba(255,255,255,0.07)',
-                                  border: isOwn ? 'none' : '1px solid rgba(255,255,255,0.09)',
-                                  color: isOwn ? '#fff' : '#D0E4FF',
+                                    : 'var(--ch-bubble)',
+                                  border: isOwn ? 'none' : '1px solid var(--ch-bubble-border)',
+                                  color: isOwn ? '#fff' : 'var(--ch-text-bubble)',
                                   fontSize: 13.5, lineHeight: 1.5,
                                   wordBreak: 'break-word', whiteSpace: 'pre-wrap',
                                   cursor: 'pointer',
-                                  boxShadow: isOwn ? '0 1px 8px rgba(48,108,236,0.30)' : '0 1px 4px rgba(0,0,0,0.30)',
+                                  boxShadow: isOwn ? '0 1px 8px rgba(48,108,236,0.30)' : 'var(--ch-bubble-shadow)',
                                   position: 'relative',
                                 }}
                               >
                                 {msg.message ? renderMessageText(msg.message, isOwn) : null}
                                 {renderAttachments(msg.attachments, isOwn)}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 }}>
-                                  {msg.edited && <span style={{ fontSize: 9.5, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.5)' : 'rgba(160,190,240,0.42)', lineHeight: 1 }}>edited</span>}
-                                  <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'rgba(160,190,240,0.45)', lineHeight: 1 }}>
+                                  {msg.edited && <span style={{ fontSize: 9.5, fontStyle: 'italic', color: isOwn ? 'rgba(255,255,255,0.5)' : 'var(--ch-time-2)', lineHeight: 1 }}>edited</span>}
+                                  <span style={{ fontSize: 10, color: isOwn ? 'rgba(255,255,255,0.55)' : 'var(--ch-time)', lineHeight: 1 }}>
                                     {formatMsgTime(msg.createdAt)}
                                   </span>
                                   {isOwn && renderOwnTicks(msg)}
@@ -1175,9 +1254,9 @@ function ChatContent() {
                             {/* Delete confirmation */}
                             {confirmDeleteId === msg.id && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, background: 'rgba(224,72,90,0.10)', border: '1px solid rgba(224,72,90,0.30)', borderRadius: 10, padding: '5px 8px' }}>
-                                <span style={{ fontSize: 11.5, color: '#E0485A', fontWeight: 600 }}>Delete this message?</span>
+                                <span style={{ fontSize: 11.5, color: 'var(--color-error-text, #E0485A)', fontWeight: 600 }}>Delete this message?</span>
                                 <button type="button" onClick={() => deleteMsg(msg)} style={{ padding: '3px 10px', borderRadius: 7, border: 'none', background: '#E0485A', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
-                                <button type="button" onClick={() => setConfirmDeleteId(null)} style={{ padding: '3px 8px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9DB8DD', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                                <button type="button" onClick={() => setConfirmDeleteId(null)} style={{ padding: '3px 8px', borderRadius: 7, border: '1px solid var(--ch-btn-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
                               </div>
                             )}
 
@@ -1189,9 +1268,9 @@ function ChatContent() {
                                   return (
                                     <button key={emoji} type="button" onClick={() => toggleReaction(msg.id, emoji)} style={{
                                       display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 99,
-                                      background: iReacted ? 'rgba(48,108,236,0.22)' : 'rgba(255,255,255,0.06)',
-                                      border: `1px solid ${iReacted ? 'rgba(48,108,236,0.5)' : 'rgba(255,255,255,0.10)'}`,
-                                      cursor: 'pointer', fontSize: 12, color: iReacted ? '#7EB3FF' : '#B8D0F0', fontFamily: 'inherit',
+                                      background: iReacted ? 'rgba(48,108,236,0.22)' : 'var(--ch-f06)',
+                                      border: `1px solid ${iReacted ? 'rgba(48,108,236,0.5)' : 'var(--ch-line)'}`,
+                                      cursor: 'pointer', fontSize: 12, color: iReacted ? 'var(--ch-accent)' : 'var(--ch-text-3)', fontFamily: 'inherit',
                                     }}>
                                       {emoji} <span style={{ fontSize: 10, fontWeight: 700 }}>{ids.length}</span>
                                     </button>
@@ -1218,10 +1297,10 @@ function ChatContent() {
 
               {/* Reaction picker */}
               {reactOpen && (
-                <div data-react="true" style={{ position: 'fixed', top: reactPos.top, left: reactPos.left, background: 'rgba(8,14,30,0.97)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 30, padding: '6px 10px', zIndex: 9999, boxShadow: '0 6px 28px rgba(0,0,0,0.9)', display: 'flex', gap: 2 }}>
+                <div data-react="true" style={{ position: 'fixed', top: reactPos.top, left: reactPos.left, background: 'var(--color-popover-bg, rgba(8,14,30,0.97))', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 30, padding: '6px 10px', zIndex: 9999, boxShadow: 'var(--shadow-popover, 0 6px 28px rgba(0,0,0,0.9))', display: 'flex', gap: 2 }}>
                   {QUICK_REACTIONS.map(emoji => (
                     <button key={emoji} type="button" data-react="true" onClick={() => toggleReaction(reactOpen, emoji)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: '4px 5px', borderRadius: '50%', lineHeight: 1, transition: '.1s' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.transform = 'scale(1.3)'; }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--ch-hover-2)'; e.currentTarget.style.transform = 'scale(1.3)'; }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.transform = 'scale(1)'; }}>
                       {emoji}
                     </button>
@@ -1232,30 +1311,30 @@ function ChatContent() {
               {/* Forward picker */}
               {forwardMsg && (
                 <div onClick={() => { setForwardMsg(null); setForwardSearch(''); }}
-                  style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                  style={{ position: 'fixed', inset: 0, background: 'var(--ch-scrim)', backdropFilter: 'blur(3px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
                   <div onClick={(e) => e.stopPropagation()}
-                    style={{ width: 'min(420px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'rgba(8,14,34,0.98)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
+                    style={{ width: 'min(420px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--color-popover-bg, rgba(8,14,34,0.98))', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-popover, 0 20px 60px rgba(0,0,0,0.8))' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid rgba(48,108,236,0.15)' }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: '#E2EEFF', display: 'flex', alignItems: 'center', gap: 8 }}><Forward size={16} /> Forward to…</span>
-                      <button type="button" onClick={() => { setForwardMsg(null); setForwardSearch(''); }} style={{ background: 'none', border: 'none', color: '#9DB8DD', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ch-text)', display: 'flex', alignItems: 'center', gap: 8 }}><Forward size={16} /> Forward to…</span>
+                      <button type="button" onClick={() => { setForwardMsg(null); setForwardSearch(''); }} style={{ background: 'none', border: 'none', color: 'var(--color-text-control, #9DB8DD)', cursor: 'pointer', display: 'flex' }}><X size={16} /></button>
                     </div>
 
                     {/* Message preview */}
-                    <div style={{ margin: '12px 16px 8px', padding: '9px 11px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12.5, color: '#B8D0F0', maxHeight: 84, overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      <span style={{ color: '#3D5A8A', fontWeight: 600 }}>{forwardMsg.userName}: </span>{forwardMsg.message}
+                    <div style={{ margin: '12px 16px 8px', padding: '9px 11px', background: 'var(--ch-f05)', border: '1px solid var(--ch-line-2)', borderRadius: 10, fontSize: 12.5, color: 'var(--ch-text-3)', maxHeight: 84, overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 600 }}>{forwardMsg.userName}: </span>{forwardMsg.message}
                     </div>
 
                     {/* Search */}
-                    <div style={{ margin: '4px 16px 8px', display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '7px 11px' }}>
-                      <Search size={13} style={{ color: '#3D5A8A', flexShrink: 0 }} />
+                    <div style={{ margin: '4px 16px 8px', display: 'flex', alignItems: 'center', gap: 7, background: 'var(--ch-f05)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '7px 11px' }}>
+                      <Search size={13} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
                       <input value={forwardSearch} onChange={e => setForwardSearch(e.target.value)} placeholder="Search conversations…" autoFocus
-                        style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: '#D8E8FF', fontFamily: 'inherit' }} />
+                        style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 12.5, color: 'var(--ch-text-2)', fontFamily: 'inherit' }} />
                     </div>
 
                     {/* Conversation list */}
                     <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 10px' }}>
                       {forwardTargets.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', color: '#3D5A8A', fontSize: 12.5 }}>No conversations found.</div>
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12.5 }}>No conversations found.</div>
                       ) : forwardTargets.map(conv => {
                         const rc = roleColor[conv.role] || '#5B9BFF';
                         const initial = (conv.name || '?').charAt(0).toUpperCase();
@@ -1264,11 +1343,11 @@ function ChatContent() {
                             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 10, textAlign: 'left', transition: 'background .12s' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(48,108,236,0.14)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                            <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: conv.isGroup ? 'rgba(48,108,236,0.15)' : `${rc}22`, border: conv.isGroup ? 'none' : `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: conv.isGroup ? 16 : 13, fontWeight: 700, color: rc, overflow: 'hidden' }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: conv.isGroup ? 'rgba(48,108,236,0.15)' : `${rc}22`, border: conv.isGroup ? 'none' : `2px solid ${rc}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: conv.isGroup ? 16 : 13, fontWeight: 700, color: roleTextOf(rc), overflow: 'hidden' }}>
                               {conv.isGroup ? conv.icon : (conv.avatar ? <img src={conv.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial)}
                             </div>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.name}</span>
-                            <Send size={13} style={{ color: '#3D5A8A', flexShrink: 0 }} />
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: 'var(--ch-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.name}</span>
+                            <Send size={13} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
                           </button>
                         );
                       })}
@@ -1279,7 +1358,7 @@ function ChatContent() {
 
               {/* Forward confirmation toast */}
               {forwardToast && (
-                <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: 'rgba(48,108,236,0.95)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 99, zIndex: 10001, boxShadow: '0 6px 24px rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <div style={{ position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', background: 'rgba(48,108,236,0.95)', color: '#fff', fontSize: 13, fontWeight: 600, padding: '9px 18px', borderRadius: 99, zIndex: 10001, boxShadow: 'var(--shadow-popover, 0 6px 24px rgba(0,0,0,0.6))', display: 'flex', alignItems: 'center', gap: 7 }}>
                   <Check size={14} /> {forwardToast}
                 </div>
               )}
@@ -1287,19 +1366,19 @@ function ChatContent() {
 
               {/* Input bar */}
               {canPost ? (
-                <form onSubmit={handleSend} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 14px 14px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.12)', flexShrink: 0 }}>
+                <form onSubmit={handleSend} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 14px 14px', background: 'var(--ch-panel)', borderTop: '1px solid rgba(48,108,236,0.12)', flexShrink: 0 }}>
                   {staged.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingBottom: 2 }}>
                       {staged.map(s => (
-                        <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.2)', borderRadius: 10, padding: (isImageType(s.type) && s.url) ? 0 : '6px 26px 6px 8px', overflow: 'hidden', maxWidth: 230 }}>
+                        <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ch-f06)', border: '1px solid rgba(48,108,236,0.2)', borderRadius: 10, padding: (isImageType(s.type) && s.url) ? 0 : '6px 26px 6px 8px', overflow: 'hidden', maxWidth: 230 }}>
                           {isImageType(s.type) && s.url ? (
                             <img src={s.url} alt={s.name} style={{ width: 54, height: 54, objectFit: 'cover', display: 'block', opacity: s.uploading ? 0.5 : 1 }} />
                           ) : (
                             <>
-                              <span style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, background: 'rgba(48,108,236,0.18)', color: '#7EB3FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={15} /></span>
+                              <span style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0, background: 'rgba(48,108,236,0.18)', color: 'var(--ch-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileText size={15} /></span>
                               <span style={{ minWidth: 0, maxWidth: 130 }}>
-                                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#D8E8FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                                <span style={{ display: 'block', fontSize: 10, color: s.error ? '#E0485A' : '#8FB4E8' }}>{s.error ? 'Failed' : s.uploading ? 'Uploading…' : formatBytes(s.size)}</span>
+                                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(--ch-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                                <span style={{ display: 'block', fontSize: 10, color: s.error ? 'var(--color-error-text, #E0485A)' : 'var(--ch-sub)' }}>{s.error ? 'Failed' : s.uploading ? 'Uploading…' : formatBytes(s.size)}</span>
                               </span>
                             </>
                           )}
@@ -1315,14 +1394,14 @@ function ChatContent() {
                   <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { uploadFiles(e.target.files); e.target.value = ''; }} />
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <button type="button" onClick={() => setAttachMenuOpen(o => !o)} title="Attach"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: attachMenuOpen ? '#7EB3FF' : '#3D5A8A', display: 'flex', borderRadius: '50%', transition: 'transform .15s, color .15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#7EB3FF'} onMouseLeave={e => { if (!attachMenuOpen) e.currentTarget.style.color = '#3D5A8A'; }}>
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: attachMenuOpen ? 'var(--ch-accent)' : 'var(--color-text-tertiary)', display: 'flex', borderRadius: '50%', transition: 'transform .15s, color .15s', transform: attachMenuOpen ? 'rotate(45deg)' : 'none' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--ch-accent)'} onMouseLeave={e => { if (!attachMenuOpen) e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}>
                       <Plus size={22} />
                     </button>
                     {attachMenuOpen && (
                       <>
                         <div onClick={() => setAttachMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 59 }} />
-                        <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, zIndex: 60, background: 'rgba(12,18,34,0.98)', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.22)', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.7)', padding: 6, minWidth: 214 }}>
+                        <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', left: 0, zIndex: 60, background: 'var(--color-popover-bg, rgba(12,18,34,0.98))', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.22)', borderRadius: 14, boxShadow: 'var(--shadow-popover, 0 12px 40px rgba(0,0,0,0.7))', padding: 6, minWidth: 214 }}>
                           {attachOption('Document', FileText, '#8B7CFF', '')}
                           {attachOption('Photos & videos', ImageIcon, '#3E7BFF', 'image/*,video/*')}
                           {attachOption('Camera', Camera, '#FF3D7F', 'image/*', 'environment')}
@@ -1332,13 +1411,13 @@ function ChatContent() {
                     )}
                   </div>
                   <div ref={emojiRef} style={{ position: 'relative', flexShrink: 0 }}>
-                    <button type="button" onClick={() => setEmojiOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: '#3D5A8A', display: 'flex', borderRadius: '50%', transition: '.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#7EB3FF'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#3D5A8A'}>
+                    <button type="button" onClick={() => setEmojiOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 7, color: 'var(--color-text-tertiary)', display: 'flex', borderRadius: '50%', transition: '.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--ch-accent)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--color-text-tertiary)'}>
                       <Smile size={20} />
                     </button>
                     {emojiOpen && (
-                      <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: 'rgba(8,14,30,0.97)', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.22)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.8)', padding: 10, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3, width: 210 }}>
+                      <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: 'var(--color-popover-bg, rgba(8,14,30,0.97))', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.22)', borderRadius: 14, boxShadow: 'var(--shadow-popover, 0 8px 32px rgba(0,0,0,0.8))', padding: 10, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3, width: 210 }}>
                         {EMOJIS.map(emoji => (
                           <button key={emoji} type="button" onClick={() => { setInputText(p => p + emoji); setEmojiOpen(false); inputRef.current?.focus(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, padding: 5, borderRadius: 8, lineHeight: 1, transition: '.1s' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(48,108,236,0.20)'}
@@ -1352,8 +1431,8 @@ function ChatContent() {
 
                   <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
                     {mentionOpen && mentionCandidates.length > 0 && (
-                      <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, background: 'rgba(8,14,30,0.98)', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14, boxShadow: '0 10px 36px rgba(0,0,0,0.7)', padding: 6, zIndex: 60, maxHeight: 244, overflowY: 'auto' }}>
-                        <div style={{ fontSize: 10.5, fontWeight: 700, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 8px 6px' }}>Mention someone</div>
+                      <div style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, background: 'var(--color-popover-bg, rgba(8,14,30,0.98))', backdropFilter: 'blur(24px)', border: '1px solid rgba(48,108,236,0.28)', borderRadius: 14, boxShadow: 'var(--shadow-popover, 0 10px 36px rgba(0,0,0,0.7))', padding: 6, zIndex: 60, maxHeight: 244, overflowY: 'auto' }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 8px 6px' }}>Mention someone</div>
                         {mentionCandidates.map((m, i) => {
                           const active = i === (mentionIdx % mentionCandidates.length);
                           const nm = m.__all ? m.label : (m.full_name || m.email || 'Unknown');
@@ -1368,8 +1447,8 @@ function ChatContent() {
                                 {m.__all ? <AtSign size={15} /> : initial}
                               </span>
                               <span style={{ minWidth: 0, flex: 1 }}>
-                                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#E2EEFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.__all ? 'Everyone' : nm}<span style={{ color: '#6C82A3', fontWeight: 500 }}>{m.__all ? '  @all' : ''}</span></span>
-                                {m.role && <span style={{ display: 'block', fontSize: 10.5, color: '#6C82A3', textTransform: m.__all ? 'none' : 'capitalize' }}>{m.role}</span>}
+                                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ch-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.__all ? 'Everyone' : nm}<span style={{ color: 'var(--ch-mute)', fontWeight: 500 }}>{m.__all ? '  @all' : ''}</span></span>
+                                {m.role && <span style={{ display: 'block', fontSize: 10.5, color: 'var(--ch-mute)', textTransform: m.__all ? 'none' : 'capitalize' }}>{m.role}</span>}
                               </span>
                             </button>
                           );
@@ -1412,26 +1491,26 @@ function ChatContent() {
                       }}
                       placeholder={isDm ? `Message ${chatName}…` : `Message in ${chatName}…`}
                       disabled={sending}
-                      style={{ width: '100%', resize: 'none', maxHeight: 120, overflowY: 'auto', lineHeight: 1.4, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, color: '#D8E8FF', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s', boxSizing: 'border-box' }}
+                      style={{ width: '100%', resize: 'none', maxHeight: 120, overflowY: 'auto', lineHeight: 1.4, background: 'var(--ch-f06)', border: '1px solid rgba(48,108,236,0.18)', borderRadius: 20, padding: '9px 16px', fontSize: 13.5, color: 'var(--ch-text-2)', outline: 'none', fontFamily: 'inherit', transition: 'border-color .15s', boxSizing: 'border-box' }}
                       onFocus={e => e.target.style.borderColor = 'rgba(48,108,236,0.50)'}
                       onBlur={e => e.target.style.borderColor = 'rgba(48,108,236,0.18)'}
                     />
                   </div>
 
-                  <button type="submit" disabled={sending || !canSendNow} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0, background: canSendNow ? 'linear-gradient(135deg,#1E4FB8,#306CEC)' : 'rgba(255,255,255,0.06)', color: canSendNow ? '#fff' : 'rgba(255,255,255,0.20)', cursor: canSendNow ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: canSendNow ? '0 2px 12px rgba(48,108,236,0.40)' : 'none', transition: 'all .15s' }}>
+                  <button type="submit" disabled={sending || !canSendNow} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', flexShrink: 0, background: canSendNow ? 'linear-gradient(135deg,#1E4FB8,#306CEC)' : 'var(--ch-f06)', color: canSendNow ? '#fff' : 'var(--ch-send-off)', cursor: canSendNow ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: canSendNow ? '0 2px 12px rgba(48,108,236,0.40)' : 'none', transition: 'all .15s' }}>
                     <Send size={16} style={{ marginLeft: 2 }} />
                   </button>
                   </div>
                 </form>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', background: '#000', borderTop: '1px solid rgba(48,108,236,0.12)', fontSize: 12.5, color: '#3D5A8A', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', background: 'var(--ch-panel)', borderTop: '1px solid rgba(48,108,236,0.12)', fontSize: 12.5, color: 'var(--color-text-tertiary)', flexShrink: 0 }}>
                   <Lock size={13} /> Only managers can post in Weekly Tasks
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3D5A8A', fontSize: 13, gap: 8 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)', fontSize: 13, gap: 8 }}>
             <MessageSquare size={18} /> Loading chat…
           </div>
         )}
