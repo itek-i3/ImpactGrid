@@ -270,13 +270,13 @@ const STEP_INDEX = Object.fromEntries(STEPS.map((st, i) => [st.key, i]));
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
 // are stored as their own top-level registry columns, not inside `data`.
-const IDENTITY_FIELD_COUNT = 12;
+const IDENTITY_FIELD_COUNT = 14;
 const OPERATIONS_FIELD_COUNT = 7;
 const PERFORMANCE_FIELD_COUNT = 6;
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
-  identity: { ownerName: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '' },
+  identity: { ownerName: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
   operations: { productsServices: '', employeeCount: '', locationCount: '', operatingModel: '', suppliers: '', customerSegments: '', currentSystems: '' },
   performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '' },
   infrastructure: Object.fromEntries(INFRA_AREAS.map((a) => [a.key, { level: '', note: '' }])),
@@ -488,6 +488,7 @@ function Stepper({ steps, current, onGo }) {
 // sections, with short facts in a grid and longer answers as paragraphs.
 const has = (v) => (v ?? '').toString().trim().length > 0;
 const pick = (rows) => rows.filter((r) => has(r[1]));
+const websiteHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
 // "Owner-Reported" is the default and stated once in the footer; only a level
 // that says something more (observed / document / system) is called out inline.
@@ -500,10 +501,13 @@ function ReportGrid({ rows, verification }) {
   if (!rows.length) return null;
   return (
     <div className="rpt-grid">
-      {rows.map(([label, value, vKey]) => (
+      {rows.map(([label, value, vKey, isLink]) => (
         <div key={label} className="rpt-fact">
           <div className="rpt-label">{label}</div>
-          <div className="rpt-value">{value}<ReportVerify value={vKey && verification[vKey]} /></div>
+          <div className="rpt-value">
+            {isLink ? <a href={websiteHref(value)} target="_blank" rel="noopener noreferrer" className="rpt-link">{value}</a> : value}
+            <ReportVerify value={vKey && verification[vKey]} />
+          </div>
         </div>
       ))}
     </div>
@@ -541,6 +545,7 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
     ['Registration status', id.registrationStatus, 'identity.registrationStatus'],
     ['Business phone', id.businessPhone, 'identity.businessPhone'],
     ['Business email', id.businessEmail, 'identity.businessEmail'],
+    ['Website', id.hasWebsite === 'Yes' ? id.website : '', 'identity.website', true],
   ]);
   const opsFacts = pick([
     ['Employees', ops.employeeCount, 'operations.employeeCount'],
@@ -1247,6 +1252,14 @@ export default function BusinessIntelPanel() {
           <Field half label="Registration status" type="select" options={REG_STATUS} value={profile.identity.registrationStatus} onChange={(v) => setField('identity', 'registrationStatus', v)} verification={profile.verification['identity.registrationStatus']} onVerify={(v) => setVerify('identity.registrationStatus', v)} />
           <Field half label="Business phone" value={profile.identity.businessPhone} onChange={(v) => setField('identity', 'businessPhone', v)} verification={profile.verification['identity.businessPhone']} onVerify={(v) => setVerify('identity.businessPhone', v)} placeholder="General business line" />
           <Field half label="Business email" value={profile.identity.businessEmail} onChange={(v) => setField('identity', 'businessEmail', v)} verification={profile.verification['identity.businessEmail']} onVerify={(v) => setVerify('identity.businessEmail', v)} placeholder="General business email" />
+          <Field
+            half label="Has a website?" type="select" options={['Yes', 'No']} value={profile.identity.hasWebsite}
+            onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, hasWebsite: v, website: v === 'Yes' ? p.identity.website : '' } }))}
+            verification={profile.verification['identity.hasWebsite']} onVerify={(v) => setVerify('identity.hasWebsite', v)}
+          />
+          {profile.identity.hasWebsite === 'Yes' && (
+            <Field half label="Website" value={profile.identity.website} onChange={(v) => setField('identity', 'website', v)} verification={profile.verification['identity.website']} onVerify={(v) => setVerify('identity.website', v)} placeholder="e.g. www.sunshinelaundry.co.ke" />
+          )}
         </div>
       )}
 
@@ -1908,6 +1921,8 @@ export default function BusinessIntelPanel() {
         :global(.rpt-label) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-tertiary); }
         :global(.rpt-value) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 5px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: var(--color-text-primary); word-break: break-word; }
         :global(.rpt-value .biz-verify), :global(.rpt-label .biz-verify), :global(.rpt-title .biz-verify), :global(.rpt-infra-note .biz-verify) { margin-top: 0; }
+        :global(.rpt-link) { color: var(--color-accent-text, var(--color-accent-secondary)); text-decoration: none; }
+        :global(.rpt-link:hover) { text-decoration: underline; }
         :global(.rpt-notes) { display: flex; flex-direction: column; gap: 20px; margin-top: 24px; }
         :global(.rpt-section-head + .rpt-notes) { margin-top: 0; }
         :global(.rpt-text) { margin: 6px 0 0; font-size: 14px; line-height: 1.65; color: var(--color-text-primary); white-space: pre-wrap; }
