@@ -9,7 +9,7 @@ import ImgOrFallback from '@/components/ui/ImgOrFallback';
 import {
   Sparkles, Lock, Save, RefreshCw, ChevronLeft,
   Plus, Trash2, User, ShoppingBag, Wrench, DollarSign, AlertTriangle,
-  Rocket, CheckCircle2, Circle, Info, MapPin, TrendingUp, Eye, Pencil, ChevronRight, Users, X,
+  Rocket, CheckCircle2, Circle, Info, MapPin, Globe, TrendingUp, Eye, Pencil, ChevronRight, Users, X,
 } from 'lucide-react';
 
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -652,6 +652,7 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
     ['Customer volume', perf.customerVolume],
   ]);
   const locationLabel = [profile.location.trim(), id.city].filter(Boolean).join(', ');
+  const websiteUrl = id.hasWebsite === 'Yes' ? id.website.trim() : '';
 
   return (
     <div className="biz-panel rpt">
@@ -660,11 +661,17 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
         <div className="rpt-head-main">
           <div className="biz-eyebrow">Business profile</div>
           <h2 className="rpt-title">{profile.name || 'Unnamed business'}<ReportVerify value={vf['identity.businessName']} /></h2>
-          {(has(profile.industry) || locationLabel) && (
+          {(has(profile.industry) || locationLabel || has(websiteUrl)) && (
             <div className="rpt-sub">
               {has(profile.industry) && <span>{profile.industry}</span>}
-              {has(profile.industry) && locationLabel && <span aria-hidden="true">·</span>}
+              {has(profile.industry) && (locationLabel || has(websiteUrl)) && <span aria-hidden="true">·</span>}
               {locationLabel && <span className="rpt-loc"><MapPin size={13} /> {locationLabel}</span>}
+              {locationLabel && has(websiteUrl) && <span aria-hidden="true">·</span>}
+              {has(websiteUrl) && (
+                <a href={websiteHref(websiteUrl)} target="_blank" rel="noopener noreferrer" className="rpt-loc rpt-link">
+                  <Globe size={13} /> {websiteUrl}
+                </a>
+              )}
             </div>
           )}
           <div className="rpt-meta">
