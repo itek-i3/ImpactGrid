@@ -361,12 +361,13 @@ export default function Sidebar() {
             </nav>
 
             {/* ── Finance — every agency's own manager/superadmin gets this, not just ACR.
-                 ACR keeps the "Daily Finance" name (it tracks several businesses day by
-                 day); every other agency sees its own name instead — "itek Finance". ── */}
+                 ACR keeps the "Finance Log" name (it tracks several businesses day by
+                 day, and now year by year too); every other agency sees its own name
+                 instead — "itek Finance". ── */}
             {['manager', 'superadmin'].includes(userProfile?.role) && (() => {
               const currentAgencyName = agencies?.find(a => a.id === activeAgencyId)?.name || '';
               const isAcrAgency = currentAgencyName.toLowerCase().includes('acr');
-              const financeLabel = isAcrAgency ? 'Daily Finance' : (currentAgencyName ? `${currentAgencyName} Finance` : 'Finance');
+              const financeLabel = isAcrAgency ? 'Finance Log' : (currentAgencyName ? `${currentAgencyName} Finance` : 'Finance');
               return (
                 <>
                   <div className={styles.sidebarSectionLabel}>

@@ -182,7 +182,7 @@ export default function BusinessesPanel() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="biz-btn ghost" onClick={() => setCurrentView('finance')}><Wallet size={14} /> Daily Finance</button>
+          <button className="biz-btn ghost" onClick={() => setCurrentView('finance')}><Wallet size={14} /> Finance Log</button>
           <button className="biz-btn primary" onClick={openNew}><Plus size={15} /> New business</button>
         </div>
       </div>
@@ -193,7 +193,7 @@ export default function BusinessesPanel() {
       ) : managedBusinesses.length === 0 ? (
         <div style={{ ...card, padding: '44px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>No businesses yet</div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Add your first business — it’ll appear in the Daily Finance switcher.</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Add your first business — it’ll appear in the Finance Log switcher.</div>
           <button className="biz-btn primary" onClick={openNew} style={{ margin: '0 auto' }}><Plus size={15} /> New business</button>
         </div>
       ) : (
@@ -226,7 +226,7 @@ export default function BusinessesPanel() {
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-tertiary)', fontSize: 10.5, fontWeight: 700 }}>
-                    {b.finance_period === 'monthly' ? 'Monthly tracking' : 'Daily tracking'}
+                    {b.finance_period === 'monthly' ? 'Monthly tracking' : b.finance_period === 'yearly' ? 'Yearly tracking' : 'Daily tracking'}
                   </span>
                   {b.linked_agency_id && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999, background: 'rgba(48,108,236,0.14)', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 10.5, fontWeight: 700 }}>
@@ -323,7 +323,7 @@ export default function BusinessesPanel() {
             <div style={{ marginTop: 12 }}>
               <label style={lbl}>Finance tracking</label>
               <div style={{ display: 'flex', gap: 6 }}>
-                {[{ key: 'daily', label: 'Daily' }, { key: 'monthly', label: 'Monthly' }].map(p => (
+                {[{ key: 'daily', label: 'Daily' }, { key: 'monthly', label: 'Monthly' }, { key: 'yearly', label: 'Yearly' }].map(p => (
                   <button key={p.key} type="button" onClick={() => setFFinancePeriod(p.key)}
                     style={{
                       flex: 1, border: '1px solid', borderColor: fFinancePeriod === p.key ? 'rgba(48,108,236,0.6)' : 'var(--color-border)',
@@ -338,6 +338,8 @@ export default function BusinessesPanel() {
               <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 5 }}>
                 {fFinancePeriod === 'monthly'
                   ? 'This business only logs one revenue & expenses figure per month.'
+                  : fFinancePeriod === 'yearly'
+                  ? 'This business only logs one revenue & expenses figure per year.'
                   : 'This business logs revenue & expenses day by day, with weekly and monthly rollups.'}
               </div>
             </div>

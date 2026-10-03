@@ -682,7 +682,7 @@ export default function ValuationPanel() {
         
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="biz-btn ghost" onClick={() => setCurrentView('finance')}>
-            <Wallet size={14} style={{ marginRight: 6 }} /> Daily Finance
+            <Wallet size={14} style={{ marginRight: 6 }} /> Finance Log
           </button>
           
           <button className="biz-btn primary" onClick={handleSave} disabled={saving || !activeBiz}>
@@ -825,7 +825,7 @@ export default function ValuationPanel() {
               <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
                 <AlertCircle size={28} style={{ margin: '0 auto 8px', color: 'var(--color-warning)' }} />
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>No daily finance data found</div>
-                <div style={{ fontSize: 11.5, marginTop: 2 }}>Create transaction entries on the Daily Finance page to see calculations.</div>
+                <div style={{ fontSize: 11.5, marginTop: 2 }}>Create transaction entries on the Finance Log page to see calculations.</div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
@@ -879,7 +879,7 @@ export default function ValuationPanel() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <CheckSquare size={16} style={{ color: 'var(--color-accent-secondary)' }} />
-                  <h3 style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>Potential Add-backs detected in Daily Finance</h3>
+                  <h3 style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>Potential Add-backs detected in Finance Log</h3>
                 </div>
                 <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontWeight: 600 }}>Toggled items will be annualized & added to SDE</span>
               </div>

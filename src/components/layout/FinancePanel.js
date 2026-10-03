@@ -29,6 +29,7 @@ const monthLabel = (key) => {
   const [y, m] = (key || '').split('-');
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 };
+const yearKeyOf = (dateStr) => (dateStr || '').slice(0, 4);    // 'YYYY'
 
 // ── Week helpers (weeks run Monday → Sunday) ──
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -102,9 +103,10 @@ export default function FinancePanel() {
   const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
   const isAcr = isDemo || !!agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr');
   const currentAgencyName = agencies?.find(a => a.id === activeAgencyId)?.name || '';
-  // ACR keeps the "Daily Finance" name (it tracks several businesses day by
-  // day); every other agency sees its own name instead — "itek Finance".
-  const financeLabel = isAcr ? 'Daily Finance' : (currentAgencyName ? `${currentAgencyName} Finance` : 'Finance');
+  // ACR keeps the "Finance Log" name (it tracks several businesses day by
+  // day, and now year by year too); every other agency sees its own name
+  // instead — "itek Finance".
+  const financeLabel = isAcr ? 'Finance Log' : (currentAgencyName ? `${currentAgencyName} Finance` : 'Finance');
 
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState([]);
@@ -126,7 +128,7 @@ export default function FinancePanel() {
   const [reportPeriod, setReportPeriod] = useState('daily');
   const [chartType, setChartType] = useState('bar');
 
-  // Daily Finance itself is open to any agency's managers/admins now; the
+  // Finance Log itself is open to any agency's managers/admins now; the
   // multi-business layer (Businesses tab, the switcher below) stays an
   // ACR-only tool — every other agency just tracks its own figures directly.
   const canAccess = isDemo || ['manager', 'superadmin'].includes(userProfile?.role);
@@ -199,7 +201,7 @@ export default function FinancePanel() {
   // Finance entries for the current scope + realtime. The scope is either:
   // an ACR business (agency_id=ACR, business_id=that business), a business
   // linked to another agency (agency_id=that agency, business_id=null — the
-  // SAME rows that agency's own Daily Finance reads/writes), or a plain
+  // SAME rows that agency's own Finance Log reads/writes), or a plain
   // agency tracking itself directly (agency_id=itself, business_id=null).
   useEffect(() => {
     let cancelled = false;
@@ -240,11 +242,11 @@ export default function FinancePanel() {
     return { revenue: r, expenses: e, net: r - e };
   }, [rows]);
 
-  // Report-ready revenue vs expenses chart (daily, weekly, or monthly). A
-  // monthly-tracked business only ever has one row per month, so its chart
-  // always groups by month regardless of the reportPeriod toggle (which is
-  // hidden for it anyway).
-  const effectiveReportPeriod = financePeriod === 'monthly' ? 'monthly' : reportPeriod;
+  // Report-ready revenue vs expenses chart (daily, weekly, monthly, or
+  // yearly). A monthly- or yearly-tracked business only ever has one row per
+  // month/year, so its chart always groups at that granularity regardless of
+  // the reportPeriod toggle (which is hidden for it anyway).
+  const effectiveReportPeriod = financePeriod === 'monthly' ? 'monthly' : financePeriod === 'yearly' ? 'yearly' : reportPeriod;
   const chartData = useMemo(() => {
     const map = new Map();
     rows.forEach(r => {
@@ -257,6 +259,9 @@ export default function FinancePanel() {
       } else if (effectiveReportPeriod === 'monthly') {
         key = monthKeyOf(r.entry_date);
         label = monthLabel(key);
+      } else if (effectiveReportPeriod === 'yearly') {
+        key = yearKeyOf(r.entry_date);
+        label = key;
       }
       if (!map.has(key)) map.set(key, { key, label, revenue: 0, expenses: 0 });
       const e = map.get(key);
@@ -309,6 +314,20 @@ export default function FinancePanel() {
       mo.weeks = weeks;
     });
     arr.sort((a, b) => (a.key < b.key ? 1 : -1));   // newest month first
+    return arr;
+  }, [rows]);
+
+  // Yearly-tracked business: one row per calendar year, newest first — the
+  // same flat shape as the monthly list, just grouped a level coarser.
+  const years = useMemo(() => {
+    const map = new Map();
+    rows.forEach(r => {
+      const key = yearKeyOf(r.entry_date);
+      if (!map.has(key)) map.set(key, { key, rows: [] });
+      map.get(key).rows.push(r);
+    });
+    const arr = [...map.values()];
+    arr.sort((a, b) => (a.key < b.key ? 1 : -1)); // newest year first
     return arr;
   }, [rows]);
 
@@ -376,10 +395,13 @@ export default function FinancePanel() {
     if (num(nRevenue) === 0 && itemsTotal(nItems) === 0 && !nNote.trim()) return;
     if (!isDemo && (!financeAgencyId || !hasValidScope)) return;
     setSaving(true);
-    // Upsert by date so picking a date/month that already exists edits it
-    // instead of creating a duplicate. Monthly businesses always anchor to
-    // the 1st, even if the user never touched the month picker.
-    const dateStr = financePeriod === 'monthly' ? `${(nDate || today).slice(0, 7)}-01` : (nDate || today);
+    // Upsert by date so picking a date/month/year that already exists edits
+    // it instead of creating a duplicate. Monthly businesses always anchor
+    // to the 1st, yearly ones to Jan 1st, even if the user never touched
+    // the picker.
+    const dateStr = financePeriod === 'monthly' ? `${(nDate || today).slice(0, 7)}-01`
+      : financePeriod === 'yearly' ? `${(nDate || today).slice(0, 4)}-01-01`
+      : (nDate || today);
     await saveDay(dateStr, { revenue: nRevenue, items: nItems, note: nNote });
     setNRevenue(''); setNItems([{ ...EMPTY_ITEM }]); setNNote(''); setNDate(today); setSaving(false); setShowAdd(false);
   };
@@ -495,7 +517,9 @@ export default function FinancePanel() {
         <div>
           <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>{financeLabel}</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>
-            {financePeriod === 'monthly' ? "Track this business's monthly revenue & expenses" : "Track daily revenue & expenses, and see exactly where each week's money goes"}
+            {financePeriod === 'monthly' ? "Track this business's monthly revenue & expenses"
+              : financePeriod === 'yearly' ? "Track this business's yearly revenue & expenses"
+              : "Track daily revenue & expenses, and see exactly where each week's money goes"}
           </div>
         </div>
       </div>
@@ -560,7 +584,7 @@ export default function FinancePanel() {
       {(needsBusinessSelection && !businessId) ? (
         <div style={{ ...card, padding: '44px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>No business selected</div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Create a business in the Businesses tab to start tracking its daily finance.</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Create a business in the Businesses tab to start tracking its finances.</div>
           <button className="fin-save" onClick={() => setCurrentView('businesses')} style={{ margin: '0 auto' }}><Building2 size={15} /> Go to Businesses</button>
         </div>
       ) : (
@@ -645,7 +669,7 @@ export default function FinancePanel() {
       {showAdd ? (
         <div style={{ ...card, border: '1px solid rgba(34,197,94,0.35)', marginBottom: 22 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{financePeriod === 'monthly' ? 'New month entry' : 'New day entry'}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{financePeriod === 'monthly' ? 'New month entry' : financePeriod === 'yearly' ? 'New year entry' : 'New day entry'}</span>
             <button className="fin-del" title="Close" onClick={() => setShowAdd(false)}><X size={16} /></button>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -655,6 +679,11 @@ export default function FinancePanel() {
                   <label style={lbl}>Month</label>
                   <input className="fin-input" type="month" value={nDate.slice(0, 7)} onChange={e => setNDate(`${e.target.value}-01`)} />
                   <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{monthLabel(nDate.slice(0, 7))}</div>
+                </>
+              ) : financePeriod === 'yearly' ? (
+                <>
+                  <label style={lbl}>Year</label>
+                  <input className="fin-input" type="number" inputMode="numeric" placeholder={String(new Date().getFullYear())} value={nDate.slice(0, 4)} onChange={e => setNDate(`${e.target.value}-01-01`)} />
                 </>
               ) : (
                 <>
@@ -672,14 +701,14 @@ export default function FinancePanel() {
           <label style={lbl}>Expenses — what was spent</label>
           {itemsEditor(nItems, setNItems)}
           <label style={{ ...lbl, marginTop: 14 }}>Note (optional)</label>
-          <input className="fin-input" type="text" placeholder={financePeriod === 'monthly' ? 'Anything to add about this month…' : 'Anything to add about today…'} value={nNote} onChange={e => setNNote(e.target.value)} />
+          <input className="fin-input" type="text" placeholder={financePeriod === 'monthly' ? 'Anything to add about this month…' : financePeriod === 'yearly' ? 'Anything to add about this year…' : 'Anything to add about today…'} value={nNote} onChange={e => setNNote(e.target.value)} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <button className="fin-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
-            <button className="fin-save" onClick={addEntry} disabled={!canAdd || saving}><Plus size={15} /> {financePeriod === 'monthly' ? 'Add month entry' : 'Add day entry'}</button>
+            <button className="fin-save" onClick={addEntry} disabled={!canAdd || saving}><Plus size={15} /> {financePeriod === 'monthly' ? 'Add month entry' : financePeriod === 'yearly' ? 'Add year entry' : 'Add day entry'}</button>
           </div>
         </div>
       ) : (
-        <button className="fin-newbtn" onClick={() => setShowAdd(true)}><Plus size={16} /> {financePeriod === 'monthly' ? 'Add month entry' : 'Add day entry'}</button>
+        <button className="fin-newbtn" onClick={() => setShowAdd(true)}><Plus size={16} /> {financePeriod === 'monthly' ? 'Add month entry' : financePeriod === 'yearly' ? 'Add year entry' : 'Add day entry'}</button>
       )}
 
       {/* Months */}
@@ -687,7 +716,61 @@ export default function FinancePanel() {
         <div style={{ textAlign: 'center', color: 'var(--color-text-tertiary)', fontSize: 12.5, padding: 20 }}>Loading…</div>
       ) : months.length === 0 ? (
         <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 12.5, padding: '24px 20px' }}>
-          {financePeriod === 'monthly' ? 'No entries yet — add this month’s figures above.' : 'No entries yet — add today’s figures above.'}
+          {financePeriod === 'monthly' ? 'No entries yet — add this month’s figures above.'
+            : financePeriod === 'yearly' ? 'No entries yet — add this year’s figures above.'
+            : 'No entries yet — add today’s figures above.'}
+        </div>
+      ) : financePeriod === 'yearly' ? (
+        /* Yearly-tracked business: a flat list of years, one figure each — no month/week/day drill-down. */
+        <div className="fin-daylist">
+          {years.map((year, i) => {
+            const ds = `${year.key}-01-01`;
+            const entry = year.rows.find(r => r.entry_date === ds) || null;
+            const has = !!entry;
+            const yearOpen = openDay === ds;
+            const commit = () => saveDay(ds, draft);
+            return (
+              <div key={year.key} className={`fin-dayrow${i < years.length - 1 ? ' fin-dayrow-div' : ''}`}
+                style={{ background: yearOpen ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                {/* Compact slot — year · revenue · expenses · delete */}
+                <div onClick={() => openDayEditor(ds)}
+                  style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                  {yearOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{year.key}</span>
+                  </span>
+                  {has ? (
+                    <>
+                      {chip(money(entry.revenue), '#22C55E')}
+                      {chip(`−${money(entry.expenses)}`, '#E0485A')}
+                      <button className="fin-del" title="Delete this year" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                    </>
+                  ) : (
+                    <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
+                  )}
+                </div>
+
+                {/* Expanded editor (bound to the shared draft buffer) */}
+                {yearOpen && (
+                  <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
+                      <div style={{ width: 150 }}>
+                        <label style={lbl}>Revenue</label>
+                        <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
+                      </div>
+                      <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
+                        {year.key}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
+                      </div>
+                    </div>
+                    <label style={lbl}>Expenses — what was spent</label>
+                    {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
+                    <label style={{ ...lbl, marginTop: 12 }}>Note</label>
+                    <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : financePeriod === 'monthly' ? (
         /* Monthly-tracked business: a flat list of months, one figure each — no week/day drill-down. */
