@@ -23,9 +23,22 @@ export default function Dropdown({ trigger, children, align = 'left', className 
     let left = align === 'right' ? rect.right - menuWidth : rect.left;
     left = Math.max(margin, Math.min(left, window.innerWidth - menuWidth - margin));
 
+    // Open toward whichever side of the trigger has more room — a trigger
+    // near the bottom of a scrollable list (e.g. a sidebar page item just
+    // above the fixed footer nav) would otherwise always open downward and
+    // sit on top of whatever's below it even when there's more room above.
+    const menuHeight = menuRef.current?.offsetHeight || 0;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const openUpward = menuHeight > 0 && spaceBelow < menuHeight + margin && spaceAbove > spaceBelow;
+    let top = openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4;
+    // Final safety clamp so the menu itself is never cut off by the viewport
+    // on a short screen, even when neither side has full room for it.
+    top = Math.max(margin, Math.min(top, window.innerHeight - menuHeight - margin));
+
     setMenuStyle({
       position: 'fixed',
-      top: rect.bottom + 4,
+      top,
       left,
       zIndex: 9999,
       minWidth: 200,
@@ -47,15 +60,22 @@ export default function Dropdown({ trigger, children, align = 'left', className 
     return () => document.removeEventListener('mousedown', handleClose);
   }, [open]);
 
+  // A dim backdrop behind the menu — when the trigger is tight on space in
+  // both directions the menu still has to sit on top of something, and
+  // without this a covered row just looks broken instead of intentionally
+  // layered underneath an open menu.
   const menu = open ? (
-    <div
-      ref={menuRef}
-      className={styles.dropdownMenu}
-      style={menuStyle}
-      onClick={() => setOpen(false)}
-    >
-      {children}
-    </div>
+    <>
+      <div className={styles.dropdownBackdrop} style={{ zIndex: 9998 }} onClick={() => setOpen(false)} />
+      <div
+        ref={menuRef}
+        className={styles.dropdownMenu}
+        style={menuStyle}
+        onClick={() => setOpen(false)}
+      >
+        {children}
+      </div>
+    </>
   ) : null;
 
   const handleToggle = (e) => {

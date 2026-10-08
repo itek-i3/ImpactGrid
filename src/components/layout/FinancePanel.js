@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2, BarChart2, CalendarDays } from 'lucide-react';
+import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, ChevronRight, Lock, X, Check, Building2, BarChart2, CalendarDays, Eye, Pencil, Receipt, Coins, ArrowRight, FileText } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { RadialProgress, useCountUp } from '@/lib/personalFinance/shared';
+import Dropdown from '@/components/ui/Dropdown';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -120,13 +122,14 @@ export default function FinancePanel() {
   const [showAdd, setShowAdd] = useState(false);                    // the new-entry form is hidden until clicked
   const [monthToggles, setMonthToggles] = useState(() => new Set()); // months the user flipped from default
   const [weekToggles, setWeekToggles] = useState(() => new Set());   // weeks the user flipped from default
-  const [openDay, setOpenDay] = useState(null);                     // the date (YYYY-MM-DD) whose slot is expanded
+  const [openDay, setOpenDay] = useState(null);                     // the date (YYYY-MM-DD) whose slot is expanded for editing
+  const [viewDay, setViewDay] = useState(null);                     // the date (YYYY-MM-DD) whose slot is expanded read-only
   const [draft, setDraft] = useState({ revenue: '', items: [{ ...EMPTY_ITEM }], note: '' }); // editor buffer for openDay
   const [businesses, setBusinesses] = useState([]);
   const [businessId, setBusinessId] = useState(null);               // the business currently being viewed
-  const [bizMenuOpen, setBizMenuOpen] = useState(false);
   const [reportPeriod, setReportPeriod] = useState('daily');
   const [chartType, setChartType] = useState('bar');
+  const [tab, setTab] = useState('log'); // 'log' | 'reports'
 
   // Finance Log itself is open to any agency's managers/admins now; the
   // multi-business layer (Businesses tab, the switcher below) stays an
@@ -241,6 +244,17 @@ export default function FinancePanel() {
     rows.forEach(x => { r += num(x.revenue); e += num(x.expenses); });
     return { revenue: r, expenses: e, net: r - e };
   }, [rows]);
+
+  // Hero ring: how much of revenue got consumed by expenses (the finance-log
+  // equivalent of the personal-finance "% of budget used" ring).
+  const spendRatio = totals.revenue > 0 ? Math.round((totals.expenses / totals.revenue) * 100) : (totals.expenses > 0 ? 100 : 0);
+  const ringColor = (totals.revenue === 0 && totals.expenses === 0) ? 'var(--color-text-tertiary)'
+    : totals.expenses > totals.revenue ? '#E0485A'
+    : spendRatio >= 80 ? '#F5A623'
+    : '#5B9BFF';
+  const revenueDisplay = useCountUp(totals.revenue);
+  const expensesDisplay = useCountUp(totals.expenses);
+  const netDisplay = useCountUp(totals.net);
 
   // Report-ready revenue vs expenses chart (daily, weekly, monthly, or
   // yearly). A monthly- or yearly-tracked business only ever has one row per
@@ -380,6 +394,7 @@ export default function FinancePanel() {
   // Open a day's editor, seeding the buffer from its existing entry (if any).
   const openDayEditor = (dateStr) => {
     if (openDay === dateStr) { setOpenDay(null); return; }
+    setViewDay(null);
     const entry = rows.find(r => r.entry_date === dateStr);
     setDraft({
       revenue: entry && entry.revenue != null ? String(entry.revenue) : '',
@@ -389,6 +404,14 @@ export default function FinancePanel() {
       note: entry?.note || '',
     });
     setOpenDay(dateStr);
+  };
+
+  // Toggles a day's read-only preview — closes the editor for that row first
+  // so only one of view/edit is ever expanded at a time.
+  const toggleView = (dateStr) => {
+    if (viewDay === dateStr) { setViewDay(null); return; }
+    setOpenDay(null);
+    setViewDay(dateStr);
   };
 
   const addEntry = async () => {
@@ -409,6 +432,7 @@ export default function FinancePanel() {
   const deleteRow = async (id) => {
     if (!id) return;
     setOpenDay(null);
+    setViewDay(null);
     if (isDemo) { persistDemo(rows.filter(r => r.id !== id)); return; }
     setRows(prev => prev.filter(r => r.id !== id));
     try {
@@ -421,27 +445,164 @@ export default function FinancePanel() {
 
   // `commit(nextItems)` persists with an explicit value so add/remove/blur never
   // read stale state (that was the bug where the item bin appeared to do nothing).
-  const itemsEditor = (items, setItems, commit) => {
+  // Its own card — icon + title + subtitle header, a running "Total Expenses"
+  // chip, a column-header row, then one grid-aligned row per item.
+  const itemsEditor = (items, setItems, commit, periodNoun = 'entry') => {
     const change = (i, patch) => setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8, alignItems: 'center' }}>
-            <input className="fin-input" list="fin-cats" type="text" placeholder="What was spent on (e.g. Rent)"
-              value={it.what} onChange={e => change(i, { what: e.target.value })} onBlur={() => commit?.(items)} />
-            <input className="fin-input" type="number" inputMode="decimal" placeholder="Amount"
-              value={it.amount} onChange={e => change(i, { amount: e.target.value })} onBlur={() => commit?.(items)} />
-            <button className="fin-del" title="Remove item"
-              onClick={() => { const next = items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_ITEM }]; setItems(next); commit?.(next); }}>
-              <Trash2 size={13} />
-            </button>
+      <div className="fin-expensecard">
+        <div className="fin-expensecard-head">
+          <span className="fin-sectionicon fin-sectionicon-expenses"><Wallet size={20} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="fin-expensecard-title">Expenses</div>
+            <div className="fin-expensecard-sub">Add all expenses related to this {periodNoun}.</div>
           </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-          <button className="fin-additem" onClick={() => setItems([...items, { ...EMPTY_ITEM }])}><Plus size={13} /> Add item</button>
-          <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-            Expenses total <strong style={{ color: '#E0485A', fontVariantNumeric: 'tabular-nums' }}>{money(itemsTotal(items))}</strong>
-          </span>
+          <div className="fin-totalchip">
+            <span className="fin-totalchip-icon"><Coins size={13} /></span>
+            <div>
+              <div className="fin-totalchip-label">Total Expenses</div>
+              <div className="fin-totalchip-value">{money(itemsTotal(items))}</div>
+            </div>
+          </div>
+        </div>
+
+        {items.length > 0 && (
+          <div className="fin-itemrow2 fin-itemrow2-head">
+            <span>Expense name</span>
+            <span>Amount (KSh)</span>
+            <span style={{ textAlign: 'center' }}>Actions</span>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map((it, i) => {
+            const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
+            return (
+              <div key={i} className="fin-itemrow2">
+                <div className="fin-itemrow2-name">
+                  <span className="fin-itemicon" style={{ background: `${color}29`, color }}><Receipt size={14} /></span>
+                  <input className="fin-input" list="fin-cats" type="text" placeholder="What was spent on (e.g. Rent)"
+                    value={it.what} onChange={e => change(i, { what: e.target.value })} onBlur={() => commit?.(items)} />
+                </div>
+                <input className="fin-input" type="number" inputMode="decimal" placeholder="0"
+                  value={it.amount} onChange={e => change(i, { amount: e.target.value })} onBlur={() => commit?.(items)} />
+                <button className="fin-itemdel" title="Remove item"
+                  onClick={() => { const next = items.length > 1 ? items.filter((_, idx) => idx !== i) : [{ ...EMPTY_ITEM }]; setItems(next); commit?.(next); }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <button className="fin-additem" onClick={() => setItems([...items, { ...EMPTY_ITEM }])}><Plus size={14} /> Add another expense</button>
+      </div>
+    );
+  };
+
+  // Read-only preview of one logged entry — revenue/expenses as stat tiles,
+  // the itemized breakdown as colored bars (same visual language as the
+  // week/month "Where the money went" card), and the note as a quote block.
+  // No input fields. Shared by the day/month/year "View" expansion.
+  const renderEntryView = (entry, periodLabel) => {
+    const items = (Array.isArray(entry.expense_items) ? entry.expense_items : []).filter(it => (it.what || '').trim() || num(it.amount));
+    const sortedItems = [...items].sort((a, b) => num(b.amount) - num(a.amount));
+    const maxItem = sortedItems.length ? num(sortedItems[0].amount) : 0;
+    return (
+      <div className="fin-entrypanel fin-entrypanel-view">
+        <div className="fin-stattiles">
+          <div className="fin-stattile">
+            <div className="fin-stattile-icon" style={{ background: 'rgba(34,197,94,0.16)', color: '#22C55E' }}><TrendingUp size={15} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div className="fin-stattile-value" style={{ color: '#22C55E' }}>{money(entry.revenue)}</div>
+              <div className="fin-stattile-label">Revenue</div>
+            </div>
+          </div>
+          <div className="fin-stattile">
+            <div className="fin-stattile-icon" style={{ background: 'rgba(224,72,90,0.16)', color: '#E0485A' }}><TrendingDown size={15} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div className="fin-stattile-value" style={{ color: '#E0485A' }}>{money(entry.expenses)}</div>
+              <div className="fin-stattile-label">Expenses</div>
+            </div>
+          </div>
+          <div className="fin-stattile" style={{ gridColumn: '1 / -1' }}>
+            <div className="fin-stattile-icon" style={{ background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)' }}><Sigma size={15} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div className="fin-stattile-value" style={{ color: netColor(num(entry.revenue) - num(entry.expenses)) }}>{money(num(entry.revenue) - num(entry.expenses))}</div>
+              <div className="fin-stattile-label">Net</div>
+            </div>
+          </div>
+        </div>
+
+        {sortedItems.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Where it went</label>
+            <div className="fin-viewbreakdown">
+              {sortedItems.map((it, i) => {
+                const color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
+                const amt = num(it.amount);
+                return (
+                  <div key={i} className="fin-viewbreakdown-row" style={{ gridTemplateColumns: isMobile ? '84px 1fr' : '130px 1fr' }}>
+                    <div className="fin-viewbreakdown-left">
+                      <span className="fin-viewbreakdown-dot" style={{ background: color }} />
+                      <span className="fin-viewbreakdown-label">{it.what || 'Unlabelled'}</span>
+                    </div>
+                    <div className="fin-viewbreakdown-right">
+                      <div className="fin-viewbreakdown-track"><div className="fin-viewbreakdown-bar" style={{ width: `${maxItem > 0 ? Math.max(4, (amt / maxItem) * 100) : 0}%`, background: color }} /></div>
+                      <span className="fin-viewbreakdown-amount">{money(amt)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {entry.note ? (
+          <div className="fin-note"><span className="fin-note-mark">“</span><span>{entry.note}</span></div>
+        ) : (
+          <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No note logged.</div>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
+          {periodLabel} · logged by {memberName(entry.created_by)}
+        </div>
+      </div>
+    );
+  };
+
+  // Editable fields for one logged entry — revenue, itemized expenses, note.
+  // Single-column flow with the amount as the one hero field (large, its own
+  // row, currency-prefixed) rather than sharing a row with anything else —
+  // the amount is the thing being edited, everything else is context for it.
+  // Shared by the day/month/year "Edit" expansion (the standalone "New entry"
+  // form below has its own date picker up top, but reuses the same item editor).
+  const renderEntryForm = (ds, periodLabel, entry) => {
+    const commit = () => saveDay(ds, draft);
+    const net = num(draft.revenue) - itemsTotal(draft.items);
+    return (
+      <div className="fin-entrypanel fin-entrypanel-edit">
+        <div className="fin-field" style={{ marginBottom: 4 }}>
+          <label style={lblBig}>Revenue <span className="fin-req">*</span></label>
+          <div className="fin-amountwrap">
+            <span className="fin-amountcurrency">KSh</span>
+            <input className="fin-input fin-input-hero" type="number" inputMode="decimal" placeholder="Enter amount" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 18 }}>
+          {periodLabel}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
+        </div>
+        {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
+        <div style={{ marginTop: 18 }}>
+          <label style={lblBig}><FileText size={14} /> Note (optional)</label>
+          <div className="fin-notewrap">
+            <textarea className="fin-textarea" maxLength={255} placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
+            <span className="fin-notecount">{draft.note.length}/255</span>
+          </div>
+        </div>
+        <div className="fin-netstrip">
+          <span>Net for this entry</span>
+          <strong style={{ color: netColor(net) }}>{money(net)}</strong>
         </div>
       </div>
     );
@@ -493,6 +654,10 @@ export default function FinancePanel() {
 
   const card = { background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 14, padding: 16 };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5, display: 'block' };
+  // Bigger, bolder label for the entry form's top-level fields (Amount, Date,
+  // Note) — the small uppercase `lbl` above stays for table-style headers and
+  // minor captions elsewhere.
+  const lblBig = { fontSize: 13.5, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 };
   const canAdd = num(nRevenue) !== 0 || itemsTotal(nItems) !== 0 || nNote.trim();
 
   if (!canAccess) {
@@ -510,11 +675,11 @@ export default function FinancePanel() {
       <datalist id="fin-cats">{EXPENSE_CATEGORIES.map(c => <option key={c} value={c} />)}</datalist>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E' }}>
+      <div className="fin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <div className="fin-icon-badge" style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22C55E', flexShrink: 0 }}>
           <Wallet size={22} />
         </div>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>{financeLabel}</div>
           <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>
             {financePeriod === 'monthly' ? "Track this business's monthly revenue & expenses"
@@ -522,60 +687,63 @@ export default function FinancePanel() {
               : "Track daily revenue & expenses, and see exactly where each week's money goes"}
           </div>
         </div>
+        {(!needsBusinessSelection || businessId) && (
+          <button className="fin-save" style={isMobile ? { width: '100%', justifyContent: 'center' } : { marginLeft: 'auto', flexShrink: 0 }} onClick={() => { setTab('log'); setShowAdd(true); }}>
+            <Plus size={15} /> {financePeriod === 'monthly' ? 'Add month entry' : financePeriod === 'yearly' ? 'Add year entry' : 'Add day entry'}
+          </button>
+        )}
       </div>
 
       {/* Business switcher — ACR's multi-business tool only; every other agency tracks itself directly */}
       {needsBusinessSelection && (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
+      <div className="fin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 18, animationDelay: '40ms' }}>
         <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Business</span>
-        <div style={{ position: 'relative' }}>
-          <button className="fin-bizbtn" onClick={() => setBizMenuOpen(o => !o)}>
-            <span className="fin-bizavatar" style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
-              {(activeBiz?.name || '?').charAt(0).toUpperCase()}
-            </span>
-            <span className="fin-bizname" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
-              {activeBiz?.name || 'Select business'}
-            </span>
-            <ChevronDown size={17} style={{ color: 'var(--color-text-control, #8FB4E8)', flexShrink: 0 }} />
-          </button>
-          {bizMenuOpen && (
-            <>
-              <div onClick={() => setBizMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 900 }} />
-              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 901, minWidth: 300, maxHeight: 360, overflowY: 'auto', background: '#0b1424', border: '1px solid rgba(120,150,210,0.25)', borderRadius: 12, boxShadow: '0 16px 48px rgba(0,0,0,0.7)', padding: 6 }}>
-                {businesses.length === 0 && (
-                  <div style={{ padding: '16px 12px', fontSize: 12.5, color: '#8FB4E8' }}>No businesses yet.</div>
-                )}
-                {businesses.map(b => {
-                  const on = b.id === businessId;
-                  return (
-                    <button key={b.id} onClick={() => { setBusinessId(b.id); setBizMenuOpen(false); }}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9, border: 'none', background: on ? 'rgba(48,108,236,0.22)' : 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
-                      onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-                      onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'none'; }}>
-                      <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', color: '#8FC0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>{(b.name || '?').charAt(0).toUpperCase()}</span>
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#EAF1FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
-                        {(b.domain || b.sector) && <span style={{ display: 'block', fontSize: 11.5, color: '#8FB4E8', marginTop: 1 }}>{[b.domain, b.sector].filter(Boolean).join(' · ')}</span>}
-                      </span>
-                      {on && <Check size={16} style={{ color: '#7EB3FF', flexShrink: 0 }} />}
-                    </button>
-                  );
-                })}
-                <button onClick={() => { setBizMenuOpen(false); setCurrentView('businesses'); }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '11px', marginTop: 4, border: 'none', borderTop: '1px solid rgba(120,150,210,0.18)', background: 'none', color: '#7EB3FF', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <Building2 size={15} /> Manage businesses
+        <Dropdown
+          trigger={
+            <button className="fin-bizbtn">
+              <span className="fin-bizavatar" style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>
+                {(activeBiz?.name || '?').charAt(0).toUpperCase()}
+              </span>
+              <span className="fin-bizname" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                {activeBiz?.name || 'Select business'}
+              </span>
+              <ChevronDown size={17} style={{ color: 'var(--color-text-control, #8FB4E8)', flexShrink: 0 }} />
+            </button>
+          }
+        >
+          <div style={{ minWidth: 280, maxHeight: 360, overflowY: 'auto' }}>
+            {businesses.length === 0 && (
+              <div style={{ padding: '16px 12px', fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>No businesses yet.</div>
+            )}
+            {businesses.map(b => {
+              const on = b.id === businessId;
+              return (
+                <button key={b.id} onClick={() => setBusinessId(b.id)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9, border: 'none', background: on ? 'rgba(48,108,236,0.22)' : 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                  onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                  onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'none'; }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.22)', color: '#8FC0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800 }}>{(b.name || '?').charAt(0).toUpperCase()}</span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+                    {(b.domain || b.sector) && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 1 }}>{[b.domain, b.sector].filter(Boolean).join(' · ')}</span>}
+                  </span>
+                  {on && <Check size={16} style={{ color: 'var(--color-accent-text, #7EB3FF)', flexShrink: 0 }} />}
                 </button>
-              </div>
-            </>
-          )}
-        </div>
+              );
+            })}
+            <button onClick={() => setCurrentView('businesses')}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '11px', marginTop: 4, border: 'none', borderTop: '1px solid var(--color-border-subtle)', background: 'none', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Building2 size={15} /> Manage businesses
+            </button>
+          </div>
+        </Dropdown>
       </div>
       )}
 
       {/* Linked business — this business IS another agency on the platform, so its
           figures are that agency's own Finance tab, not a separate copy. */}
       {linkedAgencyId && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(48,108,236,0.08)', border: '1px solid rgba(48,108,236,0.25)', color: 'var(--color-text-secondary)', fontSize: 12.5, marginBottom: 18 }}>
+        <div className="fin-fadeup" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(48,108,236,0.08)', border: '1px solid rgba(48,108,236,0.25)', color: 'var(--color-text-secondary)', fontSize: 12.5, marginBottom: 18, animationDelay: '60ms' }}>
           <Building2 size={14} style={{ color: 'var(--color-accent-text, #5B9BFF)', flexShrink: 0 }} />
           <span>Linked to <strong style={{ color: 'var(--color-text-primary)' }}>{linkedAgency?.name || 'another agency'}</strong> — figures here are {linkedAgency?.name ? `${linkedAgency.name} Finance` : "that agency's own Finance"}, kept in sync both ways.</span>
         </div>
@@ -590,26 +758,39 @@ export default function FinancePanel() {
       ) : (
       <>
 
-      {/* Overall summary tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 10 : 14, marginBottom: 18 }}>
-        {[
-          { label: 'Total revenue', value: totals.revenue, Icon: TrendingUp, tint: '#22C55E' },
-          { label: 'Total expenses', value: totals.expenses, Icon: TrendingDown, tint: '#E0485A' },
-          { label: 'Net', value: totals.net, Icon: Sigma, tint: '#5B9BFF' },
-        ].map(({ label, value, Icon, tint }) => (
-          <div key={label} style={{ ...card, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: `${tint}20`, color: tint, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={18} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', fontVariantNumeric: 'tabular-nums' }}>{money(value)}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)' }}>{label}</div>
-            </div>
+      {/* Hero: net position + spend-of-revenue ring */}
+      <div className="fin-fadeup fin-hero" style={{ animationDelay: '80ms' }}>
+        <div className="fin-hero-ringwrap">
+          <RadialProgress pct={spendRatio} size={isMobile ? 74 : 92} stroke={isMobile ? 7 : 9} color={ringColor} track="rgba(255,255,255,0.08)" />
+          <div className="fin-hero-ringlabel">
+            <span className="fin-hero-ringpct">{(totals.revenue > 0 || totals.expenses > 0) ? `${Math.min(100, spendRatio)}%` : '—'}</span>
+            <span className="fin-hero-ringsub">spent</span>
           </div>
-        ))}
+        </div>
+        <div className="fin-hero-main">
+          <div className="fin-hero-eyebrow">Net overall</div>
+          <div className="fin-hero-amount" style={{ color: netColor(totals.net) }}>{money(netDisplay)}</div>
+          <div className="fin-hero-stats">
+            <span><TrendingUp size={12} style={{ color: '#22C55E' }} /> {money(revenueDisplay)}</span>
+            <span><TrendingDown size={12} style={{ color: '#E0485A' }} /> {money(expensesDisplay)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="fin-fadeup fin-tabs" style={{ animationDelay: '100ms' }}>
+        <button className={`fin-tab ${tab === 'log' ? 'fin-tab-active' : ''}`} onClick={() => setTab('log')}>
+          <CalendarDays size={14} /> Log
+          {rows.length > 0 && <span className="fin-tab-count">{rows.length}</span>}
+        </button>
+        <button className={`fin-tab ${tab === 'reports' ? 'fin-tab-active' : ''}`} onClick={() => setTab('reports')}>
+          <BarChart2 size={14} /> Reports
+        </button>
       </div>
 
       {/* Revenue vs Expenses and Expenses-only charts */}
-      {chartData.length > 0 && (
-        <div style={{ ...card, marginBottom: 18 }}>
+      {tab === 'reports' && chartData.length > 0 && (
+        <div className="fin-fadeup" style={{ ...card, marginBottom: 18, animationDelay: '200ms' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: 'rgba(91,155,255,0.16)', color: 'var(--color-accent-text, #5B9BFF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BarChart2 size={16} /></div>
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>Finance reports</span>
@@ -664,47 +845,89 @@ export default function FinancePanel() {
           </div>
         </div>
       )}
+      {tab === 'reports' && chartData.length === 0 && (
+        <div className="fin-fadeup" style={{ ...card, padding: '30px 20px', textAlign: 'center', marginBottom: 18, animationDelay: '200ms' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>No entries yet — log a day&apos;s figures to see reports here.</div>
+        </div>
+      )}
+
+      {tab === 'log' && (<>
 
       {/* New entry — hidden behind a button so it doesn't take up space */}
       {showAdd ? (
-        <div style={{ ...card, border: '1px solid rgba(34,197,94,0.35)', marginBottom: 22 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--color-text-primary)' }}>{financePeriod === 'monthly' ? 'New month entry' : financePeriod === 'yearly' ? 'New year entry' : 'New day entry'}</span>
+        <div className="fin-pop" style={{ ...card, padding: isMobile ? 16 : 22, border: '1px solid var(--color-border)', marginBottom: 22 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <span className="fin-sectionicon fin-sectionicon-revenue"><TrendingUp size={21} /></span>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.01em' }}>
+                  {financePeriod === 'monthly' ? 'New month entry' : financePeriod === 'yearly' ? 'New year entry' : 'New day entry'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 1 }}>Log revenue and expenses to keep your figures current.</div>
+              </div>
+            </div>
             <button className="fin-del" title="Close" onClick={() => setShowAdd(false)}><X size={16} /></button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-            <div style={{ width: 160 }}>
+
+          <div className="fin-fieldgrid" style={{ gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', marginBottom: 20 }}>
+            <div className="fin-field">
+              <label style={lblBig}>Revenue <span className="fin-req">*</span></label>
+              <div className="fin-amountwrap">
+                <span className="fin-amountcurrency">KSh</span>
+                <input className="fin-input fin-input-hero" type="number" inputMode="decimal" placeholder="Enter amount" value={nRevenue} onChange={e => setNRevenue(e.target.value)} />
+              </div>
+            </div>
+            <div className="fin-field">
               {financePeriod === 'monthly' ? (
                 <>
-                  <label style={lbl}>Month</label>
-                  <input className="fin-input" type="month" value={nDate.slice(0, 7)} onChange={e => setNDate(`${e.target.value}-01`)} />
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{monthLabel(nDate.slice(0, 7))}</div>
+                  <label style={lblBig}>Month <span className="fin-req">*</span></label>
+                  <div className="fin-selectwrap">
+                    <CalendarDays size={16} className="fin-selecticon" />
+                    <input className="fin-input fin-input-select" type="month" value={nDate.slice(0, 7)} onChange={e => setNDate(`${e.target.value}-01`)} />
+                  </div>
+                  <div className="fin-field-caption">Select the month for this entry.</div>
                 </>
               ) : financePeriod === 'yearly' ? (
                 <>
-                  <label style={lbl}>Year</label>
-                  <input className="fin-input" type="number" inputMode="numeric" placeholder={String(new Date().getFullYear())} value={nDate.slice(0, 4)} onChange={e => setNDate(`${e.target.value}-01-01`)} />
+                  <label style={lblBig}>Year <span className="fin-req">*</span></label>
+                  <div className="fin-selectwrap">
+                    <CalendarDays size={16} className="fin-selecticon" />
+                    <input className="fin-input fin-input-select" type="number" inputMode="numeric" placeholder={String(new Date().getFullYear())} value={nDate.slice(0, 4)} onChange={e => setNDate(`${e.target.value}-01-01`)} />
+                  </div>
+                  <div className="fin-field-caption">Select the year for this entry.</div>
                 </>
               ) : (
                 <>
-                  <label style={lbl}>Date</label>
-                  <input className="fin-input" type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
-                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>{fmtNice(nDate)}</div>
+                  <label style={lblBig}>Date <span className="fin-req">*</span></label>
+                  <div className="fin-selectwrap">
+                    <CalendarDays size={16} className="fin-selecticon" />
+                    <input className="fin-input fin-input-select" type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
+                  </div>
+                  <div className="fin-field-caption">{fmtNice(nDate)}</div>
                 </>
               )}
             </div>
-            <div style={{ width: 160 }}>
-              <label style={lbl}>Revenue</label>
-              <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={nRevenue} onChange={e => setNRevenue(e.target.value)} />
+          </div>
+
+          {itemsEditor(nItems, setNItems, null, financePeriod === 'monthly' ? 'month' : financePeriod === 'yearly' ? 'year' : 'day')}
+
+          <div style={{ marginTop: 20 }}>
+            <label style={lblBig}><FileText size={14} /> Note (optional)</label>
+            <div className="fin-notewrap">
+              <textarea className="fin-textarea" maxLength={255} placeholder={financePeriod === 'monthly' ? 'Anything to add about this month…' : financePeriod === 'yearly' ? 'Anything to add about this year…' : 'Anything to add about today…'} value={nNote} onChange={e => setNNote(e.target.value)} />
+              <span className="fin-notecount">{nNote.length}/255</span>
             </div>
           </div>
-          <label style={lbl}>Expenses — what was spent</label>
-          {itemsEditor(nItems, setNItems)}
-          <label style={{ ...lbl, marginTop: 14 }}>Note (optional)</label>
-          <input className="fin-input" type="text" placeholder={financePeriod === 'monthly' ? 'Anything to add about this month…' : financePeriod === 'yearly' ? 'Anything to add about this year…' : 'Anything to add about today…'} value={nNote} onChange={e => setNNote(e.target.value)} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+
+          <div className="fin-netstrip">
+            <span>Net for this entry</span>
+            <strong style={{ color: netColor(num(nRevenue) - itemsTotal(nItems)) }}>{money(num(nRevenue) - itemsTotal(nItems))}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button className="fin-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
-            <button className="fin-save" onClick={addEntry} disabled={!canAdd || saving}><Plus size={15} /> {financePeriod === 'monthly' ? 'Add month entry' : financePeriod === 'yearly' ? 'Add year entry' : 'Add day entry'}</button>
+            <button className="fin-save" onClick={addEntry} disabled={!canAdd || saving}>
+              {financePeriod === 'monthly' ? 'Save month entry' : financePeriod === 'yearly' ? 'Save year entry' : 'Save entry'} <ArrowRight size={15} />
+            </button>
           </div>
         </div>
       ) : (
@@ -724,18 +947,23 @@ export default function FinancePanel() {
         /* Yearly-tracked business: a flat list of years, one figure each — no month/week/day drill-down. */
         <div className="fin-daylist">
           {years.map((year, i) => {
-            const ds = `${year.key}-01-01`;
-            const entry = year.rows.find(r => r.entry_date === ds) || null;
+            // One entry per year is the whole point of yearly tracking — match by
+            // year, not by exact date, so a row saved under any day of the year
+            // (e.g. by an older daily-tracked save, or a non-Jan-1 anchor) still
+            // surfaces here instead of silently hiding behind "No entry".
+            const entry = year.rows[0] || null;
+            const ds = entry ? entry.entry_date : `${year.key}-01-01`;
             const has = !!entry;
-            const yearOpen = openDay === ds;
-            const commit = () => saveDay(ds, draft);
+            const editOpen = openDay === ds;
+            const viewOpen = has && viewDay === ds;
+            const expanded = editOpen || viewOpen;
             return (
               <div key={year.key} className={`fin-dayrow${i < years.length - 1 ? ' fin-dayrow-div' : ''}`}
-                style={{ background: yearOpen ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                {/* Compact slot — year · revenue · expenses · delete */}
-                <div onClick={() => openDayEditor(ds)}
-                  style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
-                  {yearOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                style={{ background: expanded ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                {/* Compact slot — year · revenue · expenses · view/edit/delete */}
+                <div onClick={() => (has ? toggleView(ds) : openDayEditor(ds))}
+                  style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto auto' : '18px 1fr auto auto auto', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                  {expanded ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontSize: 13, fontWeight: 800, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{year.key}</span>
                   </span>
@@ -743,31 +971,20 @@ export default function FinancePanel() {
                     <>
                       {chip(money(entry.revenue), '#22C55E')}
                       {chip(`−${money(entry.expenses)}`, '#E0485A')}
-                      <button className="fin-del" title="Delete this year" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button className="fin-del" title="View this year" onClick={(e) => { e.stopPropagation(); toggleView(ds); }}><Eye size={13} /></button>
+                        <button className="fin-del" title="Edit this year" onClick={(e) => { e.stopPropagation(); openDayEditor(ds); }}><Pencil size={13} /></button>
+                        <button className="fin-del" title="Delete this year" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                      </div>
                     </>
                   ) : (
                     <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
                   )}
                 </div>
 
-                {/* Expanded editor (bound to the shared draft buffer) */}
-                {yearOpen && (
-                  <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
-                      <div style={{ width: 150 }}>
-                        <label style={lbl}>Revenue</label>
-                        <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
-                      </div>
-                      <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
-                        {year.key}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
-                      </div>
-                    </div>
-                    <label style={lbl}>Expenses — what was spent</label>
-                    {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
-                    <label style={{ ...lbl, marginTop: 12 }}>Note</label>
-                    <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
-                  </div>
-                )}
+                {/* Expanded editor / read-only preview (bound to the shared draft buffer) */}
+                {editOpen && renderEntryForm(ds, year.key, entry)}
+                {viewOpen && renderEntryView(entry, year.key)}
               </div>
             );
           })}
@@ -776,18 +993,22 @@ export default function FinancePanel() {
         /* Monthly-tracked business: a flat list of months, one figure each — no week/day drill-down. */
         <div className="fin-daylist">
           {months.map((month, i) => {
-            const ds = `${month.key}-01`;
-            const entry = month.rows.find(r => r.entry_date === ds) || null;
+            // Same fix as the yearly list below: match by month, not by exact
+            // date, so a row saved under any day of the month still surfaces
+            // instead of silently hiding behind "No entry".
+            const entry = month.rows[0] || null;
+            const ds = entry ? entry.entry_date : `${month.key}-01`;
             const has = !!entry;
-            const monthOpen = openDay === ds;
-            const commit = () => saveDay(ds, draft);
+            const editOpen = openDay === ds;
+            const viewOpen = has && viewDay === ds;
+            const expanded = editOpen || viewOpen;
             return (
               <div key={month.key} className={`fin-dayrow${i < months.length - 1 ? ' fin-dayrow-div' : ''}`}
-                style={{ background: monthOpen ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                {/* Compact slot — month · revenue · expenses · delete */}
-                <div onClick={() => openDayEditor(ds)}
-                  style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
-                  {monthOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                style={{ background: expanded ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                {/* Compact slot — month · revenue · expenses · view/edit/delete */}
+                <div onClick={() => (has ? toggleView(ds) : openDayEditor(ds))}
+                  style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto auto' : '18px 1fr auto auto auto', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                  {expanded ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontSize: 13, fontWeight: 800, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{month.label}</span>
                   </span>
@@ -795,31 +1016,20 @@ export default function FinancePanel() {
                     <>
                       {chip(money(entry.revenue), '#22C55E')}
                       {chip(`−${money(entry.expenses)}`, '#E0485A')}
-                      <button className="fin-del" title="Delete this month" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button className="fin-del" title="View this month" onClick={(e) => { e.stopPropagation(); toggleView(ds); }}><Eye size={13} /></button>
+                        <button className="fin-del" title="Edit this month" onClick={(e) => { e.stopPropagation(); openDayEditor(ds); }}><Pencil size={13} /></button>
+                        <button className="fin-del" title="Delete this month" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                      </div>
                     </>
                   ) : (
                     <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
                   )}
                 </div>
 
-                {/* Expanded editor (bound to the shared draft buffer) */}
-                {monthOpen && (
-                  <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
-                      <div style={{ width: 150 }}>
-                        <label style={lbl}>Revenue</label>
-                        <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
-                      </div>
-                      <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
-                        {month.label}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
-                      </div>
-                    </div>
-                    <label style={lbl}>Expenses — what was spent</label>
-                    {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
-                    <label style={{ ...lbl, marginTop: 12 }}>Note</label>
-                    <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
-                  </div>
-                )}
+                {/* Expanded editor / read-only preview (bound to the shared draft buffer) */}
+                {editOpen && renderEntryForm(ds, month.label, entry)}
+                {viewOpen && renderEntryView(entry, month.label)}
               </div>
             );
           })}
@@ -879,15 +1089,16 @@ export default function FinancePanel() {
                                 {week.dates.map((ds, i) => {
                                   const entry = week.byDate.get(ds);
                                   const has = !!entry;
-                                  const dayOpen = openDay === ds;
-                                  const commit = () => saveDay(ds, draft);
+                                  const editOpen = openDay === ds;
+                                  const viewOpen = has && viewDay === ds;
+                                  const expanded = editOpen || viewOpen;
                                   return (
                                     <div key={ds} className={`fin-dayrow${i < 6 ? ' fin-dayrow-div' : ''}`}
-                                      style={{ background: dayOpen ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                                      {/* Compact slot — weekday · revenue · expenses · delete */}
-                                      <div onClick={() => openDayEditor(ds)}
-                                        style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto 28px' : '18px 1fr auto auto 30px', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
-                                        {dayOpen ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
+                                      style={{ background: expanded ? 'rgba(48,108,236,0.07)' : i % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                                      {/* Compact slot — weekday · revenue · expenses · view/edit/delete */}
+                                      <div onClick={() => (has ? toggleView(ds) : openDayEditor(ds))}
+                                        style={{ display: 'grid', gridTemplateColumns: isMobile ? '16px 1fr auto auto auto' : '18px 1fr auto auto auto', gap: 10, alignItems: 'center', padding: '10px 14px', cursor: 'pointer' }}>
+                                        {expanded ? <ChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--color-text-tertiary)' }} />}
                                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                           <span style={{ fontSize: 13, fontWeight: 800, color: has ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{weekdayOf(ds)}</span>
                                           <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>{ordinal(parseDay(ds).getDate())}</span>
@@ -896,31 +1107,20 @@ export default function FinancePanel() {
                                           <>
                                             {chip(money(entry.revenue), '#22C55E')}
                                             {chip(`−${money(entry.expenses)}`, '#E0485A')}
-                                            <button className="fin-del" title="Delete this day" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                                            <div style={{ display: 'flex', gap: 2 }}>
+                                              <button className="fin-del" title="View this day" onClick={(e) => { e.stopPropagation(); toggleView(ds); }}><Eye size={13} /></button>
+                                              <button className="fin-del" title="Edit this day" onClick={(e) => { e.stopPropagation(); openDayEditor(ds); }}><Pencil size={13} /></button>
+                                              <button className="fin-del" title="Delete this day" onClick={(e) => { e.stopPropagation(); deleteRow(entry.id); }}><Trash2 size={13} /></button>
+                                            </div>
                                           </>
                                         ) : (
                                           <span style={{ gridColumn: '3 / -1', fontSize: 11.5, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'right' }}>No entry — tap to add</span>
                                         )}
                                       </div>
 
-                                      {/* Expanded editor (bound to the shared draft buffer) */}
-                                      {dayOpen && (
-                                        <div style={{ padding: '4px 14px 14px', borderTop: '1px solid var(--color-border-subtle)' }}>
-                                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap', margin: '12px 0' }}>
-                                            <div style={{ width: 150 }}>
-                                              <label style={lbl}>Revenue</label>
-                                              <input className="fin-input" type="number" inputMode="decimal" placeholder="0" value={draft.revenue} onChange={e => setDraft(d => ({ ...d, revenue: e.target.value }))} onBlur={commit} />
-                                            </div>
-                                            <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
-                                              {fmtNice(ds)}{entry ? ` · logged by ${memberName(entry.created_by)}` : ''}
-                                            </div>
-                                          </div>
-                                          <label style={lbl}>Expenses — what was spent</label>
-                                          {itemsEditor(draft.items, (next) => setDraft(d => ({ ...d, items: next })), (nextItems) => saveDay(ds, { ...draft, items: nextItems }))}
-                                          <label style={{ ...lbl, marginTop: 12 }}>Note</label>
-                                          <input className="fin-input" type="text" placeholder="Optional note…" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} onBlur={commit} />
-                                        </div>
-                                      )}
+                                      {/* Expanded editor / read-only preview (bound to the shared draft buffer) */}
+                                      {editOpen && renderEntryForm(ds, fmtNice(ds), entry)}
+                                      {viewOpen && renderEntryView(entry, fmtNice(ds))}
                                     </div>
                                   );
                                 })}
@@ -938,10 +1138,12 @@ export default function FinancePanel() {
         </div>
       )}
 
+      </>)}
+
       </>
       )}
 
-      <style jsx>{`
+      <style jsx global>{`
         .fin-input {
           width: 100%; height: 34px; padding: 0 10px; border-radius: 9px; font-size: 13px;
           background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
@@ -964,12 +1166,11 @@ export default function FinancePanel() {
         .fin-bizavatar { color: #8FC0FF; }
         .fin-bizname { color: #EAF1FF; }
         /* The trigger sits on the page, so it follows the theme; the popup it opens is dark in both.
-           :global() on the ancestor — styled-jsx otherwise scopes [data-theme] to this component too,
-           and <html> never carries that class. */
-        :global([data-theme="light"]) .fin-bizbtn { background: var(--color-bg-elevated); border-color: var(--color-border); }
-        :global([data-theme="light"]) .fin-bizbtn:hover { background: var(--color-accent-primary-subtle); border-color: var(--color-border-active); }
-        :global([data-theme="light"]) .fin-bizavatar { color: var(--color-accent-text); }
-        :global([data-theme="light"]) .fin-bizname { color: var(--color-text-primary); }
+           (This whole block is now a global style tag, so no :global() wrapper is needed here anymore.) */
+        [data-theme="light"] .fin-bizbtn { background: var(--color-bg-elevated); border-color: var(--color-border); }
+        [data-theme="light"] .fin-bizbtn:hover { background: var(--color-accent-primary-subtle); border-color: var(--color-border-active); }
+        [data-theme="light"] .fin-bizavatar { color: var(--color-accent-text); }
+        [data-theme="light"] .fin-bizname { color: var(--color-text-primary); }
         .fin-newbtn {
           width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
           height: 46px; margin-bottom: 22px; border-radius: 12px; cursor: pointer; font-family: inherit;
@@ -984,11 +1185,11 @@ export default function FinancePanel() {
         }
         .fin-cancel:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }
         .fin-additem {
-          display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 8px;
-          background: transparent; border: 1px dashed var(--color-border); color: var(--color-text-secondary);
-          font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+          display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; margin-top: 10px; border-radius: 10px;
+          background: rgba(91,155,255,0.08); border: 1px solid rgba(91,155,255,0.35); color: var(--color-accent-text, #5B9BFF);
+          font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; transition: .15s;
         }
-        .fin-additem:hover { border-color: var(--color-border-active); color: var(--color-text-primary); }
+        .fin-additem:hover { background: rgba(91,155,255,0.16); border-color: rgba(91,155,255,0.6); }
         .fin-month {
           width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
           padding: 15px 18px; border-radius: 16px; cursor: pointer; font-family: inherit; text-align: left;
@@ -1025,6 +1226,175 @@ export default function FinancePanel() {
           color: var(--color-text-tertiary); display: flex; align-items: center; justify-content: center; transition: .12s; flex-shrink: 0;
         }
         .fin-del:hover { color: #E0485A; background: rgba(224,72,90,0.1); }
+
+        .fin-icon-badge { animation: finIconPulse 3.2s ease-in-out infinite; }
+
+        .fin-hero {
+          display: flex; align-items: center; gap: 20px; padding: 20px;
+          border-radius: 18px; margin-bottom: 18px;
+          background: linear-gradient(135deg, rgba(48,108,236,0.14), rgba(34,197,94,0.08));
+          border: 1px solid var(--color-border);
+        }
+        .fin-hero-ringwrap { position: relative; width: 92px; height: 92px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .fin-hero-ringlabel { position: absolute; display: flex; flex-direction: column; align-items: center; }
+        .fin-hero-ringpct { font-size: 17px; font-weight: 800; color: var(--color-text-primary); }
+        .fin-hero-ringsub { font-size: 9px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .06em; }
+        .fin-hero-main { min-width: 0; flex: 1; }
+        .fin-hero-eyebrow { font-size: 11px; font-weight: 700; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+        .fin-hero-amount { font-size: 30px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+        .fin-hero-stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+        .fin-hero-stats span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+        .pfin-ring-arc { transition: stroke-dashoffset .6s cubic-bezier(.22,1,.36,1); }
+        @media (max-width: 420px) {
+          .fin-hero { gap: 14px; padding: 16px; }
+          .fin-hero-amount { font-size: 24px; }
+        }
+
+        .fin-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); margin-bottom: 18px; }
+        .fin-tab {
+          flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+          height: 34px; border-radius: 9px; border: none; background: transparent; cursor: pointer;
+          font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--color-text-tertiary); transition: .15s;
+        }
+        .fin-tab:hover { color: var(--color-text-secondary); }
+        .fin-tab-active { background: var(--color-bg-tertiary); color: var(--color-text-primary); }
+        .fin-tab-count {
+          display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;
+          border-radius: 999px; background: rgba(91,155,255,0.2); color: #5B9BFF; font-size: 10px; font-weight: 800;
+        }
+
+        .fin-field { display: flex; flex-direction: column; min-width: 0; }
+        .fin-field-caption { font-size: 11px; color: var(--color-text-secondary); margin-top: 4px; }
+        .fin-fieldgrid { display: grid; gap: 16px; align-items: start; }
+        .fin-req { color: #E0485A; }
+
+        /* Gradient squircle icon badge — the "Revenue" form header and the
+           "Expenses" card header each get one, green/red to match this app's
+           existing revenue/expense color coding everywhere else. */
+        .fin-sectionicon {
+          width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; color: #fff;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .fin-sectionicon-revenue { background: linear-gradient(135deg, #16a34a, #22C55E); }
+        .fin-sectionicon-expenses { background: linear-gradient(135deg, #b8303f, #E0485A); }
+
+        /* The amount is the one hero field in this form — large, its own
+           full-width row, with a currency pill inset into the input (common
+           fintech "add transaction" pattern: one dominant amount field). */
+        .fin-amountwrap { position: relative; display: flex; align-items: center; }
+        .fin-amountcurrency {
+          position: absolute; left: 6px; top: 6px; bottom: 6px; display: flex; align-items: center;
+          padding: 0 13px; border-radius: 8px; background: rgba(91,155,255,0.14);
+          color: var(--color-accent-text, #5B9BFF); font-size: 13.5px; font-weight: 700; pointer-events: none;
+        }
+        .fin-input-hero { height: 52px; padding-left: 72px; font-size: 18px; font-weight: 700; border-radius: 12px; }
+
+        /* Date/month/year field styled like a select trigger: icon inset on
+           the left, native picker UI on the right. */
+        .fin-selectwrap { position: relative; display: flex; align-items: center; }
+        .fin-selecticon { position: absolute; left: 14px; color: var(--color-text-tertiary); pointer-events: none; }
+        .fin-input-select { height: 52px; padding-left: 40px; font-size: 14px; font-weight: 600; border-radius: 12px; }
+
+        /* Expenses card — icon+title+subtitle header, a running total chip,
+           a column-header row, then one grid-aligned row per item. Header row
+           and item rows share the same grid template so columns line up. */
+        .fin-expensecard { padding: 16px; border-radius: 14px; background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle); }
+        .fin-expensecard-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+        .fin-expensecard-title { font-size: 15px; font-weight: 800; color: var(--color-text-primary); }
+        .fin-expensecard-sub { font-size: 11.5px; color: var(--color-text-tertiary); margin-top: 1px; }
+
+        .fin-totalchip {
+          display: flex; align-items: center; gap: 8px; padding: 7px 12px; margin-left: auto;
+          border-radius: 10px; background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle); flex-shrink: 0;
+        }
+        .fin-totalchip-icon {
+          width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+          background: rgba(91,155,255,0.16); color: var(--color-accent-text, #5B9BFF);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .fin-totalchip-label { font-size: 9.5px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .04em; }
+        .fin-totalchip-value { font-size: 13px; font-weight: 800; color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+
+        .fin-itemrow2 { display: grid; grid-template-columns: 1fr 120px 36px; gap: 10px; align-items: center; }
+        .fin-itemrow2-head {
+          padding: 0 2px; margin-bottom: 8px;
+          font-size: 10px; font-weight: 700; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: .05em;
+        }
+        .fin-itemrow2-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
+        .fin-itemicon {
+          width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .fin-itemdel {
+          width: 32px; height: 32px; border-radius: 9px; border: none; cursor: pointer; flex-shrink: 0;
+          background: rgba(224,72,90,0.14); color: #E0485A;
+          display: flex; align-items: center; justify-content: center; transition: .15s; margin: 0 auto;
+        }
+        .fin-itemdel:hover { background: rgba(224,72,90,0.26); }
+
+        .fin-notewrap { position: relative; }
+        .fin-textarea {
+          width: 100%; min-height: 78px; padding: 12px 14px; border-radius: 12px; font-size: 13px; font-family: inherit;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border); color: var(--color-text-primary);
+          outline: none; resize: vertical; line-height: 1.5; transition: .12s;
+        }
+        .fin-textarea::placeholder { color: var(--color-text-tertiary); }
+        .fin-textarea:focus { border-color: var(--color-border-active); box-shadow: 0 0 0 3px rgba(48,108,236,.12); }
+        .fin-notecount { position: absolute; right: 12px; bottom: 10px; font-size: 10.5px; color: var(--color-text-tertiary); pointer-events: none; }
+
+        /* Running-total summary, shown live above the save button — the
+           "confirm before you commit" pattern fintech amount forms use. */
+        .fin-netstrip {
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          margin-top: 14px; padding: 10px 14px; border-radius: 10px;
+          background: var(--color-bg-tertiary); border: 1px solid var(--color-border-subtle);
+          font-size: 12.5px; color: var(--color-text-tertiary);
+        }
+        .fin-netstrip strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+        .fin-entrypanel { padding: 14px 14px 16px; }
+        .fin-entrypanel-edit { background: rgba(91,155,255,0.05); border-top: 2px solid rgba(91,155,255,0.35); }
+        .fin-entrypanel-view { background: rgba(255,255,255,0.02); border-top: 2px solid var(--color-border); }
+
+        .fin-stattiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+        .fin-stattile {
+          display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+          border-radius: 10px; background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle);
+        }
+        .fin-stattile-icon { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .fin-stattile-value { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+        .fin-stattile-label { font-size: 10.5px; color: var(--color-text-tertiary); }
+
+        /* Same label-column / bar-column grid as .fin-daylist's category
+           breakdown elsewhere in this file, just one size down — so a single
+           entry's itemized view reads as the same design language, not a
+           one-off. Column widths are set inline per isMobile, like that one. */
+        .fin-viewbreakdown { display: flex; flex-direction: column; gap: 9px; }
+        .fin-viewbreakdown-row { display: grid; gap: 10px; align-items: center; }
+        .fin-viewbreakdown-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+        .fin-viewbreakdown-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+        .fin-viewbreakdown-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
+        .fin-viewbreakdown-right { display: flex; align-items: center; gap: 8px; }
+        .fin-viewbreakdown-track { flex: 1; height: 14px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; min-width: 0; }
+        .fin-viewbreakdown-bar { height: 100%; border-radius: 6px; transition: width .5s cubic-bezier(.22,1,.36,1); }
+        .fin-viewbreakdown-amount { font-size: 12px; font-weight: 700; color: var(--color-text-primary); font-variant-numeric: tabular-nums; flex-shrink: 0; white-space: nowrap; }
+
+        .fin-note {
+          display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px;
+          border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--color-border-subtle);
+        }
+        .fin-note-mark { font-size: 20px; line-height: .6; color: var(--color-text-tertiary); font-family: serif; flex-shrink: 0; }
+        .fin-note span:last-child { font-size: 12px; color: var(--color-text-secondary); font-style: italic; line-height: 1.5; }
+
+        .fin-fadeup { animation: finFadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+        .fin-pop { animation: finPop .28s cubic-bezier(.22,1,.36,1) both; }
+        @keyframes finFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes finPop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes finIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+        @media (prefers-reduced-motion: reduce) {
+          .fin-fadeup, .fin-pop, .fin-icon-badge { animation: none; }
+          .fin-viewbreakdown-bar { transition: none; }
+        }
       `}</style>
     </div>
   );
