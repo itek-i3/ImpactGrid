@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase CLI local cache (e.g. its own version-check file), not project source
+supabase/.temp/
+
+# generated — synced from pdfjs-dist on postinstall (scripts/copy-pdf-worker.js)
+/public/pdf.worker.min.mjs
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Plus, GripVertical, Trash2, Copy, Check, X } from 'lucide-react';
+import { Plus, GripVertical, Trash2, Copy, Check, X, FileUp, Loader2 } from 'lucide-react';
 import { useEditorStore } from '@/lib/store/useEditorStore';
+import { useToast } from '@/components/ui/Toast';
 import { parseClipboardToBlocks } from '@/lib/utils/pasteParser';
+import { parseFileToBlocks } from '@/lib/utils/fileToBlocks';
 import { blocksToText } from '@/lib/utils/blocksToText';
 import BlockMenu from './BlockMenu';
 import BlockToolbar from './BlockToolbar';
@@ -94,6 +96,12 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   // Drag and Drop reorder state
   const [dropTarget, setDropTarget] = useState({ id: null, position: null });
 
+  // External file drop (drag a document in from outside the browser)
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [importingFiles, setImportingFiles] = useState(null); // filenames currently being parsed, or null
+  const fileDragDepth = useRef(0);
+  const toast = useToast();
+
   // Multi-block checkbox selection state
   const [selectedBlockIds, setSelectedBlockIds] = useState(new Set());
 
@@ -152,6 +160,66 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
     setActionMenuOpen(true);
   }, []);
 
+  // ── External File Drop (import a document into the page) ──
+
+  const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+  const handleFileDrop = useCallback(
+    async (e, afterBlockId) => {
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length === 0) return false;
+
+      e.preventDefault();
+      e.stopPropagation();
+      fileDragDepth.current = 0;
+      setIsDraggingFile(false);
+      setImportingFiles(files.map((f) => f.name));
+
+      const collected = [];
+      const failed = [];
+      for (const file of files) {
+        try {
+          const parsed = await parseFileToBlocks(file);
+          if (collected.length > 0) collected.push({ type: 'divider', content: {} });
+          collected.push(...parsed);
+        } catch (err) {
+          failed.push(err.message || `Could not read "${file.name}".`);
+        }
+      }
+      setImportingFiles(null);
+
+      if (collected.length > 0) {
+        // Dropped squarely on an empty block? Absorb the import into it
+        // (same as paste) instead of leaving a stray blank line above it.
+        const targetBlock = afterBlockId ? blocks.find((b) => b.id === afterBlockId) : null;
+        const isTargetEmpty = targetBlock && (!targetBlock.content?.text || targetBlock.content.text.trim() === '');
+
+        if (isTargetEmpty) {
+          changeBlockType(afterBlockId, collected[0].type);
+          updateBlock(afterBlockId, { content: collected[0].content, properties: collected[0].properties || {} });
+          if (collected.length > 1) {
+            const added = await addBlocks(collected.slice(1), afterBlockId);
+            if (added?.length) setFocusBlockId(added[added.length - 1].id);
+          } else {
+            setFocusBlockId(afterBlockId);
+          }
+        } else {
+          const added = await addBlocks(collected, afterBlockId);
+          if (added?.length) setFocusBlockId(added[added.length - 1].id);
+        }
+      }
+
+      if (failed.length > 0) {
+        toast.error(failed.length === 1 ? 'Could not import file' : `Could not import ${failed.length} files`, failed.join(' '));
+      } else if (collected.length > 0) {
+        toast.success(files.length === 1 ? 'Document imported' : `${files.length} documents imported`);
+      }
+
+      return true;
+    },
+    [addBlocks, changeBlockType, updateBlock, blocks, toast]
+  );
+
   // ── Drag & Drop Handlers ──
 
   const handleDragStart = useCallback((e, blockId) => {
@@ -176,8 +244,16 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   const handleDragOver = useCallback((e, blockId) => {
     if (readOnly) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
 
+    // External file being dragged over a block — no reorder insertion line,
+    // the whole-page overlay (driven by the container's onDragEnter) is the
+    // only feedback needed here.
+    if (isFileDrag(e)) {
+      e.dataTransfer.dropEffect = 'copy';
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
     const targetEl = document.getElementById(`block-${blockId}`);
     if (targetEl) {
       const rect = targetEl.getBoundingClientRect();
@@ -192,8 +268,14 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   }, []);
 
   const handleDrop = useCallback(
-    (e, targetBlockId) => {
+    async (e, targetBlockId) => {
       if (readOnly) return;
+
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        await handleFileDrop(e, targetBlockId);
+        return;
+      }
+
       e.preventDefault();
       const draggedBlockId = e.dataTransfer.getData('text/plain');
       setDropTarget({ id: null, position: null });
@@ -214,7 +296,7 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
         moveBlock(draggedBlockId, targetBlockId, targetPos);
       }
     },
-    [readOnly, moveBlock]
+    [readOnly, moveBlock, handleFileDrop]
   );
 
   // ── Slash Command Handling ──
@@ -570,7 +652,63 @@ export default function BlockEditor({ pageId, parentBlockId = null, readOnly = f
   );
 
   return (
-    <div className={`${styles.editor} ${readOnly ? styles.readOnlyEditor : ''}`} ref={editorRef}>
+    <div
+      className={`${styles.editor} ${readOnly ? styles.readOnlyEditor : ''}`}
+      ref={editorRef}
+      onDragEnter={(e) => {
+        if (readOnly || !isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation(); // nested editors (e.g. inside columns) shouldn't also light up an ancestor page's overlay
+        fileDragDepth.current += 1;
+        setIsDraggingFile(true);
+      }}
+      onDragOver={(e) => {
+        if (readOnly || !isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onDragLeave={(e) => {
+        if (readOnly) return;
+        e.stopPropagation();
+        fileDragDepth.current = Math.max(0, fileDragDepth.current - 1);
+        if (fileDragDepth.current === 0) setIsDraggingFile(false);
+      }}
+      onDrop={(e) => {
+        if (readOnly) return;
+        // Only reached for drops that landed outside any block wrapper
+        // (empty page, or the empty-space area below the last block) —
+        // block-level drops already handled themselves and stopped
+        // propagation.
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFileDrop(e, null);
+        }
+      }}
+    >
+      {/* External document drop overlay */}
+      {!readOnly && isDraggingFile && !importingFiles && (
+        <div className={styles.fileDropOverlay}>
+          <div className={styles.fileDropOverlayCard}>
+            <FileUp size={28} />
+            Drop to import into this page
+            <span className={styles.fileDropOverlayHint}>.txt, .md, .html, .docx, .pdf, or an image</span>
+          </div>
+        </div>
+      )}
+
+      {/* Importing feedback — parsing a .docx/.pdf can take a few seconds
+          (and the first drop also pays a one-time cost to load mammoth /
+          pdf.js), so this stays up the whole time instead of leaving the
+          page looking like the drop did nothing. */}
+      {!readOnly && importingFiles && (
+        <div className={styles.fileDropOverlay}>
+          <div className={styles.fileDropOverlayCard}>
+            <Loader2 size={28} className="animate-spin" />
+            Importing {importingFiles.length === 1 ? importingFiles[0] : `${importingFiles.length} files`}…
+            <span className={styles.fileDropOverlayHint}>This can take a few seconds for PDFs and Word docs</span>
+          </div>
+        </div>
+      )}
+
       {/* Top Batch Selection Toolbar */}
       {!readOnly && blocks.length > 0 && (
         <div className={styles.batchToolbar}>

@@ -31,6 +31,7 @@ export default function ImageBlock({ block, onUpdate, readOnly = false }) {
 
   const handleDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation(); // keep this local — don't let it bubble into the page-level document-import drop zone
     setDragOver(false);
     const file = e.dataTransfer.files[0];
     handleFile(file);

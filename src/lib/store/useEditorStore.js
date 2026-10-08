@@ -669,6 +669,13 @@ export const useEditorStore = create((set, get) => ({
         return;
       }
 
+      // Clear the previous page's blocks before fetching this page's own —
+      // BlockEditor has no page-scoped filtering of its own (it just renders
+      // whatever is in `blocks`), so if a fetch below fails and there's no
+      // cache for this page to fall back on, leaving the old array in place
+      // would make a freshly-opened page show the PREVIOUS page's content.
+      set({ blocks: [], activeBlockId: null });
+
       const res = await fetch(`/os/api/pages/${pageId}/blocks`);
       if (!res.ok) {
         // Page may not exist in DB (e.g. locally-injected page) — use cache if available
