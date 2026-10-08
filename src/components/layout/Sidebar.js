@@ -26,6 +26,7 @@ import {
   PiggyBank,
   Sparkles,
   Lock,
+  Landmark,
 } from 'lucide-react';
 import { useWorkspaceStore, SIDEBAR_WIDTH, clampSidebarWidth } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -419,6 +420,14 @@ export default function Sidebar() {
                       >
                         <Sparkles size={15} />
                         <span>Data Registry</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('investors'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'investors' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Landmark size={15} />
+                        <span>Investors</span>
                       </button>
                     </>
                   )}

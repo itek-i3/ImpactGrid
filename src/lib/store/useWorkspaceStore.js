@@ -64,7 +64,7 @@ export const useWorkspaceStore = create((set, get) => ({
   // Page tree
   pages: [],
   currentPage: null,
-  currentView: null, // null | 'acquisition' | 'meetings' | 'finance' | 'personalFinance' | 'businesses' | 'bizIntel' | 'valuation' | 'team' | 'scoreboard' | 'reviews' — in-shell tabs that aren't pages
+  currentView: null, // null | 'acquisition' | 'meetings' | 'finance' | 'personalFinance' | 'businesses' | 'bizIntel' | 'valuation' | 'investors' | 'team' | 'scoreboard' | 'reviews' — in-shell tabs that aren't pages
   expandedPages: new Set(),
 
   // UI state
