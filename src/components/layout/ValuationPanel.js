@@ -5,8 +5,9 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
-import { 
-  Building2, TrendingUp, Wallet, ArrowRight, Lock, Save, RefreshCw, 
+import { focusFirstError } from '@/lib/utils/formErrors';
+import {
+  Building2, TrendingUp, Wallet, ArrowRight, Lock, Save, RefreshCw,
   HelpCircle, Info, DollarSign, Percent, Sliders, Database, AlertCircle, CheckSquare, Square
 } from 'lucide-react';
 
@@ -38,6 +39,12 @@ export default function ValuationPanel() {
   const [businesses, setBusinesses] = useState([]);
   const [selectedBizId, setSelectedBizId] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Which roster this valuation is drawn from — the owned Portfolio (with
+  // daily finance logs), or a business that closed through the Acquisition
+  // pipeline (valued off its saved evaluation figures, no finance logs needed).
+  const [bizSource, setBizSource] = useState('portfolio'); // 'portfolio' | 'acquired'
+  const [selectedAcqId, setSelectedAcqId] = useState('');
   const [addingBiz, setAddingBiz] = useState(false);
   const [newBizName, setNewBizName] = useState('');
   const [newBizNameError, setNewBizNameError] = useState(false);
@@ -72,6 +79,17 @@ export default function ValuationPanel() {
   const [enabledAddBacks, setEnabledAddBacks] = useState({});
 
   const activeBiz = useMemo(() => businesses.find(b => b.id === selectedBizId), [businesses, selectedBizId]);
+
+  // Businesses marked "Acquired" on the Acquisition tab — valuable even before
+  // (or without ever) getting a Portfolio row / finance-log history of their own.
+  const acquiredList = useMemo(() => evaluations.filter(e => e.dealState === 'acquired'), [evaluations]);
+  // Default to the most recently acquired one once the list loads, without
+  // needing an effect just to seed selectedAcqId.
+  const effectiveAcqId = (selectedAcqId && acquiredList.some(e => e.id === selectedAcqId)) ? selectedAcqId : (acquiredList[0]?.id || '');
+  const selectedAcqEval = useMemo(() => acquiredList.find(e => e.id === effectiveAcqId) || null, [acquiredList, effectiveAcqId]);
+
+  const activeName = bizSource === 'acquired' ? (selectedAcqEval?.businessName || '') : (activeBiz?.name || '');
+  const activeSector = bizSource === 'acquired' ? (selectedAcqEval?.sector || 'Services') : (activeBiz?.sector || 'Services');
 
   // Load businesses
   useEffect(() => {
@@ -119,9 +137,41 @@ export default function ValuationPanel() {
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
 
-  // Load finance logs + evaluations
+  // Load evaluations — the shared pool behind both the matched-by-name Portfolio
+  // linking below and the "Acquired" business picker. Independent of which
+  // business/source is selected so the Acquired list is ready even with no
+  // Portfolio business chosen yet.
   useEffect(() => {
-    if (!selectedBizId) return;
+    let cancelled = false;
+    async function loadEvaluations() {
+      if (isDemo) {
+        let evals = [];
+        try {
+          const rawEvals = localStorage.getItem(`ig-${agencyId || 'guest'}-acq-evaluations`);
+          evals = rawEvals ? JSON.parse(rawEvals) : [];
+        } catch (_) {}
+        if (!cancelled) setEvaluations(evals);
+        return;
+      }
+      if (!agencyId) { if (!cancelled) setEvaluations([]); return; }
+      try {
+        const { data } = await createClient().from('acquisition_evaluations').select('id, data').eq('agency_id', agencyId);
+        if (!cancelled) setEvaluations((data || []).map(r => ({ ...(r.data || {}), id: r.id })));
+      } catch (err) {
+        console.error('Error fetching evaluations:', err);
+      }
+    }
+    loadEvaluations();
+    return () => { cancelled = true; };
+  }, [agencyId, isDemo]);
+
+  // Load finance logs for the selected Portfolio business only — an Acquired
+  // business is valued off its evaluation figures, no daily logs needed.
+  useEffect(() => {
+    // Stale logs from a previously-selected Portfolio business are harmless here —
+    // every read of financeLogs/filteredLogs/loadingLogs below is itself gated on
+    // bizSource === 'portfolio', so they're simply never looked at in Acquired mode.
+    if (bizSource !== 'portfolio' || !selectedBizId) return;
     let cancelled = false;
     async function loadData() {
       setLoadingLogs(true);
@@ -176,38 +226,24 @@ export default function ValuationPanel() {
             };
           });
         }
-        
-        // Fetch demo evaluations
-        let evals = [];
-        try {
-          const rawEvals = localStorage.getItem(`ig-${agencyId || 'guest'}-acq-evaluations`);
-          evals = rawEvals ? JSON.parse(rawEvals) : [];
-        } catch (_) {}
 
         if (!cancelled) {
           setFinanceLogs(logs);
-          setEvaluations(evals);
           setLoadingLogs(false);
         }
         return;
       }
 
-      // Live Supabase fetches
+      // Live Supabase fetch
       try {
         const sb = createClient();
-        const [logsRes, evalsRes] = await Promise.all([
-          sb.from('daily_finance')
-            .select('*')
-            .eq('business_id', selectedBizId)
-            .order('entry_date', { ascending: false }),
-          sb.from('acquisition_evaluations')
-            .select('id, data')
-            .eq('agency_id', agencyId)
-        ]);
+        const { data } = await sb.from('daily_finance')
+          .select('*')
+          .eq('business_id', selectedBizId)
+          .order('entry_date', { ascending: false });
 
         if (!cancelled) {
-          setFinanceLogs(logsRes.data || []);
-          setEvaluations((evalsRes.data || []).map(r => ({ ...(r.data || {}), id: r.id })));
+          setFinanceLogs(data || []);
           setLoadingLogs(false);
         }
       } catch (err) {
@@ -217,13 +253,16 @@ export default function ValuationPanel() {
     }
     loadData();
     return () => { cancelled = true; };
-  }, [selectedBizId, agencyId, isDemo]);
+  }, [bizSource, selectedBizId, agencyId, isDemo]);
 
-  // Find matching evaluation and load saved valuation values
+  // Find matching evaluation and load saved valuation values — for a Portfolio
+  // business this is a name match against the shared evaluations pool; for an
+  // Acquired business it's simply the evaluation the user picked.
   const matchingEval = useMemo(() => {
+    if (bizSource === 'acquired') return selectedAcqEval;
     if (!activeBiz) return null;
     return evaluations.find(e => e.businessName?.toLowerCase() === activeBiz.name?.toLowerCase());
-  }, [evaluations, activeBiz]);
+  }, [bizSource, selectedAcqEval, evaluations, activeBiz]);
 
   // Load valuation settings when matching evaluation or business changes
   useEffect(() => {
@@ -263,7 +302,7 @@ export default function ValuationPanel() {
     
     // Reset enabled checkboxes
     setEnabledAddBacks({});
-  }, [matchingEval, selectedBizId]);
+  }, [matchingEval, selectedBizId, effectiveAcqId]);
 
   // Filter logs by period
   const filteredLogs = useMemo(() => {
@@ -281,6 +320,26 @@ export default function ValuationPanel() {
 
   // Compute stats and scan add-backs
   const stats = useMemo(() => {
+    // Acquired business — no daily finance logs to sum, so the "run rate" is
+    // just the annual figures captured on its acquisition evaluation.
+    if (bizSource === 'acquired') {
+      if (!selectedAcqEval) return {
+        totalRevenue: 0, totalExpenses: 0, totalNetProfit: 0,
+        months: 0, annualizedFactor: 1, runRateRevenue: 0, runRateNet: 0,
+        detectedItems: []
+      };
+      const rev = parseFinancialNumber(selectedAcqEval.revenueMetrics?.revenue) ?? parseFinancialNumber(selectedAcqEval.valuation?.annualRevenue) ?? 0;
+      const expFromMetrics = parseFinancialNumber(selectedAcqEval.revenueMetrics?.totalExpenses);
+      const netFromValuation = parseFinancialNumber(selectedAcqEval.valuation?.netProfit);
+      const totalNetProfit = expFromMetrics !== null ? rev - expFromMetrics : (netFromValuation ?? 0);
+      const totalExpenses = expFromMetrics !== null ? expFromMetrics : Math.max(0, rev - totalNetProfit);
+      return {
+        totalRevenue: rev, totalExpenses, totalNetProfit,
+        months: 12, annualizedFactor: 1, runRateRevenue: rev, runRateNet: totalNetProfit,
+        detectedItems: []
+      };
+    }
+
     if (!filteredLogs.length) return {
       totalRevenue: 0, totalExpenses: 0, totalNetProfit: 0,
       months: 0, annualizedFactor: 1, runRateRevenue: 0, runRateNet: 0,
@@ -360,7 +419,7 @@ export default function ValuationPanel() {
       months, annualizedFactor, runRateRevenue, runRateNet,
       detectedItems
     };
-  }, [filteredLogs]);
+  }, [bizSource, selectedAcqEval, filteredLogs]);
 
   // SDE calculations incorporating checkboxes and overrides
   const valuationResult = useMemo(() => {
@@ -476,7 +535,7 @@ export default function ValuationPanel() {
   // Quick-add a business straight from the "Select Business" dropdown
   const handleAddBusiness = async () => {
     const name = newBizName.trim();
-    if (!name) { setNewBizNameError(true); return; }
+    if (!name) { setNewBizNameError(true); focusFirstError(); return; }
     setNewBizNameError(false);
     if (!isDemo && !agencyId) return;
     setSavingNewBiz(true);
@@ -514,7 +573,7 @@ export default function ValuationPanel() {
 
   // Save valuation data
   const handleSave = async () => {
-    if (!activeBiz) return;
+    if (!activeName) return;
     setSaving(true);
     
     const valuationData = {
@@ -552,8 +611,8 @@ export default function ValuationPanel() {
         const nextEval = {
           ...original,
           id,
-          businessName: activeBiz.name,
-          sector: activeBiz.sector || 'Services',
+          businessName: activeName,
+          sector: activeSector,
           date: original.date || new Date().toISOString().slice(0, 10),
           agencyId,
           valuation: valuationData,
@@ -561,13 +620,13 @@ export default function ValuationPanel() {
           savedAt: new Date().toISOString()
         };
 
-        const nextEvals = evals.some(e => e.id === id) 
+        const nextEvals = evals.some(e => e.id === id)
           ? evals.map(e => e.id === id ? nextEval : e)
           : [...evals, nextEval];
 
         localStorage.setItem(localKey, JSON.stringify(nextEvals));
         setEvaluations(nextEvals);
-        toast.success("Settings Saved", `Valuation settings saved locally for "${activeBiz.name}".`);
+        toast.success("Settings Saved", `Valuation settings saved locally for "${activeName}".`);
       } catch (err) {
         toast.error("Save Failed", "Could not save valuation details.");
       } finally {
@@ -584,8 +643,8 @@ export default function ValuationPanel() {
       const payload = {
         ...original,
         id,
-        businessName: activeBiz.name,
-        sector: activeBiz.sector || 'Services',
+        businessName: activeName,
+        sector: activeSector,
         date: original.date || new Date().toISOString().slice(0, 10),
         agencyId,
         valuation: valuationData,
@@ -615,7 +674,7 @@ export default function ValuationPanel() {
         }
       });
 
-      toast.success("Settings Saved", `Valuation for "${activeBiz.name}" synced with the team.`);
+      toast.success("Settings Saved", `Valuation for "${activeName}" synced with the team.`);
     } catch (err) {
       console.error(err);
       toast.error("Save Failed", err.message || "An error occurred while saving.");
@@ -685,7 +744,7 @@ export default function ValuationPanel() {
             <Wallet size={14} style={{ marginRight: 6 }} /> Finance Log
           </button>
           
-          <button className="biz-btn primary" onClick={handleSave} disabled={saving || !activeBiz}>
+          <button className="biz-btn primary" onClick={handleSave} disabled={saving || !activeName}>
             {saving ? <RefreshCw size={14} className="animate-spin" style={{ marginRight: 6 }} /> : <Save size={14} style={{ marginRight: 6 }} />}
             Save Valuation
           </button>
@@ -697,12 +756,13 @@ export default function ValuationPanel() {
         
         {/* Sidebar Config */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={cardStyle}>
-            <label style={labelStyle}>Select Business</label>
+          <div style={{ ...cardStyle, ...(bizSource === 'portfolio' ? { border: '1px solid rgba(48,108,236,0.4)' } : {}) }}>
+            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— Portfolio</span></label>
             <select
               value={selectedBizId}
               onChange={(e) => {
                 if (e.target.value === ADD_NEW_BIZ) { setAddingBiz(true); setNewBizNameError(false); return; }
+                setBizSource('portfolio');
                 setSelectedBizId(e.target.value);
               }}
               style={{ ...inputStyle, padding: '10px 12px', fontSize: 14 }}
@@ -761,43 +821,86 @@ export default function ValuationPanel() {
               </div>
             )}
 
-            <div style={{ marginTop: 20 }}>
-              <label style={labelStyle}>Extrapolation Period</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 6 }}>
-                {[
-                  { value: '30d', label: '30 Days' },
-                  { value: '90d', label: '90 Days' },
-                  { value: '12m', label: '12 Months' },
-                  { value: 'all', label: 'All Time' }
-                ].map(p => (
-                  <button
-                    key={p.value}
-                    onClick={() => setPeriod(p.value)}
-                    style={{
-                      background: period === p.value ? 'var(--color-bg-active)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${period === p.value ? 'var(--color-border-active)' : 'var(--color-border)'}`,
-                      borderRadius: 8,
-                      color: period === p.value ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                      padding: '8px 4px',
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 120ms ease'
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+            {bizSource === 'portfolio' && (
+              <div style={{ marginTop: 20 }}>
+                <label style={labelStyle}>Extrapolation Period</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginTop: 6 }}>
+                  {[
+                    { value: '30d', label: '30 Days' },
+                    { value: '90d', label: '90 Days' },
+                    { value: '12m', label: '12 Months' },
+                    { value: 'all', label: 'All Time' }
+                  ].map(p => (
+                    <button
+                      key={p.value}
+                      onClick={() => setPeriod(p.value)}
+                      style={{
+                        background: period === p.value ? 'var(--color-bg-active)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${period === p.value ? 'var(--color-border-active)' : 'var(--color-border)'}`,
+                        borderRadius: 8,
+                        color: period === p.value ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                        padding: '8px 4px',
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 120ms ease'
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {matchingEval && (
+            {bizSource === 'portfolio' && matchingEval && (
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>Linked Evaluation Score:</span>
-                  <span style={{ 
-                    fontSize: 12, 
-                    fontWeight: 700, 
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: matchingEval.total >= 75 ? '#16A36B' : matchingEval.total >= 50 ? '#F5A623' : '#E0485A',
+                    background: 'rgba(255,255,255,0.04)',
+                    padding: '2px 8px',
+                    borderRadius: 6
+                  }}>{matchingEval.total}/100</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Different card — pick from businesses that closed through the
+              Acquisition pipeline instead, valued off their saved evaluation
+              figures rather than the Portfolio's daily finance logs. */}
+          <div style={{ ...cardStyle, ...(bizSource === 'acquired' ? { border: '1px solid rgba(48,108,236,0.4)' } : {}) }}>
+            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— Acquired</span></label>
+            <select
+              value={bizSource === 'acquired' ? effectiveAcqId : ''}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setBizSource('acquired');
+                setSelectedAcqId(e.target.value);
+              }}
+              style={{ ...inputStyle, padding: '10px 12px', fontSize: 14 }}
+            >
+              <option value="">{acquiredList.length === 0 ? 'No acquired businesses yet' : 'Choose an acquired business…'}</option>
+              {acquiredList.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.businessName}</option>
+              ))}
+            </select>
+
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 10, lineHeight: 1.5 }}>
+              Businesses marked <strong>Acquired</strong> on the Acquisition tab — valued from what was entered there, since they may not have Portfolio finance logs yet.
+            </div>
+
+            {bizSource === 'acquired' && matchingEval && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500 }}>Linked Evaluation Score:</span>
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 700,
                     color: matchingEval.total >= 75 ? '#16A36B' : matchingEval.total >= 50 ? '#F5A623' : '#E0485A',
                     background: 'rgba(255,255,255,0.04)',
                     padding: '2px 8px',
@@ -817,23 +920,27 @@ export default function ValuationPanel() {
               <h3 style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>Operational Run Rates</h3>
             </div>
             
-            {loadingLogs ? (
+            {bizSource === 'portfolio' && loadingLogs ? (
               <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-tertiary)', fontSize: 13 }}>
                 <RefreshCw size={16} className="animate-spin" style={{ marginRight: 8 }} /> Loading financial logs...
               </div>
-            ) : filteredLogs.length === 0 ? (
+            ) : (bizSource === 'acquired' ? !selectedAcqEval : filteredLogs.length === 0) ? (
               <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
                 <AlertCircle size={28} style={{ margin: '0 auto 8px', color: 'var(--color-warning)' }} />
-                <div style={{ fontSize: 13.5, fontWeight: 600 }}>No daily finance data found</div>
-                <div style={{ fontSize: 11.5, marginTop: 2 }}>Create transaction entries on the Finance Log page to see calculations.</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{bizSource === 'acquired' ? 'No acquired business selected' : 'No daily finance data found'}</div>
+                <div style={{ fontSize: 11.5, marginTop: 2 }}>
+                  {bizSource === 'acquired'
+                    ? 'Pick one from the Acquired card, or mark one Acquired on the Acquisition tab first.'
+                    : 'Create transaction entries on the Finance Log page to see calculations.'}
+                </div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-                
+
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 10, border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase' }}>Log Date Span</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', marginTop: 4 }}>{stats.months} Months</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{filteredLogs.length} days logged</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase' }}>{bizSource === 'acquired' ? 'Evaluation Date' : 'Log Date Span'}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', marginTop: 4 }}>{bizSource === 'acquired' ? (selectedAcqEval?.date || '—') : `${stats.months} Months`}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>{bizSource === 'acquired' ? 'From the Acquisition evaluation' : `${filteredLogs.length} days logged`}</div>
                 </div>
 
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 10, border: '1px solid rgba(255,255,255,0.04)' }}>
@@ -868,7 +975,7 @@ export default function ValuationPanel() {
       </div>
 
       {/* Main Body */}
-      {filteredLogs.length > 0 && (
+      {(bizSource === 'acquired' ? !!selectedAcqEval : filteredLogs.length > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2.2fr', gap: 16 }}>
           
           {/* SDE Add-backs & Inputs (Left) */}
@@ -887,7 +994,9 @@ export default function ValuationPanel() {
               {stats.detectedItems.length === 0 ? (
                 <div style={{ padding: '16px 8px', textStyle: 'center', fontSize: 12.5, color: 'var(--color-text-tertiary)', background: 'rgba(0,0,0,0.15)', borderRadius: 10 }}>
                   <Info size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-                  No matching SDE add-backs detected in transaction descriptions for this period. Add them manually below.
+                  {bizSource === 'acquired'
+                    ? 'Acquired businesses are valued off the figures entered on their evaluation — add any owner salary, perks, or one-off add-backs manually below.'
+                    : 'No matching SDE add-backs detected in transaction descriptions for this period. Add them manually below.'}
                 </div>
               ) : (
                 <div style={{ maxHeight: 220, overflowY: 'auto', background: 'rgba(2, 4, 10, 0.2)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: 10 }}>

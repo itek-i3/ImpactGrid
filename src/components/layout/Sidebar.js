@@ -27,6 +27,7 @@ import {
   Sparkles,
   Lock,
   Landmark,
+  Boxes,
 } from 'lucide-react';
 import { useWorkspaceStore, SIDEBAR_WIDTH, clampSidebarWidth } from '@/lib/store/useWorkspaceStore';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -403,7 +404,15 @@ export default function Sidebar() {
                         style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Building2 size={15} />
-                        <span>Businesses</span>
+                        <span>Portfolio</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('acquiredBusinesses'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'acquiredBusinesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Boxes size={15} />
+                        <span>Acquired Businesses</span>
                       </button>
                       <button
                         className="ig-nav"
