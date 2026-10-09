@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import {
   ArrowLeft, Pencil, Camera, Eye, EyeOff, Check, X,
   User, Mail, Phone, Lock, Building2, LayoutDashboard,
@@ -165,7 +166,7 @@ export default function SettingsPage() {
   };
 
   const saveInfo = async () => {
-    if (!fullName.trim()) { setNameError(true); flash('Name is required', false); return; }
+    if (!fullName.trim()) { setNameError(true); flash('Name is required', false); focusFirstError(); return; }
     setNameError(false);
     setSaving(true);
     const { error } = await createClient().from('profiles').update({
@@ -266,7 +267,7 @@ export default function SettingsPage() {
   };
 
   const saveWorkspace = async () => {
-    if (!wsName.trim()) { setWsNameError(true); flash('Workspace name is required', false); return; }
+    if (!wsName.trim()) { setWsNameError(true); flash('Workspace name is required', false); focusFirstError(); return; }
     setWsNameError(false);
     if (!workspace?.id) return;
     setWsSaving(true);

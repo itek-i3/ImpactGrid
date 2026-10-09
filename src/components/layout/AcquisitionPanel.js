@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useUndoStore } from '@/lib/store/useUndoStore';
 import { createClient } from '@/lib/supabase/client';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import Modal from '@/components/ui/Modal';
 
 // ── Static data ────────────────────────────────────────────────────────────────
@@ -953,7 +954,7 @@ export default function AcquisitionPanel() {
   }, [undoStack, redoStack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSave() {
-    if (!businessName.trim()) { setBusinessNameError(true); return; }
+    if (!businessName.trim()) { setBusinessNameError(true); focusFirstError(); return; }
     setBusinessNameError(false);
     if (!activeAgencyId) { toast.error('No agency', 'Open an agency workspace to save evaluations.'); return; }
     setSaving(true);

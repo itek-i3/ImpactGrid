@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import { Eye, EyeOff, User, Mail, Lock, AlertCircle, Building } from 'lucide-react';
 
 export default function SignupPage() {
@@ -45,7 +46,7 @@ export default function SignupPage() {
     else if (password.length < 6) errs.password = 'Password must be at least 6 characters';
     if (!selectedAgency) errs.agency = 'Please select an agency';
     setFieldErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length) { focusFirstError(); return; }
 
     setLoading(true);
     try {

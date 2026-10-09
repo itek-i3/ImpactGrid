@@ -10,6 +10,7 @@ import {
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import { useToast } from '@/components/ui/Toast';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
 
@@ -212,7 +213,7 @@ export default function HomeDashboard() {
   };
   const saveMyMission = async () => {
     const mission = missionForm.mission.trim();
-    if (!mission) { setMissionError(true); return; }
+    if (!mission) { setMissionError(true); focusFirstError(); return; }
     const patch = {
       department: missionForm.department.trim() || null,
       mission,

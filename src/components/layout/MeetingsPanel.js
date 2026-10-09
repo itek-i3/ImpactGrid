@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import {
   CalendarDays, Plus, Video, Clock, Users, Trash2, Pencil, X,
   ChevronLeft, ChevronRight, ExternalLink, Check, Link2, Repeat,
@@ -261,7 +262,7 @@ export default function MeetingsPanel() {
   };
 
   const saveMeeting = async () => {
-    if (!fTitle.trim()) { setFTitleError(true); return; }
+    if (!fTitle.trim()) { setFTitleError(true); focusFirstError(); return; }
     setFTitleError(false);
     if (!canSave) return;
     setSaving(true);

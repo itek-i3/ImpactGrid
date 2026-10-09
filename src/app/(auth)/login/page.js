@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import { Eye, EyeOff, User, Lock, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
@@ -23,7 +24,7 @@ export default function LoginPage() {
     if (!email.trim()) errs.email = 'Email is required';
     if (!password) errs.password = 'Password is required';
     setFieldErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length) { focusFirstError(); return; }
 
     setLoading(true);
     try {

@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { Landmark, Plus, Pencil, Trash2, X, Lock, User, Mail, Phone, Globe, MapPin, Search } from 'lucide-react';
+import { focusFirstError } from '@/lib/utils/formErrors';
 
 const INVESTOR_TYPES = ['VC', 'PE', 'Angel Investor', 'DFI', 'Family Office', 'Bank', 'Grant / Donor', 'Other'];
 const SECTOR_SUGGESTIONS = ['SMEs', 'Agriculture', 'FMCG', 'Real Estate', 'Services', 'Technology', 'Healthcare', 'Education', 'Manufacturing', 'Financial Services'];
@@ -125,7 +126,7 @@ export default function InvestorsPanel() {
 
   const save = async () => {
     const name = fName.trim();
-    if (!name) { setFNameError(true); return; }
+    if (!name) { setFNameError(true); focusFirstError(); return; }
     setFNameError(false);
     if (!isDemo && !agencyId) return;
     setSaving(true);

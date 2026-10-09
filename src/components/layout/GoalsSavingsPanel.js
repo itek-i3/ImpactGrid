@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import {
   Target, Plus, Trash2, Pencil, Check, X, Loader2, Landmark,
   ArrowUpRight, ArrowDownRight, CalendarClock, Flag,
@@ -106,7 +107,7 @@ export default function GoalsSavingsPanel({ selectedMonthKey }) {
 
   const submitForm = async () => {
     const name = form.name.trim();
-    if (!name) { setNameError(true); return; }
+    if (!name) { setNameError(true); focusFirstError(); return; }
     setNameError(false);
     const base = {
       name, kind: form.kind,

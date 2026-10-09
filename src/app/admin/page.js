@@ -8,6 +8,7 @@ import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
+import { focusFirstError } from '@/lib/utils/formErrors';
 
 function AdminPanelContent() {
   const router = useRouter();
@@ -207,7 +208,7 @@ function AdminPanelContent() {
     if (!name.trim()) errs.name = 'Agency Name is required.';
     if (!slug.trim()) errs.slug = 'Agency Slug is required.';
     setFieldErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (Object.keys(errs).length) { focusFirstError(); return; }
 
     setSubmitting(true);
     try {
