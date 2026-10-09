@@ -8,6 +8,7 @@ import { Wallet, Plus, Trash2, TrendingUp, TrendingDown, Sigma, ChevronDown, Che
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { RadialProgress, useCountUp } from '@/lib/personalFinance/shared';
 import Dropdown from '@/components/ui/Dropdown';
+import { useToast } from '@/components/ui/Toast';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -99,6 +100,7 @@ const DEMO_MEMBERS = [
 
 export default function FinancePanel() {
   const { workspace, activeAgencyId, agencies, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
+  const toast = useToast();
   const isMobile = useIsMobile();
   const workspaceId = workspace?.id;
   const agencyId = workspace?.agency_id || activeAgencyId || null;
@@ -417,14 +419,33 @@ export default function FinancePanel() {
   const addEntry = async () => {
     if (num(nRevenue) === 0 && itemsTotal(nItems) === 0 && !nNote.trim()) return;
     if (!isDemo && (!financeAgencyId || !hasValidScope)) return;
-    setSaving(true);
-    // Upsert by date so picking a date/month/year that already exists edits
-    // it instead of creating a duplicate. Monthly businesses always anchor
-    // to the 1st, yearly ones to Jan 1st, even if the user never touched
-    // the picker.
+    // Monthly businesses always anchor to the 1st, yearly ones to Jan 1st,
+    // even if the user never touched the picker.
     const dateStr = financePeriod === 'monthly' ? `${(nDate || today).slice(0, 7)}-01`
       : financePeriod === 'yearly' ? `${(nDate || today).slice(0, 4)}-01-01`
       : (nDate || today);
+    // This form always starts blank, so if that date/month/year already has
+    // a real entry, saving here would silently overwrite whatever was
+    // already logged for it. Figures someone entered only change when they
+    // edit or delete that exact entry — never as a side effect of "Add" —
+    // so send them to the existing entry's own editor instead.
+    if (rows.find(r => r.entry_date === dateStr)) {
+      const periodNoun = financePeriod === 'monthly' ? 'month' : financePeriod === 'yearly' ? 'year' : 'day';
+      toast.error('Already logged', `This ${periodNoun} already has an entry — opening it below so you can see the current figures before changing anything.`);
+      setShowAdd(false);
+      setTab('log');
+      // Daily entries live inside a month/week accordion that defaults to
+      // closed unless it's the latest — force both open so the entry
+      // openDayEditor is about to expand is actually visible, not hidden
+      // behind a collapsed row.
+      if (financePeriod === 'daily') {
+        if (!isMonthOpen(monthKeyOf(dateStr))) toggleMonth(monthKeyOf(dateStr));
+        if (!isWeekOpen(weekKeyOf(dateStr))) toggleWeek(weekKeyOf(dateStr));
+      }
+      openDayEditor(dateStr);
+      return;
+    }
+    setSaving(true);
     await saveDay(dateStr, { revenue: nRevenue, items: nItems, note: nNote });
     setNRevenue(''); setNItems([{ ...EMPTY_ITEM }]); setNNote(''); setNDate(today); setSaving(false); setShowAdd(false);
   };
