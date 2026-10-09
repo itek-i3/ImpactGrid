@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
+import { focusFirstError } from '@/lib/utils/formErrors';
 import {
   Sparkles, Lock, Save, RefreshCw, ChevronLeft,
   Plus, Trash2, User, ShoppingBag, Wrench, DollarSign, AlertTriangle,
@@ -235,7 +236,10 @@ const VERIFICATION = [
   { key: 'document_verified', label: 'Document-Verified', varColor: 'var(--color-success)' },
   { key: 'system_verified', label: 'System-Verified', varColor: '#6366F1' },
 ];
-const verificationOf = (key) => VERIFICATION.find((v) => v.key === key) || VERIFICATION[0];
+// No fallback to a default tier — an unset value stays unset (null) so it
+// reads as genuinely unverified rather than silently "Owner-Reported".
+const verificationOf = (key) => VERIFICATION.find((v) => v.key === key) || null;
+const UNVERIFIED_COLOR = 'var(--color-text-tertiary)';
 
 // Six hues pulled from tints already used elsewhere in ACR (see BusinessesPanel's
 // SECTOR_TINT) plus two siblings, so record avatars feel native to the app.
@@ -389,15 +393,17 @@ function CompletenessRing({ pct, size = 76, stroke = 7 }) {
 
 function VerificationBadge({ value, onChange }) {
   const v = verificationOf(value);
+  const color = v ? v.varColor : UNVERIFIED_COLOR;
   return (
     <select
-      value={value || 'owner_reported'}
+      value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       title="Data verification level"
       onClick={(e) => e.stopPropagation()}
       className="biz-verify"
-      style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)`, borderColor: `color-mix(in srgb, ${v.varColor} 40%, transparent)` }}
+      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)`, borderColor: `color-mix(in srgb, ${color} 40%, transparent)` }}
     >
+      <option value="">Not verified</option>
       {VERIFICATION.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
     </select>
   );
@@ -406,12 +412,13 @@ function VerificationBadge({ value, onChange }) {
 // Non-interactive stand-in for VerificationBadge, used on the read-only view.
 function VerificationTag({ value }) {
   const v = verificationOf(value);
+  const color = v ? v.varColor : UNVERIFIED_COLOR;
   return (
     <span
       className="biz-verify"
-      style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)`, borderColor: `color-mix(in srgb, ${v.varColor} 40%, transparent)`, cursor: 'default', display: 'inline-block' }}
+      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)`, borderColor: `color-mix(in srgb, ${color} 40%, transparent)`, cursor: 'default', display: 'inline-block' }}
     >
-      {v.label}
+      {v ? v.label : 'Not verified'}
     </span>
   );
 }
@@ -490,10 +497,9 @@ const has = (v) => (v ?? '').toString().trim().length > 0;
 const pick = (rows) => rows.filter((r) => has(r[1]));
 const websiteHref = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
-// "Owner-Reported" is the default and stated once in the footer; only a level
-// that says something more (observed / document / system) is called out inline.
+// No tier is assumed by default, so every recorded fact is tagged — including
+// an unset one, which reads as "Not verified" rather than disappearing.
 function ReportVerify({ value }) {
-  if (!value || value === 'owner_reported') return null;
   return <VerificationTag value={value} />;
 }
 
@@ -713,8 +719,9 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
 
       {sections.length > 0 && (
         <div className="rpt-foot">
-          <Info size={11} /> Values are owner-reported unless marked:
-          {VERIFICATION.slice(1).map((v) => (
+          <Info size={11} /> Verification:
+          <span className="rpt-key" style={{ color: UNVERIFIED_COLOR, background: `color-mix(in srgb, ${UNVERIFIED_COLOR} 14%, transparent)` }}>Not verified</span>
+          {VERIFICATION.map((v) => (
             <span key={v.key} className="rpt-key" style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)` }}>{v.label}</span>
           ))}
         </div>
@@ -1127,8 +1134,8 @@ export default function BusinessIntelPanel() {
   // by a later step, and a jump ahead stops at the first step still incomplete.
   const goToStep = (i) => {
     const target = Math.max(0, Math.min(STEPS.length - 1, i));
-    if (target > STEP_INDEX.registration && !profile.registeredBy.trim()) { setRegisteredByError(true); setActiveSection('registration'); return; }
-    if (target > STEP_INDEX.identity && !profile.name.trim()) { setNameError(true); setActiveSection('identity'); return; }
+    if (target > STEP_INDEX.registration && !profile.registeredBy.trim()) { setRegisteredByError(true); setActiveSection('registration'); focusFirstError(wizardRef); return; }
+    if (target > STEP_INDEX.identity && !profile.name.trim()) { setNameError(true); setActiveSection('identity'); focusFirstError(wizardRef); return; }
     setActiveSection(STEPS[target].key);
     requestAnimationFrame(() => {
       const el = wizardRef.current;
@@ -1143,6 +1150,7 @@ export default function BusinessIntelPanel() {
       setNameError(!name);
       setRegisteredByError(!registeredBy);
       setActiveSection(registeredBy ? 'identity' : 'registration');
+      focusFirstError(wizardRef);
       return;
     }
     setNameError(false);
@@ -1222,6 +1230,7 @@ export default function BusinessIntelPanel() {
   const verificationLegend = (
     <div className="biz-legend">
       <Info size={11} /> Verification:
+      <span className="biz-legend-tag" style={{ color: UNVERIFIED_COLOR, background: `color-mix(in srgb, ${UNVERIFIED_COLOR} 14%, transparent)` }}>Not verified</span>
       {VERIFICATION.map((v) => (
         <span key={v.key} className="biz-legend-tag" style={{ color: v.varColor, background: `color-mix(in srgb, ${v.varColor} 14%, transparent)` }}>{v.label}</span>
       ))}
