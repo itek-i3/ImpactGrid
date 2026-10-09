@@ -61,7 +61,7 @@ export default function AcquiredBusinessesPanel() {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '60px 16px', textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
         <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(224,72,90,0.12)', color: '#E0485A', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Lock size={24} /></div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>Restricted</div>
-        <div style={{ fontSize: 13 }}>Acquired Businesses is available to managers and admins in ACR.</div>
+        <div style={{ fontSize: 13 }}>General Business is available to managers and admins in ACR.</div>
       </div>
     );
   }
@@ -75,8 +75,8 @@ export default function AcquiredBusinessesPanel() {
             <Boxes size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Acquired Businesses</div>
-            <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Businesses that closed through the acquisition pipeline — kept separate from the Portfolio</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>General Business</div>
+            <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>Businesses that closed through the acquisition pipeline — kept separate from the Portfolio Business</div>
           </div>
         </div>
         <button className="biz-btn ghost" onClick={() => setCurrentView('acquisition')}>Open Acquisition tab</button>

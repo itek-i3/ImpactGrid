@@ -404,7 +404,7 @@ export default function Sidebar() {
                         style={currentView === 'businesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Building2 size={15} />
-                        <span>Portfolio</span>
+                        <span>Portfolio Business</span>
                       </button>
                       <button
                         className="ig-nav"
@@ -412,7 +412,7 @@ export default function Sidebar() {
                         style={currentView === 'acquiredBusinesses' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
                       >
                         <Boxes size={15} />
-                        <span>Acquired Businesses</span>
+                        <span>General Business</span>
                       </button>
                       <button
                         className="ig-nav"

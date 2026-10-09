@@ -161,7 +161,7 @@ export default function BusinessesPanel() {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '60px 16px', textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
         <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(224,72,90,0.12)', color: '#E0485A', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Lock size={24} /></div>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>Restricted</div>
-        <div style={{ fontSize: 13 }}>Portfolio is available to managers and admins in ACR.</div>
+        <div style={{ fontSize: 13 }}>Portfolio Business is available to managers and admins in ACR.</div>
       </div>
     );
   }
@@ -178,7 +178,7 @@ export default function BusinessesPanel() {
             <Building2 size={22} />
           </div>
           <div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Portfolio</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-.02em' }}>Portfolio Business</div>
             <div style={{ fontSize: 12.5, color: 'var(--color-text-tertiary)' }}>The businesses you personally own and track finances for — separate from the acquisition pipeline</div>
           </div>
         </div>

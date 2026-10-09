@@ -757,7 +757,7 @@ export default function ValuationPanel() {
         {/* Sidebar Config */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ ...cardStyle, ...(bizSource === 'portfolio' ? { border: '1px solid rgba(48,108,236,0.4)' } : {}) }}>
-            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— Portfolio</span></label>
+            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— Portfolio Business</span></label>
             <select
               value={selectedBizId}
               onChange={(e) => {
@@ -874,7 +874,7 @@ export default function ValuationPanel() {
               Acquisition pipeline instead, valued off their saved evaluation
               figures rather than the Portfolio's daily finance logs. */}
           <div style={{ ...cardStyle, ...(bizSource === 'acquired' ? { border: '1px solid rgba(48,108,236,0.4)' } : {}) }}>
-            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— Acquired</span></label>
+            <label style={labelStyle}>Select Business <span style={{ color: 'var(--color-text-muted)', fontWeight: 500, textTransform: 'none' }}>— General Business</span></label>
             <select
               value={bizSource === 'acquired' ? effectiveAcqId : ''}
               onChange={(e) => {
@@ -884,14 +884,14 @@ export default function ValuationPanel() {
               }}
               style={{ ...inputStyle, padding: '10px 12px', fontSize: 14 }}
             >
-              <option value="">{acquiredList.length === 0 ? 'No acquired businesses yet' : 'Choose an acquired business…'}</option>
+              <option value="">{acquiredList.length === 0 ? 'No general businesses yet' : 'Choose a general business…'}</option>
               {acquiredList.map(ev => (
                 <option key={ev.id} value={ev.id}>{ev.businessName}</option>
               ))}
             </select>
 
             <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 10, lineHeight: 1.5 }}>
-              Businesses marked <strong>Acquired</strong> on the Acquisition tab — valued from what was entered there, since they may not have Portfolio finance logs yet.
+              Businesses marked <strong>Acquired</strong> on the Acquisition tab — valued from what was entered there, since they may not have Portfolio Business finance logs yet.
             </div>
 
             {bizSource === 'acquired' && matchingEval && (
