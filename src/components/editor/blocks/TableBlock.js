@@ -814,7 +814,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
         return;
       }
       // Allow Ctrl+Z/Y through for undo/redo (handled below), block everything else.
-      if (!((e.ctrlKey || e.metaKey) && ['z','y'].includes(e.key.toLowerCase()))) return;
+      if (!((e.ctrlKey || e.metaKey) && ['z','y'].includes((e.key || '').toLowerCase()))) return;
     }
 
     // Escape: close menus in priority order, then deselect
@@ -831,7 +831,7 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     }
 
     // Undo: Ctrl/Cmd + Z
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    if ((e.ctrlKey || e.metaKey) && (e.key || '').toLowerCase() === 'z' && !e.shiftKey) {
       // If editing a non-empty cell, let the browser undo letter-by-letter
       if (inEditable && document.activeElement?.textContent?.length > 0) return;
       e.preventDefault();
@@ -840,7 +840,8 @@ export default function TableBlock({ block, onUpdate, readOnly = false }) {
     }
 
     // Redo: Ctrl/Cmd + Shift + Z  or  Ctrl/Cmd + Y
-    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+    const lowerKey = (e.key || '').toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (lowerKey === 'y' || (lowerKey === 'z' && e.shiftKey))) {
       if (inEditable && document.activeElement?.textContent?.length > 0) return;
       e.preventDefault();
       handleRedo();

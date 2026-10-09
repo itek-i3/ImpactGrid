@@ -37,8 +37,9 @@ export default function Topbar() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      const isZ = e.key.toLowerCase() === 'z';
-      const isY = e.key.toLowerCase() === 'y';
+      const key = (e.key || '').toLowerCase();
+      const isZ = key === 'z';
+      const isY = key === 'y';
       const isMod = e.ctrlKey || e.metaKey;
 
       if (!isMod || (!isZ && !isY)) return;
