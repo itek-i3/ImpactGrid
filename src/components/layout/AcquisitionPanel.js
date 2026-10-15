@@ -98,6 +98,12 @@ const MONO = 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)';
 // Brand status tokens (validated ≥3:1 on dark surface; always paired with labels)
 const SUCCESS = '#16A36B', WARNING = '#F5A623', ERROR = '#E0485A', ACCENT = '#306CEC';
 
+// Avatar tint for the read-only view header — same hue set & hashing approach as
+// the Data Registry's business avatars, so both "view" screens read as one family.
+const AVATAR_HUES = ['#5B9BFF', '#F5A623', '#9B8CFF', '#4ECDC4', '#F0709A', '#6EE7B7'];
+const hashOf = (str) => { let h = 0; for (let i = 0; i < (str || '').length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h; };
+const avatarTint = (name) => AVATAR_HUES[hashOf(name || '?') % AVATAR_HUES.length];
+
 // Deal pipeline state for the "State" column — where each evaluated business
 // stands in the acquisition pipeline, independent of its worksheet score.
 const DEAL_STATES = [
@@ -552,6 +558,46 @@ function InfoField({ label, value }) {
   );
 }
 
+// Circular score gauge for the read-only view header — same visual recipe as the
+// Data Registry's completeness ring (see BusinessIntelPanel's CompletenessRing).
+function ScoreRing({ pct, color, size = 68, stroke = 7 }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const hasPct = pct !== null && pct !== undefined;
+  const offset = c - (Math.min(100, Math.max(0, hasPct ? pct : 0)) / 100) * c;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={stroke} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: 'stroke-dashoffset 300ms ease' }}
+      />
+      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="central" fontSize={size * 0.24} fontWeight="700" fill="var(--color-text-primary)" fontFamily={MONO}>
+        {hasPct ? `${pct}%` : '—'}
+      </text>
+    </svg>
+  );
+}
+
+// Numbered section header — icon chip + title + a small index badge on the right —
+// the same pattern the Data Registry's report uses for its numbered sections, so
+// the two "view" screens read as one design.
+function SectionHead({ icon: Icon, title, sub, num, color = ACCENT }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 18px', borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-bg-tertiary)' }}>
+      <span style={{ width: 30, height: 30, borderRadius: 'var(--radius-lg)', background: `${color}1C`, border: `1px solid ${color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={15} style={{ color }} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>{title}</div>
+        {sub && <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>{sub}</div>}
+      </div>
+      {num && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', fontFamily: MONO, flexShrink: 0 }}>{num}</span>}
+    </div>
+  );
+}
+
 // Status pill for one Due Diligence check — grey "Not evaluated" until enough data is entered.
 function DdStatusBadge({ result }) {
   if (!result.status) {
@@ -578,6 +624,9 @@ export default function AcquisitionPanel() {
   const [businessLocation, setBusinessLocation] = useState('');
   const [productsServices, setProductsServices] = useState('');
   const [numStaff,        setNumStaff]        = useState('');
+  const [ownerDependent,  setOwnerDependent]  = useState(''); // '' | 'Yes' | 'No'
+  const [keyEmployee,     setKeyEmployee]     = useState(''); // '' | 'Yes' | 'No' — is there an employee who drives results?
+  const [salesSpread,     setSalesSpread]     = useState(''); // '' | 'Evenly distributed' | 'Has a major customer'
   const [businessSector,  setBusinessSector]  = useState('');
   const [evalDate,        setEvalDate]        = useState(today);
   const [dealState,       setDealState]       = useState('prospect');
@@ -738,12 +787,20 @@ export default function AcquisitionPanel() {
     [viewedEvalId, savedEvals]
   );
 
+  // The saved record behind the form that's open — used by the read-only view's
+  // header for who evaluated it and when (the form itself only holds flat fields).
+  const loadedEval = useMemo(
+    () => (editingEvalId ? savedEvals.find(e => e.id === editingEvalId) || null : null),
+    [editingEvalId, savedEvals]
+  );
+
   // Has the user meaningfully started a draft? (legal criterion auto-scores, so
   // evaluatedCount alone is not a reliable signal of "started".)
   const hasDraft =
     businessName.trim() !== '' ||
     ownerName.trim() !== '' || registrationDetails.trim() !== '' ||
     businessLocation.trim() !== '' || productsServices.trim() !== '' || numStaff !== '' ||
+    ownerDependent !== '' || keyEmployee !== '' || salesSpread !== '' ||
     Object.values(scores).some(v => v !== null) ||
     industryValue !== '' || monthsInOp !== '' || ownerMotivation !== '' ||
     Object.values(legalChecks).some(Boolean) ||
@@ -967,7 +1024,7 @@ export default function AcquisitionPanel() {
         businessName: businessName.trim(), sector: businessSector, date: evalDate, dealState,
         ownerName: ownerName.trim(), registrationDetails: registrationDetails.trim(),
         businessLocation: businessLocation.trim(), productsServices: productsServices.trim(),
-        numStaff, assets: assets.map(a => ({ ...a })),
+        numStaff, ownerDependent, keyEmployee, salesSpread, assets: assets.map(a => ({ ...a })),
         agencyId: activeAgencyId,
         evaluator: existing?.evaluator || {
           id: userProfile?.id || null,
@@ -1033,6 +1090,7 @@ export default function AcquisitionPanel() {
     setOwnerName(ev.ownerName || ''); setRegistrationDetails(ev.registrationDetails || '');
     setBusinessLocation(ev.businessLocation || ''); setProductsServices(ev.productsServices || '');
     setNumStaff(ev.numStaff || '');
+    setOwnerDependent(ev.ownerDependent || ''); setKeyEmployee(ev.keyEmployee || ''); setSalesSpread(ev.salesSpread || '');
     setAssets(Array.isArray(ev.assets) ? ev.assets.map(a => ({ ...a })) : []);
     const raw = Object.fromEntries(CRITERIA.map(c => [c.id, null]));
     [2,3,5,6,7,9,10].forEach(id => { raw[id] = ev.scores?.[id] ?? null; });
@@ -1070,6 +1128,7 @@ export default function AcquisitionPanel() {
     setBusinessName(''); setBusinessSector(''); setEvalDate(today); setDealState('prospect');
     setOwnerName(''); setRegistrationDetails(''); setBusinessLocation('');
     setProductsServices(''); setNumStaff(''); setAssets([]);
+    setOwnerDependent(''); setKeyEmployee(''); setSalesSpread('');
     setScores(initScores);
     setNotes(Object.fromEntries(CRITERIA.map(c => [c.id, ''])));
     setNotesOpen({}); setIndustryValue(''); setIndustryOther(''); setMonthsInOp(''); setOpUnit('months');
@@ -1101,6 +1160,9 @@ export default function AcquisitionPanel() {
       `Location     : ${businessLocation || '—'}`,
       `Products/services : ${productsServices || '—'}`,
       `Staff        : ${numStaff || '—'}`,
+      `Owner-dependent : ${ownerDependent || '—'}`,
+      `Key employee drives results : ${keyEmployee || '—'}`,
+      `Sales concentration : ${salesSpread || '—'}`,
       `Sector       : ${businessSector || '—'}`,
       `Date         : ${evalDate}`,
       `Score        : ${totalScore}%  (${evaluatedCount}/11 criteria evaluated)`,
@@ -2317,11 +2379,39 @@ export default function AcquisitionPanel() {
 
               {formReadOnly ? (
                 <>
+                  {/* Header — avatar, name, sector/location, who evaluated it, and the
+                      viability score ring: the same visual recipe as the Data Registry's
+                      business report, so both "view" screens read as one design. */}
+                  <div style={{ display:'flex', alignItems:'flex-start', gap:16, padding:'2px 2px 10px' }}>
+                    <div style={{ width:56, height:56, borderRadius:16, flexShrink:0, background:`${avatarTint(businessName)}22`, color:avatarTint(businessName), display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:800, fontFamily:'var(--font-display)' }}>
+                      {(businessName || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'var(--color-accent-text, #7EB3FF)', fontFamily: MONO }}>Business evaluation</div>
+                      <div style={{ fontSize:19, fontWeight:800, color:'var(--color-text-primary)', letterSpacing:'-.02em', marginTop:2 }}>{businessName || 'Unnamed business'}</div>
+                      {(businessSector || businessLocation) && (
+                        <div style={{ fontSize:12.5, color:'var(--color-text-secondary)', marginTop:4, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                          {businessSector && <span>{businessSector}</span>}
+                          {businessSector && businessLocation && <span aria-hidden="true">·</span>}
+                          {businessLocation && <span>{businessLocation}</span>}
+                        </div>
+                      )}
+                      {(loadedEval?.evaluator?.name || loadedEval?.savedAt) && (
+                        <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:6, display:'flex', gap:10, flexWrap:'wrap' }}>
+                          {loadedEval?.evaluator?.name && <span>Evaluated by <strong style={{ color:'var(--color-text-secondary)' }}>{loadedEval.evaluator.name}</strong></span>}
+                          {loadedEval?.savedAt && <span>Updated {new Date(loadedEval.savedAt).toLocaleDateString()}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, flexShrink:0 }}>
+                      <ScoreRing pct={started ? totalScore : null} color={dialColor} size={64} />
+                      <span style={{ fontSize:9.5, color:'var(--color-text-tertiary)', fontFamily: MONO }}>{evaluatedCount}/11 criteria</span>
+                    </div>
+                  </div>
+
                   {/* Business details — read-only info grid */}
                   <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)', fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>
-                      Business details
-                    </div>
+                    <SectionHead icon={Target} title="Business details" num="01" />
                     <div style={{ padding:'16px 18px', display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'16px 20px' }}>
                       <InfoField label="Business name" value={businessName}/>
                       <InfoField label="Name of the owner" value={ownerName}/>
@@ -2329,6 +2419,9 @@ export default function AcquisitionPanel() {
                       <InfoField label="Location" value={businessLocation}/>
                       <InfoField label="Products / services" value={productsServices}/>
                       <InfoField label="Number of staff" value={numStaff}/>
+                      <InfoField label="Owner-dependent" value={ownerDependent}/>
+                      <InfoField label="Employee drives results" value={keyEmployee}/>
+                      <InfoField label="Sales concentration" value={salesSpread}/>
                       <InfoField label="Sector" value={businessSector}/>
                       <InfoField label="Date" value={evalDate}/>
                       <div>
@@ -2342,10 +2435,7 @@ export default function AcquisitionPanel() {
 
                   {/* Criteria worksheet — read-only */}
                   <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Criteria worksheet</div>
-                      <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', fontVariantNumeric:'tabular-nums' }}>{evaluatedCount} of 11 scored</div>
-                    </div>
+                    <SectionHead icon={BarChart3} title="Criteria worksheet" sub={`${evaluatedCount} of 11 scored`} num="02" />
 
                     {CRITERIA.map((c, idx) => {
                       const s      = derivedScores[c.id];
@@ -2388,10 +2478,7 @@ export default function AcquisitionPanel() {
 
                   {/* Due Diligence Risk Validation — read-only */}
                   <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Risk Validation</div>
-                      <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:2 }}>A risk layer over the viability score above — separate from it, not a second formula</div>
-                    </div>
+                    <SectionHead icon={ShieldAlert} title="Due Diligence Risk Validation" sub="A risk layer over the viability score above — separate from it, not a second formula" num="03" />
                     <div>
                       {ddChecks.map((c, idx) => (
                         <div key={c.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'12px 18px', borderBottom: idx < ddChecks.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
@@ -2455,6 +2542,39 @@ export default function AcquisitionPanel() {
                     <div>
                       <label className="acqp-lbl">Number of staff</label>
                       <input className="acqp-input" type="number" inputMode="numeric" min="0" value={numStaff} onChange={e => setNumStaff(e.target.value)} placeholder="e.g. 6"/>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Is the business owner-dependent?</label>
+                      <div style={{ position:'relative' }}>
+                        <select className="acqp-select" value={ownerDependent} onChange={e => setOwnerDependent(e.target.value)}>
+                          <option value="">Select…</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                        <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Is there an employee who drives results?</label>
+                      <div style={{ position:'relative' }}>
+                        <select className="acqp-select" value={keyEmployee} onChange={e => setKeyEmployee(e.target.value)}>
+                          <option value="">Select…</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                        <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="acqp-lbl">Are sales evenly distributed, or is there a major customer?</label>
+                      <div style={{ position:'relative' }}>
+                        <select className="acqp-select" value={salesSpread} onChange={e => setSalesSpread(e.target.value)}>
+                          <option value="">Select…</option>
+                          <option value="Evenly distributed">Evenly distributed across customers</option>
+                          <option value="Has a major customer">Has a major customer</option>
+                        </select>
+                        <ChevronDown size={13} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-tertiary)', pointerEvents:'none' }}/>
+                      </div>
                     </div>
                     <div>
                       <label className="acqp-lbl">Sector</label>
