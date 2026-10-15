@@ -10,8 +10,9 @@ import { focusFirstError } from '@/lib/utils/formErrors';
 import {
   Sparkles, Lock, Save, RefreshCw, ChevronLeft,
   Plus, Trash2, User, ShoppingBag, Wrench, DollarSign, AlertTriangle,
-  Rocket, CheckCircle2, Circle, Info, MapPin, Globe, TrendingUp, Eye, Pencil, ChevronRight, Users, X,
+  Rocket, CheckCircle2, Circle, Info, MapPin, Globe, TrendingUp, Eye, Pencil, ChevronRight, Users, X, FileDown,
 } from 'lucide-react';
+import { downloadAcrCombinedReport } from '@/lib/utils/acrReport';
 
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -175,7 +176,7 @@ function buildSampleEntries() {
 
 const REG_STATUS = ['Unregistered', 'Sole Proprietorship', 'Registered Business Name', 'Limited Company', 'Cooperative', 'NGO / Non-profit', 'Other'];
 const OPERATING_MODELS = ['Owner-operated', 'Manager-run', 'Franchise', 'Family-run', 'Remote / Online', 'Hybrid'];
-const REVENUE_RANGES = ['Pre-revenue', 'Under KES 50K/mo', 'KES 50K–200K/mo', 'KES 200K–500K/mo', 'KES 500K–1M/mo', 'KES 1M–5M/mo', 'Over KES 5M/mo', 'Prefer not to share'];
+const GENDERS = ['Female', 'Male', 'Other', 'Prefer not to say'];
 
 // Country/city are structured (select) fields so the registry can be filtered
 // reliably — starting with Kenya's major cities/towns; add more countries here
@@ -274,13 +275,13 @@ const STEP_INDEX = Object.fromEntries(STEPS.map((st, i) => [st.key, i]));
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
 // are stored as their own top-level registry columns, not inside `data`.
-const IDENTITY_FIELD_COUNT = 14;
+const IDENTITY_FIELD_COUNT = 15;
 const OPERATIONS_FIELD_COUNT = 7;
 const PERFORMANCE_FIELD_COUNT = 6;
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
-  identity: { ownerName: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
+  identity: { ownerName: '', ownerGender: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
   operations: { productsServices: '', employeeCount: '', locationCount: '', operatingModel: '', suppliers: '', customerSegments: '', currentSystems: '' },
   performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '' },
   infrastructure: Object.fromEntries(INFRA_AREAS.map((a) => [a.key, { level: '', note: '' }])),
@@ -541,6 +542,7 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
 
   const identityFacts = pick([
     ['Owner / founder', id.ownerName, 'identity.ownerName'],
+    ['Owner gender', id.ownerGender, 'identity.ownerGender'],
     ['Owner phone', id.ownerPhone, 'identity.ownerPhone'],
     ['Owner email', id.ownerEmail, 'identity.ownerEmail'],
     ['Country', id.country, 'identity.country'],
@@ -882,6 +884,8 @@ export default function BusinessIntelPanel() {
   // Agency members: the people the "Registered by" page ranks (including anyone with
   // none registered yet) and their profile pictures.
   const [members, setMembers] = useState([]);
+  const [exportingReport, setExportingReport] = useState(false);
+  const agencyName = agencies?.find((a) => a.id === activeAgencyId)?.name || '';
 
   // Everyone who can appear as a registrant: each agency member, plus anyone whose
   // typed name matches no member. A typed name is matched to a member by name or email
@@ -1086,6 +1090,19 @@ export default function BusinessIntelPanel() {
     setRegisteredByError(false);
   };
 
+  const handleDownloadReport = async () => {
+    setExportingReport(true);
+    try {
+      const ok = await downloadAcrCombinedReport({ agencyId, isDemo, agencyName });
+      if (!ok) toast.error('Pop-up blocked', 'Allow pop-ups for this site, then try again.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not build report', err.message || 'Try again.');
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   // Demo mode only — three fleshed-out sample businesses so the registry
   // isn't empty on first look. Never touches the real database.
   const loadSampleData = () => {
@@ -1249,7 +1266,8 @@ export default function BusinessIntelPanel() {
       {sectionKey === 'identity' && (
         <div className="biz-proplist">
           <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" required error={nameError ? 'Business name is required.' : undefined} />
-          <Field label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
+          <Field half label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
+          <Field half label="Owner gender" type="select" options={GENDERS} value={profile.identity.ownerGender} onChange={(v) => setField('identity', 'ownerGender', v)} verification={profile.verification['identity.ownerGender']} onVerify={(v) => setVerify('identity.ownerGender', v)} />
           <Field half label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
           <Field half label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
           <Field
@@ -1293,7 +1311,7 @@ export default function BusinessIntelPanel() {
 
       {sectionKey === 'performance' && (
         <div className="biz-proplist">
-          <Field half label="Revenue range" type="select" options={REVENUE_RANGES} value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} />
+          <Field half label="Revenue range" value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} placeholder="e.g. KES 120,000/mo" />
           <Field half label="Customer volume" value={profile.performance.customerVolume} onChange={(v) => setField('performance', 'customerVolume', v)} verification={profile.verification['performance.customerVolume']} onVerify={(v) => setVerify('performance.customerVolume', v)} placeholder="e.g. ~200 customers/month" />
           <Field half label="Major revenue streams" type="textarea" value={profile.performance.revenueStreams} onChange={(v) => setField('performance', 'revenueStreams', v)} verification={profile.verification['performance.revenueStreams']} onVerify={(v) => setVerify('performance.revenueStreams', v)} />
           <Field half label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} />
@@ -1382,6 +1400,9 @@ export default function BusinessIntelPanel() {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {isDemo && <button className="biz-btn ghost" onClick={loadSampleData}><Sparkles size={14} /> Load sample data</button>}
+              <button className="biz-btn ghost" onClick={handleDownloadReport} disabled={exportingReport} title="Download a report of Portfolio Business + Data Registry">
+                {exportingReport ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />} Download report
+              </button>
               <button className="biz-btn primary" onClick={startNewBusiness}><Plus size={15} /> Register business</button>
             </div>
           </div>
@@ -1540,6 +1561,7 @@ export default function BusinessIntelPanel() {
                   {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} Save changes
                 </button>
               )}
+              <button className="biz-icon" title="Exit" aria-label="Exit" onClick={backToRegistry}><X size={15} /></button>
             </div>
           </div>
 

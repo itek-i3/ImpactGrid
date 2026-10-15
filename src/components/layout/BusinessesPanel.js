@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { Building2, Plus, Pencil, Trash2, X, MapPin, User, Lock, Wallet } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, X, MapPin, User, Lock, Wallet, FileDown, RefreshCw } from 'lucide-react';
 import { focusFirstError } from '@/lib/utils/formErrors';
+import { useToast } from '@/components/ui/Toast';
+import { downloadAcrCombinedReport } from '@/lib/utils/acrReport';
 
 const SECTORS = ['Services', 'FMCG', 'Real Estate', 'Agriculture'];
 const DOMAINS = ['Laundromat', 'Car Wash', 'Salon / Spa', 'Restaurant', 'Water Center', 'Shortlet / Short-stay', 'Land', 'Agriculture', 'Retail Shop', 'Water ATM', 'Other'];
@@ -15,13 +17,16 @@ const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f
 export default function BusinessesPanel() {
   const { workspace, activeAgencyId, agencies, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
   const isMobile = useIsMobile();
+  const toast = useToast();
   const workspaceId = workspace?.id;
   const agencyId = workspace?.agency_id || activeAgencyId || null;
   const currentUserId = userProfile?.id || (isDemo ? 'demo-current-user' : '');
   const isAcr = isDemo || !!agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr');
   const canAccess = isDemo || (isAcr && ['manager', 'superadmin'].includes(userProfile?.role));
+  const agencyName = agencies?.find(a => a.id === activeAgencyId)?.name || '';
 
   const [businesses, setBusinesses] = useState([]);
+  const [exportingReport, setExportingReport] = useState(false);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -146,6 +151,19 @@ export default function BusinessesPanel() {
     finally { setSaving(false); }
   };
 
+  const handleDownloadReport = async () => {
+    setExportingReport(true);
+    try {
+      const ok = await downloadAcrCombinedReport({ agencyId, isDemo, agencyName });
+      if (!ok) toast.error('Pop-up blocked', 'Allow pop-ups for this site, then try again.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not build report', err.message || 'Try again.');
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   const remove = async (id) => {
     setConfirmDeleteId(null);
     if (isDemo) { persistDemo(businesses.filter(b => b.id !== id)); return; }
@@ -183,6 +201,9 @@ export default function BusinessesPanel() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="biz-btn ghost" onClick={handleDownloadReport} disabled={exportingReport} title="Download a report of Portfolio Business + Data Registry">
+            {exportingReport ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />} Download report
+          </button>
           <button className="biz-btn ghost" onClick={() => setCurrentView('finance')}><Wallet size={14} /> Finance Log</button>
           <button className="biz-btn primary" onClick={openNew}><Plus size={15} /> New business</button>
         </div>
