@@ -28,9 +28,12 @@ export async function fetchRegistryEntries({ agencyId, isDemo }) {
 // Renders a generic multi-section report as a standalone HTML document in a new
 // tab and opens the print dialog — "Save as PDF" there is the downloadable document.
 // `summary` (optional) is a short list of headline stat tiles rendered as an
-// "Executive Summary" up top, before the detailed section tables — the part
-// that makes this read as a summary report rather than a raw data dump.
-export function openPrintableReport({ title, subtitle, summary, sections }) {
+// "Executive Summary" up top. `findings` (optional) is a list of {title,
+// subtitle, items: [{count, text}], emptyText} blocks rendered as ranked,
+// plain-English statements ("54 businesses are recorded to need I3
+// Launchpad…") — together these are what make it read as a summary report
+// rather than a raw data dump.
+export function openPrintableReport({ title, subtitle, summary, findings, sections }) {
   const win = window.open('', '_blank');
   if (!win) return false;
 
@@ -50,6 +53,18 @@ export function openPrintableReport({ title, subtitle, summary, sections }) {
       </div>
     </section>
   ` : '';
+
+  const findingsHtml = findings?.length ? findings.map((f) => `
+    <section class="findings">
+      <h2>${esc(f.title)}</h2>
+      ${f.subtitle ? `<p class="sec-sub">${esc(f.subtitle)}</p>` : ''}
+      ${f.items.length === 0
+        ? `<p class="empty">${esc(f.emptyText || 'Nothing recorded yet.')}</p>`
+        : `<ol class="finding-list">
+            ${f.items.map((it) => `<li><span class="finding-count">${esc(it.count)}</span><span class="finding-text">${esc(it.text)}</span></li>`).join('')}
+          </ol>`}
+    </section>
+  `).join('') : '';
 
   const sectionsHtml = sections.map((sec) => `
     <section>
@@ -87,6 +102,10 @@ export function openPrintableReport({ title, subtitle, summary, sections }) {
   .stat-value { font-size: 20px; font-weight: 800; color: #15213A; letter-spacing: -.01em; }
   .stat-label { font-size: 10.5px; font-weight: 700; color: #5B6577; text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
   .stat-note { font-size: 10.5px; color: #8A94A6; margin-top: 3px; }
+  .finding-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .finding-list li { display: flex; align-items: flex-start; gap: 11px; }
+  .finding-count { flex-shrink: 0; min-width: 30px; height: 22px; padding: 0 6px; border-radius: 999px; background: #EEF1F7; color: #15213A; font-weight: 800; font-size: 11.5px; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+  .finding-text { font-size: 12px; line-height: 1.55; padding-top: 2px; color: #2A3348; }
   table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
   th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #E2E6ED; vertical-align: top; }
   th { background: #F5F7FA; font-weight: 700; color: #3A4256; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
@@ -109,6 +128,7 @@ export function openPrintableReport({ title, subtitle, summary, sections }) {
     <div class="meta">Generated ${esc(generatedAt)}</div>
   </header>
   ${summaryHtml}
+  ${findingsHtml}
   ${sectionsHtml}
   <footer>ImpactGrid — ACR Agency</footer>
 </body>
@@ -132,6 +152,47 @@ function topEntry(list, keyFn) {
   let topKey = null, topCount = 0;
   counts.forEach((c, k) => { if (c > topCount) { topKey = k; topCount = c; } });
   return topKey ? { key: topKey, count: topCount } : null;
+}
+
+// Tallies how often each key shows up across every entry's selected list
+// (a registry business can select more than one growth need or challenge).
+function tallySelections(list, pickSelected) {
+  const counts = new Map();
+  list.forEach((item) => (pickSelected(item) || []).forEach((k) => counts.set(k, (counts.get(k) || 0) + 1)));
+  return counts;
+}
+
+// Mirrors the Data Registry's growth-needs and challenges option lists (see
+// BusinessIntelPanel) — kept here too so the report has readable names/
+// descriptions without importing a page component into a lib util.
+const GROWTH_NEEDS = [
+  { key: 'i3Launchpad', name: 'I3 Launchpad', desc: 'business growth and operational systems' },
+  { key: 'iPlusMarketing', name: 'I+ Marketing', desc: 'marketing and customer acquisition' },
+  { key: 'iTekTechnology', name: 'iTek Technology', desc: 'technology, automation and digital systems' },
+  { key: 'i3Studios', name: 'I3 Studios', desc: 'creative and media production' },
+  { key: 'i3xEvents', name: 'I3X Africa Events', desc: 'connections, platforms and market access' },
+  { key: 'impactFund', name: 'ImpactFund', desc: 'capital readiness and financing opportunities' },
+  { key: 'impact360', name: 'Impact360', desc: 'ecosystem access and decentralized opportunities' },
+];
+const CHALLENGES = ['Customer acquisition', 'Cash flow', 'Operations', 'Staffing', 'Technology', 'Marketing', 'Distribution', 'Capital', 'Management', 'Compliance', 'Market access'];
+
+// Ranked, plain-English statements for the report's "Key Findings" sections —
+// e.g. "54 businesses are recorded to need I3 Launchpad — ...".
+function buildGrowthNeedFindings(registryEntries) {
+  const counts = tallySelections(registryEntries, (e) => e.data?.growthNeeds?.selected);
+  return GROWTH_NEEDS
+    .map((n) => ({ ...n, count: counts.get(n.key) || 0 }))
+    .filter((n) => n.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .map((n) => ({ count: n.count, text: `${n.count === 1 ? 'business is' : 'businesses are'} recorded to need ${n.name} — ${n.desc}.` }));
+}
+function buildChallengeFindings(registryEntries) {
+  const counts = tallySelections(registryEntries, (e) => e.data?.challenges?.selected);
+  return CHALLENGES
+    .map((label) => ({ label, count: counts.get(label) || 0 }))
+    .filter((c) => c.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .map((c) => ({ count: c.count, text: `${c.count === 1 ? 'business reports' : 'businesses report'} ${c.label} as a challenge.` }));
 }
 
 // Combines both rosters into the two-section report both panels link to.
@@ -189,10 +250,24 @@ export async function downloadAcrCombinedReport({ agencyId, isDemo, agencyName }
     ];
   });
 
+  const findings = [
+    {
+      title: 'Top Support Needs', items: buildGrowthNeedFindings(registryEntries),
+      subtitle: 'Where TOIG support is requested most across the Data Registry.',
+      emptyText: 'No growth needs recorded yet.',
+    },
+    {
+      title: 'Top Challenges', items: buildChallengeFindings(registryEntries),
+      subtitle: 'What registry businesses report as holding them back.',
+      emptyText: 'No challenges recorded yet.',
+    },
+  ];
+
   return openPrintableReport({
     title: 'ACR Business Report',
     subtitle: agencyName || 'ACR Agency',
     summary,
+    findings,
     sections: [
       {
         title: 'Portfolio Business', rows: bizRows,
