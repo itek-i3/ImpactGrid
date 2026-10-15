@@ -154,8 +154,7 @@ export default function BusinessesPanel() {
   const handleDownloadReport = async () => {
     setExportingReport(true);
     try {
-      const ok = await downloadAcrCombinedReport({ agencyId, isDemo, agencyName });
-      if (!ok) toast.error('Pop-up blocked', 'Allow pop-ups for this site, then try again.');
+      await downloadAcrCombinedReport({ agencyId, isDemo, agencyName });
     } catch (err) {
       console.error(err);
       toast.error('Could not build report', err.message || 'Try again.');
