@@ -27,11 +27,29 @@ export async function fetchRegistryEntries({ agencyId, isDemo }) {
 
 // Renders a generic multi-section report as a standalone HTML document in a new
 // tab and opens the print dialog — "Save as PDF" there is the downloadable document.
-export function openPrintableReport({ title, subtitle, sections }) {
+// `summary` (optional) is a short list of headline stat tiles rendered as an
+// "Executive Summary" up top, before the detailed section tables — the part
+// that makes this read as a summary report rather than a raw data dump.
+export function openPrintableReport({ title, subtitle, summary, sections }) {
   const win = window.open('', '_blank');
   if (!win) return false;
 
   const generatedAt = new Date().toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const summaryHtml = summary?.length ? `
+    <section class="summary">
+      <h2>Executive Summary</h2>
+      <div class="stat-grid">
+        ${summary.map((s) => `
+          <div class="stat-tile">
+            <div class="stat-value">${esc(s.value)}</div>
+            <div class="stat-label">${esc(s.label)}</div>
+            ${s.note ? `<div class="stat-note">${esc(s.note)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  ` : '';
 
   const sectionsHtml = sections.map((sec) => `
     <section>
@@ -62,6 +80,13 @@ export function openPrintableReport({ title, subtitle, sections }) {
   h2 .count { font-size: 11px; font-weight: 700; color: #5B6577; background: #EEF1F7; border-radius: 999px; padding: 1px 9px; }
   .sec-sub { font-size: 11.5px; color: #5B6577; margin: 0 0 10px; }
   section { margin-bottom: 30px; }
+  section.summary { background: #F7F9FC; border: 1px solid #E2E6ED; border-radius: 10px; padding: 18px 20px 20px; }
+  section.summary h2 { margin-bottom: 14px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .stat-tile { background: #FFFFFF; border: 1px solid #E2E6ED; border-radius: 8px; padding: 12px 14px; }
+  .stat-value { font-size: 20px; font-weight: 800; color: #15213A; letter-spacing: -.01em; }
+  .stat-label { font-size: 10.5px; font-weight: 700; color: #5B6577; text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
+  .stat-note { font-size: 10.5px; color: #8A94A6; margin-top: 3px; }
   table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
   th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #E2E6ED; vertical-align: top; }
   th { background: #F5F7FA; font-weight: 700; color: #3A4256; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
@@ -71,6 +96,7 @@ export function openPrintableReport({ title, subtitle, sections }) {
   @media print {
     body { padding: 18px 24px; }
     section { page-break-inside: avoid; }
+    section.summary { background: #F7F9FC !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
@@ -82,6 +108,7 @@ export function openPrintableReport({ title, subtitle, sections }) {
     </div>
     <div class="meta">Generated ${esc(generatedAt)}</div>
   </header>
+  ${summaryHtml}
   ${sectionsHtml}
   <footer>ImpactGrid — ACR Agency</footer>
 </body>
@@ -93,12 +120,48 @@ export function openPrintableReport({ title, subtitle, sections }) {
   return true;
 }
 
+// Tallies how often each non-empty key (from keyFn) occurs, and returns the
+// most frequent one — used to build the Executive Summary's headline stats.
+function topEntry(list, keyFn) {
+  const counts = new Map();
+  list.forEach((item) => {
+    const k = keyFn(item);
+    if (!k) return;
+    counts.set(k, (counts.get(k) || 0) + 1);
+  });
+  let topKey = null, topCount = 0;
+  counts.forEach((c, k) => { if (c > topCount) { topKey = k; topCount = c; } });
+  return topKey ? { key: topKey, count: topCount } : null;
+}
+
 // Combines both rosters into the two-section report both panels link to.
 export async function downloadAcrCombinedReport({ agencyId, isDemo, agencyName }) {
   const [businesses, registryEntries] = await Promise.all([
     fetchPortfolioBusinesses({ agencyId, isDemo }),
     fetchRegistryEntries({ agencyId, isDemo }),
   ]);
+
+  // ── Executive summary — headline stats computed from both rosters ──
+  const managedCount = businesses.filter((b) => b.managed !== false).length;
+  const topSector = topEntry(businesses, (b) => b.sector);
+  const topIndustry = topEntry(registryEntries, (e) => e.industry);
+
+  const genders = registryEntries.map((e) => e.data?.identity?.ownerGender).filter(Boolean);
+  const femaleCount = genders.filter((g) => g === 'Female').length;
+  const femalePct = genders.length ? Math.round((femaleCount / genders.length) * 100) : null;
+
+  const trends = registryEntries.map((e) => e.data?.performance?.growthTrend).filter(Boolean);
+  const growingCount = trends.filter((t) => t === 'Growing').length;
+  const growingPct = trends.length ? Math.round((growingCount / trends.length) * 100) : null;
+
+  const summary = [
+    { label: 'Total Businesses Tracked', value: String(businesses.length + registryEntries.length) },
+    { label: 'Portfolio Business', value: String(businesses.length), note: `${managedCount} actively managed` },
+    { label: 'Data Registry', value: String(registryEntries.length), note: topIndustry ? `Leading industry: ${topIndustry.key}` : 'No entries yet' },
+    { label: 'On a Growth Trajectory', value: growingPct != null ? `${growingPct}%` : '—', note: trends.length ? `${growingCount} of ${trends.length} registry businesses` : 'No data recorded yet' },
+    { label: 'Female-Owned', value: femalePct != null ? `${femalePct}%` : '—', note: genders.length ? `${femaleCount} of ${genders.length} with gender recorded` : 'No data recorded yet' },
+    { label: 'Leading Portfolio Sector', value: topSector ? topSector.key : '—', note: topSector ? `${topSector.count} of ${businesses.length} businesses` : 'No entries yet' },
+  ];
 
   const bizRows = businesses.map((b) => [
     b.name || '—',
@@ -129,6 +192,7 @@ export async function downloadAcrCombinedReport({ agencyId, isDemo, agencyName }
   return openPrintableReport({
     title: 'ACR Business Report',
     subtitle: agencyName || 'ACR Agency',
+    summary,
     sections: [
       {
         title: 'Portfolio Business', rows: bizRows,
