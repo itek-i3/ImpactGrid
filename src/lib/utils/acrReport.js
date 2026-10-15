@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/client';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// TOIG's branded letterhead (corner graphics + watermark), served as a static
+// asset so the report's HTML stays small — not inlined as base64.
+const LETTERHEAD_URL = '/os/toig-letterhead.jpg';
+
 export async function fetchPortfolioBusinesses({ agencyId, isDemo }) {
   if (isDemo) {
     try { return JSON.parse(localStorage.getItem(`demo-biz-${agencyId || 'x'}`) || '[]'); } catch (_) { return []; }
@@ -86,8 +90,17 @@ export function openPrintableReport({ title, subtitle, summary, findings, sectio
 <title>${esc(title)}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; color: #15213A; margin: 0; padding: 36px 44px; }
-  header { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2px solid #15213A; padding-bottom: 14px; margin-bottom: 26px; }
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; color: #15213A; }
+  .letterhead-bg {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    background-image: url('${LETTERHEAD_URL}'); background-size: 100% 100%; background-repeat: no-repeat;
+    z-index: -1;
+  }
+  .page { padding: 205px 52px 165px; position: relative; }
+  .print-tip { font-size: 11px; color: #8A94A6; background: #FFF8E6; border: 1px solid #F0DFAE; border-radius: 8px; padding: 8px 12px; margin-bottom: 20px; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 12px; margin-bottom: 22px; border-bottom: 1px solid #E2E6ED; }
   h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.01em; }
   .sub { font-size: 12.5px; color: #5B6577; margin: 0; }
   .meta { text-align: right; font-size: 11px; color: #5B6577; }
@@ -95,10 +108,10 @@ export function openPrintableReport({ title, subtitle, summary, findings, sectio
   h2 .count { font-size: 11px; font-weight: 700; color: #5B6577; background: #EEF1F7; border-radius: 999px; padding: 1px 9px; }
   .sec-sub { font-size: 11.5px; color: #5B6577; margin: 0 0 10px; }
   section { margin-bottom: 30px; }
-  section.summary { background: #F7F9FC; border: 1px solid #E2E6ED; border-radius: 10px; padding: 18px 20px 20px; }
+  section.summary { background: rgba(247,249,252,0.9); border: 1px solid #E2E6ED; border-radius: 10px; padding: 18px 20px 20px; }
   section.summary h2 { margin-bottom: 14px; }
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .stat-tile { background: #FFFFFF; border: 1px solid #E2E6ED; border-radius: 8px; padding: 12px 14px; }
+  .stat-tile { background: rgba(255,255,255,0.92); border: 1px solid #E2E6ED; border-radius: 8px; padding: 12px 14px; }
   .stat-value { font-size: 20px; font-weight: 800; color: #15213A; letter-spacing: -.01em; }
   .stat-label { font-size: 10.5px; font-weight: 700; color: #5B6577; text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
   .stat-note { font-size: 10.5px; color: #8A94A6; margin-top: 3px; }
@@ -108,29 +121,35 @@ export function openPrintableReport({ title, subtitle, summary, findings, sectio
   .finding-text { font-size: 12px; line-height: 1.55; padding-top: 2px; color: #2A3348; }
   table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
   th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #E2E6ED; vertical-align: top; }
-  th { background: #F5F7FA; font-weight: 700; color: #3A4256; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
-  tr:nth-child(even) td { background: #FAFBFC; }
+  th { background: rgba(245,247,250,0.95); font-weight: 700; color: #3A4256; text-transform: uppercase; font-size: 10px; letter-spacing: .04em; }
+  tr:nth-child(even) td { background: rgba(250,251,252,0.85); }
   .empty { font-size: 12px; color: #8A94A6; font-style: italic; }
   footer { margin-top: 30px; font-size: 10.5px; color: #8A94A6; border-top: 1px solid #E2E6ED; padding-top: 10px; }
   @media print {
-    body { padding: 18px 24px; }
+    .print-tip { display: none; }
     section { page-break-inside: avoid; }
-    section.summary { background: #F7F9FC !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .letterhead-bg, section.summary, .stat-tile, th, tr:nth-child(even) td {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
   }
 </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>${esc(title)}</h1>
-      ${subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}
-    </div>
-    <div class="meta">Generated ${esc(generatedAt)}</div>
-  </header>
-  ${summaryHtml}
-  ${findingsHtml}
-  ${sectionsHtml}
-  <footer>ImpactGrid — ACR Agency</footer>
+  <div class="letterhead-bg" aria-hidden="true"></div>
+  <div class="page">
+    <p class="print-tip">Tip: in the print dialog, open "More settings" and enable "Background graphics" so the TOIG letterhead appears on the saved PDF.</p>
+    <header>
+      <div>
+        <h1>${esc(title)}</h1>
+        ${subtitle ? `<p class="sub">${esc(subtitle)}</p>` : ''}
+      </div>
+      <div class="meta">Generated ${esc(generatedAt)}</div>
+    </header>
+    ${summaryHtml}
+    ${findingsHtml}
+    ${sectionsHtml}
+    <footer>ImpactGrid — ACR Agency</footer>
+  </div>
 </body>
 </html>`);
   win.document.close();
