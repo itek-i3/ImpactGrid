@@ -15,6 +15,19 @@ const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currenc
 const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
 
 const BIZ_SECTORS = ['Services', 'FMCG', 'Real Estate', 'Agriculture'];
+
+// Every valuation type besides Earnings (SDE) — which always stays visible above,
+// since it drives the shared add-backs/SDE figure other methods also lean on.
+// Picking one here swaps in just that method's own inputs below.
+const OTHER_METHODS = [
+  { key: 'revenue', label: 'Revenue Multiple' },
+  { key: 'dcf', label: 'Discounted Cash Flow' },
+  { key: 'asset', label: 'Net Assets' },
+  { key: 'liquidation', label: 'Liquidation Value' },
+  { key: 'comparable', label: 'Comparable Sales' },
+  { key: 'ruleOfThumb', label: 'Rule of Thumb' },
+  { key: 'roi', label: 'ROI / Payback-based' },
+];
 const ADD_NEW_BIZ = '__add_new__';
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -74,6 +87,19 @@ export default function ValuationPanel() {
   
   const [assets, setAssets] = useState('');
   const [liabilities, setLiabilities] = useState('');
+
+  // Four more valuation types, alongside Earnings/Revenue/DCF/Net Assets above —
+  // every method is always computed so they can all be compared, and the picker
+  // below just controls which one's inputs are on screen.
+  const [liquidationRate, setLiquidationRate] = useState('70'); // % of book asset value recoverable in a quick sale
+  const [comparableSalePrice, setComparableSalePrice] = useState('');
+  const [comparableAdjustment, setComparableAdjustment] = useState('0'); // % up/down vs. the comparable
+  const [ruleOfThumbMultiple, setRuleOfThumbMultiple] = useState('2.5'); // x monthly revenue
+  const [ruleOfThumbEquipment, setRuleOfThumbEquipment] = useState('');
+  const [targetRoi, setTargetRoi] = useState('25'); // % — desired annual return
+
+  // Which of the "more valuation methods" is open for editing right now.
+  const [activeMethod, setActiveMethod] = useState('revenue');
 
   // Auto-detected add-backs selection state: { [logId_itemId]: boolean }
   const [enabledAddBacks, setEnabledAddBacks] = useState({});
@@ -280,6 +306,12 @@ export default function ValuationPanel() {
       setDcfYears(v.dcfYears != null ? String(v.dcfYears) : '5');
       setAssets(v.assets || '');
       setLiabilities(v.liabilities || '');
+      setLiquidationRate(v.liquidationRate != null ? String(v.liquidationRate) : '70');
+      setComparableSalePrice(v.comparableSalePrice || '');
+      setComparableAdjustment(v.comparableAdjustment != null ? String(v.comparableAdjustment) : '0');
+      setRuleOfThumbMultiple(v.ruleOfThumbMultiple != null ? String(v.ruleOfThumbMultiple) : '2.5');
+      setRuleOfThumbEquipment(v.ruleOfThumbEquipment || '');
+      setTargetRoi(v.targetRoi != null ? String(v.targetRoi) : '25');
     } else {
       // Defaults
       setManualSalary('');
@@ -298,8 +330,14 @@ export default function ValuationPanel() {
       setDcfYears('5');
       setAssets('');
       setLiabilities('');
+      setLiquidationRate('70');
+      setComparableSalePrice('');
+      setComparableAdjustment('0');
+      setRuleOfThumbMultiple('2.5');
+      setRuleOfThumbEquipment('');
+      setTargetRoi('25');
     }
-    
+
     // Reset enabled checkboxes
     setEnabledAddBacks({});
   }, [matchingEval, selectedBizId, effectiveAcqId]);
@@ -477,12 +515,35 @@ export default function ValuationPanel() {
     const liabilityVal = parseFinancialNumber(liabilities) ?? 0;
     const netAssetWorth = Math.max(0, assetVal - liabilityVal);
 
+    // ── Liquidation Value — a forced/quick sale: assets at a discount, minus liabilities ──
+    const liquidationRateVal = num(liquidationRate) > 0 ? num(liquidationRate) : 70;
+    const liquidationWorth = Math.max(0, assetVal * (liquidationRateVal / 100) - liabilityVal);
+
+    // ── Comparable Sales — a known recent sale price of a similar business, adjusted ──
+    const compBase = parseFinancialNumber(comparableSalePrice);
+    const compAdjPct = num(comparableAdjustment);
+    const comparableWorth = compBase !== null && compBase > 0 ? Math.round(compBase * (1 + compAdjPct / 100)) : 0;
+
+    // ── Rule of Thumb — an industry formula: a multiple of monthly revenue, plus equipment/inventory ──
+    const monthlyRevenue = stats.runRateRevenue / 12;
+    const rotMultVal = num(ruleOfThumbMultiple);
+    const rotEquip = parseFinancialNumber(ruleOfThumbEquipment) ?? 0;
+    const ruleOfThumbWorth = monthlyRevenue > 0 && rotMultVal > 0 ? Math.round(monthlyRevenue * rotMultVal + rotEquip) : 0;
+
+    // ── ROI / Payback-based — what a buyer would pay today for a target annual return ──
+    const targetRoiPct = num(targetRoi) > 0 ? num(targetRoi) : 25;
+    const roiWorth = stats.runRateNet > 0 ? Math.round(stats.runRateNet / (targetRoiPct / 100)) : 0;
+
     // ── Reconciliation ──
     const methods = [
       { key: 'earnings', label: 'Earnings Multiple (SDE)', value: earningsWorth },
       { key: 'revenue', label: 'Revenue Multiple', value: revenueWorth },
       { key: 'dcf', label: 'Discounted Cash Flow (DCF)', value: dcfWorth },
-      { key: 'asset', label: 'Net Assets Value', value: netAssetWorth }
+      { key: 'asset', label: 'Net Assets Value', value: netAssetWorth },
+      { key: 'liquidation', label: 'Liquidation Value', value: liquidationWorth },
+      { key: 'comparable', label: 'Comparable Sales', value: comparableWorth },
+      { key: 'ruleOfThumb', label: 'Rule of Thumb', value: ruleOfThumbWorth },
+      { key: 'roi', label: 'ROI / Payback-based', value: roiWorth },
     ];
 
     const vals = methods.map(m => m.value).filter(x => x > 0);
@@ -514,6 +575,10 @@ export default function ValuationPanel() {
       revenueWorth,
       dcfWorth,
       netAssetWorth,
+      liquidationWorth,
+      comparableWorth,
+      ruleOfThumbWorth,
+      roiWorth,
       methods,
       rangeLow,
       rangeHigh,
@@ -522,7 +587,7 @@ export default function ValuationPanel() {
       offerHigh,
       paybackMonths
     };
-  }, [stats, enabledAddBacks, manualSalary, manualPerks, manualOneOffs, manualDepreciation, manualInterest, sdeMultiple, revenueMultiple, dcfGrowth, dcfDiscount, dcfYears, assets, liabilities]);
+  }, [stats, enabledAddBacks, manualSalary, manualPerks, manualOneOffs, manualDepreciation, manualInterest, sdeMultiple, revenueMultiple, dcfGrowth, dcfDiscount, dcfYears, assets, liabilities, liquidationRate, comparableSalePrice, comparableAdjustment, ruleOfThumbMultiple, ruleOfThumbEquipment, targetRoi]);
 
   // Toggle checklist checkbox
   const toggleItem = (itemId) => {
@@ -593,7 +658,13 @@ export default function ValuationPanel() {
       dcfYears: Number(dcfYears),
       dcfTerminal: Number(sdeMultiple),
       assets: String(assets),
-      liabilities: String(liabilities)
+      liabilities: String(liabilities),
+      liquidationRate: Number(liquidationRate),
+      comparableSalePrice: String(comparableSalePrice),
+      comparableAdjustment: Number(comparableAdjustment),
+      ruleOfThumbMultiple: Number(ruleOfThumbMultiple),
+      ruleOfThumbEquipment: String(ruleOfThumbEquipment),
+      targetRoi: Number(targetRoi),
     };
 
     if (isDemo) {
@@ -1168,77 +1239,129 @@ export default function ValuationPanel() {
 
             </div>
 
-            {/* Other Valuation Approach Details */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-              
-              {/* Market Approach & DCF */}
-              <div style={cardStyle}>
-                <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 12 }}>DCF & Market Inputs</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div>
-                    <label style={labelStyle}>Revenue Multiple</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input 
-                        type="number" 
-                        step="0.1"
-                        min="0.1"
-                        value={revenueMultiple}
-                        onChange={(e) => setRevenueMultiple(e.target.value)}
-                        style={inputStyle}
-                      />
-                      <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>x</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div>
-                      <label style={labelStyle}>Growth Rate (%)</label>
-                      <input 
-                        type="number" 
-                        value={dcfGrowth}
-                        onChange={(e) => setDcfGrowth(e.target.value)}
-                        style={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Discount Rate (%)</label>
-                      <input 
-                        type="number" 
-                        value={dcfDiscount}
-                        onChange={(e) => setDcfDiscount(e.target.value)}
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
-                </div>
+            {/* More valuation methods — pick any to see/edit its own inputs */}
+            <div style={cardStyle}>
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>More valuation methods</h4>
+              <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginBottom: 14 }}>Every method below is already counted in the breakdown and range on the right — pick one here just to see or edit its own inputs.</div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                {OTHER_METHODS.map(m => (
+                  <button
+                    key={m.key}
+                    onClick={() => setActiveMethod(m.key)}
+                    style={{
+                      padding: '7px 13px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                      border: '1px solid', borderColor: activeMethod === m.key ? 'var(--color-accent-primary)' : 'var(--color-border)',
+                      background: activeMethod === m.key ? 'var(--color-accent-primary-subtle)' : 'rgba(255,255,255,0.02)',
+                      color: activeMethod === m.key ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                      transition: 'all 120ms ease',
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
 
-              {/* Asset Approach */}
-              <div style={cardStyle}>
-                <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 12 }}>Asset Approach</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {activeMethod === 'revenue' && (
+                <div>
+                  <label style={labelStyle}>Revenue Multiple</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" step="0.1" min="0.1" value={revenueMultiple} onChange={(e) => setRevenueMultiple(e.target.value)} style={inputStyle} />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>x annualized revenue</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>Market approach — a rough, fast cross-check against the earnings-based estimate.</div>
+                </div>
+              )}
+
+              {activeMethod === 'dcf' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Growth Rate (%)</label>
+                    <input type="number" value={dcfGrowth} onChange={(e) => setDcfGrowth(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Discount Rate (%)</label>
+                    <input type="number" value={dcfDiscount} onChange={(e) => setDcfDiscount(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--color-text-tertiary)' }}>Income approach — projects the SDE above forward and discounts it back to today&apos;s value.</div>
+                </div>
+              )}
+
+              {activeMethod === 'asset' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={labelStyle}>Total Assets Value</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 5,000,000"
-                      value={assets}
-                      onChange={(e) => setAssets(e.target.value)}
-                      style={inputStyle}
-                    />
+                    <input type="text" placeholder="e.g. 5,000,000" value={assets} onChange={(e) => setAssets(e.target.value)} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Total Liabilities</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 1,200,000"
-                      value={liabilities}
-                      onChange={(e) => setLiabilities(e.target.value)}
-                      style={inputStyle}
-                    />
+                    <input type="text" placeholder="e.g. 1,200,000" value={liabilities} onChange={(e) => setLiabilities(e.target.value)} style={inputStyle} />
                   </div>
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--color-text-tertiary)' }}>Asset approach — book value today: assets minus liabilities, as a going concern.</div>
+                </div>
+              )}
+
+              {activeMethod === 'liquidation' && (
+                <div>
+                  <label style={labelStyle}>Recoverable % of Asset Value in a Quick Sale</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" min="0" max="100" value={liquidationRate} onChange={(e) => setLiquidationRate(e.target.value)} style={inputStyle} />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>%</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>Uses the Total Assets/Liabilities figures from Net Assets above. Forced/quick-sale value, lower than Net Assets since it assumes a rushed sale — a worst-case floor, not a normal sale.</div>
+                </div>
+              )}
+
+              {activeMethod === 'comparable' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Known Sale Price of a Comparable Business</label>
+                    <input type="text" placeholder="e.g. 4,500,000" value={comparableSalePrice} onChange={(e) => setComparableSalePrice(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Adjustment (%)</label>
+                    <input type="number" placeholder="e.g. -10 if smaller" value={comparableAdjustment} onChange={(e) => setComparableAdjustment(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--color-text-tertiary)' }}>Market approach — based on an actual recent sale of a similar business, adjusted up or down for differences in size, location or condition.</div>
+                </div>
+              )}
+
+              {activeMethod === 'ruleOfThumb' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Multiple of Monthly Revenue</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="number" step="0.1" min="0" value={ruleOfThumbMultiple} onChange={(e) => setRuleOfThumbMultiple(e.target.value)} style={inputStyle} />
+                      <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>x</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Equipment / Inventory Value</label>
+                    <input type="text" placeholder="e.g. 300,000" value={ruleOfThumbEquipment} onChange={(e) => setRuleOfThumbEquipment(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--color-text-tertiary)' }}>The classic small-business formula: a multiple of monthly revenue, plus whatever equipment/inventory is worth on top.</div>
+                </div>
+              )}
+
+              {activeMethod === 'roi' && (
+                <div>
+                  <label style={labelStyle}>Target Annual Return</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" min="1" value={targetRoi} onChange={(e) => setTargetRoi(e.target.value)} style={inputStyle} />
+                    <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>%</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>What a buyer would pay today for Annualized Net Profit to equal this % return — a lower target ROI implies a higher price they&apos;d accept.</div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'rgba(48,108,236,0.06)', border: '1px solid rgba(48,108,236,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent-text, #7EB3FF)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Estimate — {OTHER_METHODS.find(m => m.key === activeMethod)?.label}</div>
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                  {money({ revenue: valuationResult.revenueWorth, dcf: valuationResult.dcfWorth, asset: valuationResult.netAssetWorth, liquidation: valuationResult.liquidationWorth, comparable: valuationResult.comparableWorth, ruleOfThumb: valuationResult.ruleOfThumbWorth, roi: valuationResult.roiWorth }[activeMethod])}
                 </div>
               </div>
-
             </div>
 
           </div>
