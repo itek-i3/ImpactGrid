@@ -42,6 +42,19 @@ const saveMeetingNotifs = (notifs) => {
   try { localStorage.setItem(MEETING_NOTIFS_KEY, JSON.stringify(notifs || {})); } catch {}
 };
 
+// Remembers which page/view was last open, per agency, so a browser refresh
+// lands back there instead of always on the Home dashboard.
+const LAST_LOCATION_PREFIX = 'impactgrid-last-location:';
+const lastLocationKey = (agencyId) => LAST_LOCATION_PREFIX + (agencyId || 'personal');
+const saveLastLocation = (agencyId, loc) => {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(lastLocationKey(agencyId), JSON.stringify(loc)); } catch {}
+};
+const loadLastLocation = (agencyId) => {
+  if (typeof window === 'undefined') return null;
+  try { return JSON.parse(localStorage.getItem(lastLocationKey(agencyId)) || 'null'); } catch { return null; }
+};
+
 /**
  * Workspace store — manages workspace state, page tree, and navigation.
  * In MVP/demo mode, uses local state. When Supabase is connected,
@@ -132,11 +145,31 @@ export const useWorkspaceStore = create((set, get) => ({
   },
   setPages: (pages) => set({ pages }),
 
-  setCurrentPage: (page) => set({ currentPage: page, currentView: null }),
+  setCurrentPage: (page) => {
+    set({ currentPage: page, currentView: null });
+    saveLastLocation(get().activeAgencyId, { view: null, pageId: page?.id || null });
+  },
 
   // In-shell views that aren't pages (e.g. Acquisition). Clears the open page
   // so the workspace content area renders the view instead.
-  setCurrentView: (view) => set({ currentView: view, currentPage: null }),
+  setCurrentView: (view) => {
+    set({ currentView: view, currentPage: null });
+    saveLastLocation(get().activeAgencyId, { view, pageId: null });
+  },
+
+  // Reopens whatever page/view was last open in this agency before a reload —
+  // called once pages are loaded (real mode) or a demo workspace is ready, so a
+  // refresh lands back where you were instead of always on the Home dashboard.
+  restoreLastLocation: () => {
+    const loc = loadLastLocation(get().activeAgencyId);
+    if (!loc) return;
+    if (loc.view) {
+      set({ currentView: loc.view, currentPage: null });
+    } else if (loc.pageId) {
+      const page = get().pages.find((p) => p.id === loc.pageId);
+      if (page) set({ currentPage: page, currentView: null });
+    }
+  },
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -344,9 +377,10 @@ export const useWorkspaceStore = create((set, get) => ({
 
       const pages = [...activePages, ...archivedPages].map(mapPageFromDb);
       set({ pages });
-      // currentPage/currentView are intentionally left as-is here (both start
-      // null) so a fresh load lands on the Home dashboard rather than
-      // auto-opening whatever page happens to sort first.
+      // Reopen whatever page/view was last open in this agency (a browser
+      // refresh should land back there, not always on the Home dashboard).
+      // Falls through to Home if nothing was saved or the saved page is gone.
+      get().restoreLastLocation();
     } catch (e) {
       console.error('Failed to load workspace:', e);
     } finally {
@@ -835,6 +869,10 @@ export const useWorkspaceStore = create((set, get) => ({
       workspaces: [workspace],
       pages: demoPages,
     });
+    // Demo pages get fresh ids each load, so only the view (not a page) can
+    // realistically be restored here — still enough to land back on whatever
+    // in-shell tab (Acquisition, Finance Log, ...) was last open.
+    get().restoreLastLocation();
 
     return { workspace, pages: demoPages };
   },
