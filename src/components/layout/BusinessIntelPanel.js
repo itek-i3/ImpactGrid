@@ -37,7 +37,7 @@ function buildSampleEntries() {
           employeeCount: '4 full-time, 2 part-time', locationCount: '1', operatingModel: 'Owner-operated',
           suppliers: 'Detergent Africa Ltd (wholesale detergent), local hardware store for equipment parts',
           customerSegments: 'Middle-income households within 3km, two boutique hotels on standing contracts',
-          currentSystems: 'WhatsApp Business for orders, a physical logbook for daily revenue, M-Pesa for payments',
+          currentSystems: 'WhatsApp Business, Paper ledger / logbook, M-Pesa / mobile money',
         },
         performance: {
           revenueRange: 'KES 200K–500K/mo', customerVolume: '~350 orders/month',
@@ -87,7 +87,7 @@ function buildSampleEntries() {
           employeeCount: '12 full-time, 3 part-time', locationCount: '2', operatingModel: 'Manager-run',
           suppliers: 'Local produce farmers (direct), Bidco, Unga Group, regional wholesalers',
           customerSegments: 'Nearby households, small hotels and eateries buying in bulk',
-          currentSystems: 'A basic POS system at each till, Excel for stock reconciliation',
+          currentSystems: 'POS system, Excel / spreadsheets',
         },
         performance: {
           revenueRange: 'KES 1M–5M/mo', customerVolume: '~1,200 transactions/week across both branches',
@@ -137,7 +137,7 @@ function buildSampleEntries() {
           employeeCount: '6 permanent, up to 20 seasonal during harvest', locationCount: '1 (12-acre farm)', operatingModel: 'Family-run',
           suppliers: 'Agrovet for seeds/inputs, a local exporter aggregator for produce pickup',
           customerSegments: 'Export aggregator (bulk), local market traders for poultry',
-          currentSystems: 'None — all planning done by memory and a paper planting calendar',
+          currentSystems: 'None',
         },
         performance: {
           revenueRange: 'KES 50K–200K/mo', customerVolume: '',
@@ -210,6 +210,21 @@ const INFRA_AREAS = [
   { key: 'customerMgmt', label: 'Customer Management' },
   { key: 'recordKeeping', label: 'Record Keeping' },
 ];
+
+// Worked examples for the infrastructure note field — one per area, so the
+// placeholder shows what a filled-in answer actually looks like instead of
+// just restating the question.
+const INFRA_NOTE_EXAMPLES = {
+  operations: 'e.g. A daily opening/closing checklist',
+  finance: 'e.g. M-Pesa statements and a paper cash book',
+  marketing: 'e.g. WhatsApp Status and word of mouth',
+  sales: 'e.g. A notebook to log daily sales',
+  technology: 'e.g. One shared smartphone for till & orders',
+  hr: 'e.g. Verbal agreements, no written contracts',
+  governance: 'e.g. No formal structure — owner decides everything',
+  customerMgmt: "e.g. Phone numbers saved in the owner's contacts",
+  recordKeeping: 'e.g. Receipts kept in a box, no digital records',
+};
 const INFRA_LEVELS = [
   { key: 'none', label: 'None' },
   { key: 'informal', label: 'Informal' },
@@ -218,6 +233,8 @@ const INFRA_LEVELS = [
 ];
 
 const CHALLENGES = ['Customer acquisition', 'Cash flow', 'Operations', 'Staffing', 'Technology', 'Marketing', 'Distribution', 'Capital', 'Management', 'Compliance', 'Market access'];
+
+const CURRENT_TECH_OPTIONS = ['M-Pesa / mobile money', 'POS system', 'WhatsApp Business', 'Paper ledger / logbook', 'Excel / spreadsheets', 'Accounting software', 'Social media (Instagram/Facebook)', 'Website', 'None'];
 
 const GROWTH_NEEDS = [
   { key: 'i3Launchpad', name: 'I3 Launchpad', desc: 'Business growth and operational systems' },
@@ -270,7 +287,6 @@ const STEPS = [
   { key: 'challenges', icon: AlertTriangle, label: 'Challenges', title: 'Challenges', desc: 'Select everything that is holding the business back.' },
   { key: 'growth', icon: Rocket, label: 'Growth needs', title: 'Growth needs', desc: 'Where TOIG support could help this business most.' },
 ];
-const STEP_INDEX = Object.fromEntries(STEPS.map((st, i) => [st.key, i]));
 
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
@@ -278,6 +294,12 @@ const STEP_INDEX = Object.fromEntries(STEPS.map((st, i) => [st.key, i]));
 const IDENTITY_FIELD_COUNT = 15;
 const OPERATIONS_FIELD_COUNT = 7;
 const PERFORMANCE_FIELD_COUNT = 6;
+
+// Every field in these two sections is required (unlike Identity, where only
+// the business name is) — the Operations/Performance steps can't be left
+// until all of them are filled.
+const OPERATIONS_REQUIRED = ['productsServices', 'employeeCount', 'locationCount', 'operatingModel', 'suppliers', 'customerSegments', 'currentSystems'];
+const PERFORMANCE_REQUIRED = ['revenueRange', 'customerVolume', 'revenueStreams', 'operatingExpenses', 'growthTrend', 'financialChallenges'];
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
@@ -441,6 +463,19 @@ function Field({ label, value, onChange, verification, onVerify, type = 'text', 
           </select>
         ) : type === 'textarea' ? (
           <textarea className={`biz-input biz-textarea${errClass}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows || 2} />
+        ) : type === 'checkboxes' ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {options.map((o) => {
+              const list = (value || '').split(',').map((s) => s.trim()).filter(Boolean);
+              const active = list.includes(o);
+              const toggle = () => onChange((active ? list.filter((k) => k !== o) : [...list, o]).join(', '));
+              return (
+                <button key={o} type="button" onClick={toggle} className={`biz-pill${active ? ' active' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  {active ? <CheckCircle2 size={12} /> : <Circle size={12} />} {o}
+                </button>
+              );
+            })}
+          </div>
         ) : (
           <input className={`biz-input${errClass}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-invalid={!!error} />
         )}
@@ -451,11 +486,11 @@ function Field({ label, value, onChange, verification, onVerify, type = 'text', 
   );
 }
 
-function InfraRow({ area, value, onChange, verification, onVerify, half }) {
+function InfraRow({ area, value, onChange, verification, onVerify, half, error }) {
   const v = value || { level: '', note: '' };
   return (
     <div className={`biz-row${half ? ' biz-half' : ''}`}>
-      <label className="biz-row-label">{area.label}</label>
+      <label className="biz-row-label">{area.label}<span className="biz-req" aria-hidden="true"> *</span></label>
       <div className="biz-row-control">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {INFRA_LEVELS.map((lv) => (
@@ -464,7 +499,8 @@ function InfraRow({ area, value, onChange, verification, onVerify, half }) {
             </button>
           ))}
         </div>
-        <input className="biz-input" style={{ marginTop: 8 }} placeholder="What do they use, if anything? (optional)" value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
+        <input className="biz-input" style={{ marginTop: 8 }} placeholder={INFRA_NOTE_EXAMPLES[area.key] || 'e.g. What they use, if anything'} value={v.note} onChange={(e) => onChange({ ...v, note: e.target.value })} />
+        {error && <div className="biz-field-error">Pick a level for this area.</div>}
       </div>
       {v.level && <VerificationBadge value={verification} onChange={onVerify} />}
     </div>
@@ -866,6 +902,16 @@ export default function BusinessIntelPanel() {
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState(false);
   const [registeredByError, setRegisteredByError] = useState(false);
+  // Required-field errors for Operations/Performance/Infrastructure/Challenges,
+  // keyed by e.g. "operations.productsServices" or "infrastructure.finance" or
+  // "challenges" — one flag object instead of a state var per field.
+  const [fieldErrors, setFieldErrors] = useState({});
+  const clearFieldError = (key) => setFieldErrors((e) => {
+    if (!e[key]) return e;
+    const next = { ...e };
+    delete next[key];
+    return next;
+  });
   const [activeSection, setActiveSection] = useState('registration');
   const wizardRef = useRef(null);
   // Who created each record, { userId: name } — used to fill "Registered by" on
@@ -1125,13 +1171,22 @@ export default function BusinessIntelPanel() {
     try { await createClient().from('toig_business_registry').delete().eq('id', id); } catch (err) { console.error(err); }
   };
 
-  const setField = (section, key, value) => setProfile((p) => ({ ...p, [section]: { ...p[section], [key]: value } }));
+  const setField = (section, key, value) => {
+    setProfile((p) => ({ ...p, [section]: { ...p[section], [key]: value } }));
+    clearFieldError(`${section}.${key}`);
+  };
   const setVerify = (path, level) => setProfile((p) => ({ ...p, verification: { ...p.verification, [path]: level } }));
-  const setInfra = (areaKey, value) => setProfile((p) => ({ ...p, infrastructure: { ...p.infrastructure, [areaKey]: value } }));
-  const toggleChallenge = (key) => setProfile((p) => {
-    const has = p.challenges.selected.includes(key);
-    return { ...p, challenges: { ...p.challenges, selected: has ? p.challenges.selected.filter((k) => k !== key) : [...p.challenges.selected, key] } };
-  });
+  const setInfra = (areaKey, value) => {
+    setProfile((p) => ({ ...p, infrastructure: { ...p.infrastructure, [areaKey]: value } }));
+    if (value?.level) clearFieldError(`infrastructure.${areaKey}`);
+  };
+  const toggleChallenge = (key) => {
+    setProfile((p) => {
+      const has = p.challenges.selected.includes(key);
+      return { ...p, challenges: { ...p.challenges, selected: has ? p.challenges.selected.filter((k) => k !== key) : [...p.challenges.selected, key] } };
+    });
+    clearFieldError('challenges');
+  };
   const toggleGrowthNeed = (key) => setProfile((p) => {
     const has = p.growthNeeds.selected.includes(key);
     return { ...p, growthNeeds: { ...p.growthNeeds, selected: has ? p.growthNeeds.selected.filter((k) => k !== key) : [...p.growthNeeds.selected, key] } };
@@ -1145,13 +1200,51 @@ export default function BusinessIntelPanel() {
   const isLastStep = stepIndex === STEPS.length - 1;
   const StepIcon = STEPS[stepIndex].icon;
 
-  // Each required field gates moving past its own step: "Registered by" leaves
-  // Registration, the business name leaves Identity. Going back is never blocked
-  // by a later step, and a jump ahead stops at the first step still incomplete.
+  // Checks whether one step's required fields are all filled, flagging whichever
+  // are missing (Registration and Identity each have one required field of their
+  // own; Operations/Performance require every field; Infrastructure requires a
+  // level for every area; Challenges requires at least one pick).
+  const validateStep = (key) => {
+    if (key === 'registration') {
+      const ok = !!profile.registeredBy.trim();
+      if (!ok) setRegisteredByError(true);
+      return ok;
+    }
+    if (key === 'identity') {
+      const ok = !!profile.name.trim();
+      if (!ok) setNameError(true);
+      return ok;
+    }
+    if (key === 'operations') {
+      const missing = OPERATIONS_REQUIRED.filter((f) => !profile.operations[f]?.toString().trim());
+      if (missing.length) setFieldErrors((e) => ({ ...e, ...Object.fromEntries(missing.map((f) => [`operations.${f}`, true])) }));
+      return missing.length === 0;
+    }
+    if (key === 'performance') {
+      const missing = PERFORMANCE_REQUIRED.filter((f) => !profile.performance[f]?.toString().trim());
+      if (missing.length) setFieldErrors((e) => ({ ...e, ...Object.fromEntries(missing.map((f) => [`performance.${f}`, true])) }));
+      return missing.length === 0;
+    }
+    if (key === 'infrastructure') {
+      const missing = INFRA_AREAS.filter((a) => !profile.infrastructure[a.key]?.level).map((a) => a.key);
+      if (missing.length) setFieldErrors((e) => ({ ...e, ...Object.fromEntries(missing.map((k) => [`infrastructure.${k}`, true])) }));
+      return missing.length === 0;
+    }
+    if (key === 'challenges') {
+      const ok = profile.challenges.selected.length > 0;
+      if (!ok) setFieldErrors((e) => ({ ...e, challenges: true }));
+      return ok;
+    }
+    return true; // 'growth' has no required fields
+  };
+
+  // A jump ahead (Next, or the Stepper) stops at the first step still
+  // incomplete. Going back is never blocked by a later step.
   const goToStep = (i) => {
     const target = Math.max(0, Math.min(STEPS.length - 1, i));
-    if (target > STEP_INDEX.registration && !profile.registeredBy.trim()) { setRegisteredByError(true); setActiveSection('registration'); focusFirstError(wizardRef); return; }
-    if (target > STEP_INDEX.identity && !profile.name.trim()) { setNameError(true); setActiveSection('identity'); focusFirstError(wizardRef); return; }
+    for (let idx = 0; idx < target; idx++) {
+      if (!validateStep(STEPS[idx].key)) { setActiveSection(STEPS[idx].key); focusFirstError(wizardRef); return; }
+    }
     setActiveSection(STEPS[target].key);
     requestAnimationFrame(() => {
       const el = wizardRef.current;
@@ -1160,17 +1253,23 @@ export default function BusinessIntelPanel() {
   };
 
   const handleSaveProfile = async () => {
-    const name = profile.name.trim();
-    const registeredBy = profile.registeredBy.trim();
-    if (!name || !registeredBy) {
-      setNameError(!name);
-      setRegisteredByError(!registeredBy);
-      setActiveSection(registeredBy ? 'identity' : 'registration');
+    // An existing record can be saved from any step (not just the last), so
+    // every required step is checked here too, not just the ones already
+    // paged through via goToStep.
+    const stepsToCheck = ['registration', 'identity', 'operations', 'performance', 'infrastructure', 'challenges'];
+    let firstInvalid = null;
+    for (const key of stepsToCheck) {
+      if (!validateStep(key) && !firstInvalid) firstInvalid = key;
+    }
+    if (firstInvalid) {
+      setActiveSection(firstInvalid);
       focusFirstError(wizardRef);
       return;
     }
     setNameError(false);
     setRegisteredByError(false);
+    const name = profile.name.trim();
+    const registeredBy = profile.registeredBy.trim();
     if (!isDemo && !agencyId) return;
     setSaving(true);
     // location keeps its old "Area, City" display shape (used in the record list
@@ -1255,8 +1354,8 @@ export default function BusinessIntelPanel() {
 
   const registrationFields = (
     <div className="biz-proplist">
-      <Field label="Registered by" required value={profile.registeredBy} onChange={(v) => { setProfile((p) => ({ ...p, registeredBy: v })); if (registeredByError) setRegisteredByError(false); }} placeholder="Name of the person who registered this business" error={registeredByError ? 'Registered by is required.' : undefined} />
-      <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="Anything else worth recording — not shared with the business (TOIG team only)" />
+      <Field label="Registered by" required value={profile.registeredBy} onChange={(v) => { setProfile((p) => ({ ...p, registeredBy: v })); if (registeredByError) setRegisteredByError(false); }} placeholder="e.g. Jane Wanjiru" error={registeredByError ? 'Registered by is required.' : undefined} />
+      <Field label="Internal notes" type="textarea" rows={3} value={profile.internalNotes} onChange={(v) => setProfile((p) => ({ ...p, internalNotes: v }))} placeholder="e.g. Owner was reluctant to share exact revenue — worth a follow-up visit" />
     </div>
   );
 
@@ -1265,7 +1364,7 @@ export default function BusinessIntelPanel() {
       {sectionKey === 'identity' && (
         <div className="biz-proplist">
           <Field label="Business name" value={profile.name} onChange={(v) => { setProfile((p) => ({ ...p, name: v })); if (nameError) setNameError(false); }} verification={profile.verification['identity.businessName']} onVerify={(v) => setVerify('identity.businessName', v)} placeholder="e.g. Sunshine Laundromat" required error={nameError ? 'Business name is required.' : undefined} />
-          <Field half label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="Full name" />
+          <Field half label="Owner / founder" value={profile.identity.ownerName} onChange={(v) => setField('identity', 'ownerName', v)} verification={profile.verification['identity.ownerName']} onVerify={(v) => setVerify('identity.ownerName', v)} placeholder="e.g. Jane Wanjiru" />
           <Field half label="Owner gender" type="select" options={GENDERS} value={profile.identity.ownerGender} onChange={(v) => setField('identity', 'ownerGender', v)} verification={profile.verification['identity.ownerGender']} onVerify={(v) => setVerify('identity.ownerGender', v)} />
           <Field half label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
           <Field half label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
@@ -1283,8 +1382,8 @@ export default function BusinessIntelPanel() {
           <Field half label="Industry" value={profile.industry} onChange={(v) => setProfile((p) => ({ ...p, industry: v }))} verification={profile.verification['identity.industry']} onVerify={(v) => setVerify('identity.industry', v)} placeholder="e.g. Laundry & garment care" />
           <Field half label="Year established" value={profile.identity.yearEstablished} onChange={(v) => setField('identity', 'yearEstablished', v)} verification={profile.verification['identity.yearEstablished']} onVerify={(v) => setVerify('identity.yearEstablished', v)} placeholder="e.g. 2021" />
           <Field half label="Registration status" type="select" options={REG_STATUS} value={profile.identity.registrationStatus} onChange={(v) => setField('identity', 'registrationStatus', v)} verification={profile.verification['identity.registrationStatus']} onVerify={(v) => setVerify('identity.registrationStatus', v)} />
-          <Field half label="Business phone" value={profile.identity.businessPhone} onChange={(v) => setField('identity', 'businessPhone', v)} verification={profile.verification['identity.businessPhone']} onVerify={(v) => setVerify('identity.businessPhone', v)} placeholder="General business line" />
-          <Field half label="Business email" value={profile.identity.businessEmail} onChange={(v) => setField('identity', 'businessEmail', v)} verification={profile.verification['identity.businessEmail']} onVerify={(v) => setVerify('identity.businessEmail', v)} placeholder="General business email" />
+          <Field half label="Business phone" value={profile.identity.businessPhone} onChange={(v) => setField('identity', 'businessPhone', v)} verification={profile.verification['identity.businessPhone']} onVerify={(v) => setVerify('identity.businessPhone', v)} placeholder="e.g. 020 123 4567" />
+          <Field half label="Business email" value={profile.identity.businessEmail} onChange={(v) => setField('identity', 'businessEmail', v)} verification={profile.verification['identity.businessEmail']} onVerify={(v) => setVerify('identity.businessEmail', v)} placeholder="e.g. info@sunshinelaundry.co.ke" />
           <Field
             half label="Has a website?" type="select" options={['Yes', 'No']} value={profile.identity.hasWebsite}
             onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, hasWebsite: v, website: v === 'Yes' ? p.identity.website : '' } }))}
@@ -1298,24 +1397,24 @@ export default function BusinessIntelPanel() {
 
       {sectionKey === 'operations' && (
         <div className="biz-proplist">
-          <Field label="Products & services" type="textarea" value={profile.operations.productsServices} onChange={(v) => setField('operations', 'productsServices', v)} verification={profile.verification['operations.productsServices']} onVerify={(v) => setVerify('operations.productsServices', v)} placeholder="What does the business sell or offer?" />
-          <Field half label="Employees" value={profile.operations.employeeCount} onChange={(v) => setField('operations', 'employeeCount', v)} verification={profile.verification['operations.employeeCount']} onVerify={(v) => setVerify('operations.employeeCount', v)} placeholder="e.g. 5 full-time, 2 part-time" />
-          <Field half label="Locations" value={profile.operations.locationCount} onChange={(v) => setField('operations', 'locationCount', v)} verification={profile.verification['operations.locationCount']} onVerify={(v) => setVerify('operations.locationCount', v)} placeholder="e.g. 1" />
-          <Field label="Operating model" type="select" options={OPERATING_MODELS} value={profile.operations.operatingModel} onChange={(v) => setField('operations', 'operatingModel', v)} verification={profile.verification['operations.operatingModel']} onVerify={(v) => setVerify('operations.operatingModel', v)} />
-          <Field half label="Suppliers" type="textarea" value={profile.operations.suppliers} onChange={(v) => setField('operations', 'suppliers', v)} verification={profile.verification['operations.suppliers']} onVerify={(v) => setVerify('operations.suppliers', v)} placeholder="Key suppliers or vendors relied on" />
-          <Field half label="Customer segments" type="textarea" value={profile.operations.customerSegments} onChange={(v) => setField('operations', 'customerSegments', v)} verification={profile.verification['operations.customerSegments']} onVerify={(v) => setVerify('operations.customerSegments', v)} placeholder="Who buys from this business?" />
-          <Field label="Current tech & systems" type="textarea" value={profile.operations.currentSystems} onChange={(v) => setField('operations', 'currentSystems', v)} verification={profile.verification['operations.currentSystems']} onVerify={(v) => setVerify('operations.currentSystems', v)} placeholder="Any tools/software used day to day (POS, bookkeeping app, etc.)" />
+          <Field required label="Products & services" type="textarea" value={profile.operations.productsServices} onChange={(v) => setField('operations', 'productsServices', v)} verification={profile.verification['operations.productsServices']} onVerify={(v) => setVerify('operations.productsServices', v)} placeholder="e.g. Wash, dry & iron laundry for households and small hotels — solves the lack of a nearby service that can handle bulk orders on short notice" error={fieldErrors['operations.productsServices'] ? 'Required.' : undefined} />
+          <Field required half label="Employees" value={profile.operations.employeeCount} onChange={(v) => setField('operations', 'employeeCount', v)} verification={profile.verification['operations.employeeCount']} onVerify={(v) => setVerify('operations.employeeCount', v)} placeholder="e.g. 5 full-time, 2 part-time" error={fieldErrors['operations.employeeCount'] ? 'Required.' : undefined} />
+          <Field required half label="Locations" value={profile.operations.locationCount} onChange={(v) => setField('operations', 'locationCount', v)} verification={profile.verification['operations.locationCount']} onVerify={(v) => setVerify('operations.locationCount', v)} placeholder="e.g. 1" error={fieldErrors['operations.locationCount'] ? 'Required.' : undefined} />
+          <Field required label="Operating model" type="select" options={OPERATING_MODELS} value={profile.operations.operatingModel} onChange={(v) => setField('operations', 'operatingModel', v)} verification={profile.verification['operations.operatingModel']} onVerify={(v) => setVerify('operations.operatingModel', v)} error={fieldErrors['operations.operatingModel'] ? 'Required.' : undefined} />
+          <Field required half label="Suppliers" type="textarea" value={profile.operations.suppliers} onChange={(v) => setField('operations', 'suppliers', v)} verification={profile.verification['operations.suppliers']} onVerify={(v) => setVerify('operations.suppliers', v)} placeholder="e.g. Soko Detergents Ltd, local water vendor" error={fieldErrors['operations.suppliers'] ? 'Required.' : undefined} />
+          <Field required half label="Customer segments" type="textarea" value={profile.operations.customerSegments} onChange={(v) => setField('operations', 'customerSegments', v)} verification={profile.verification['operations.customerSegments']} onVerify={(v) => setVerify('operations.customerSegments', v)} placeholder="e.g. Nearby households, small hotels & Airbnbs" error={fieldErrors['operations.customerSegments'] ? 'Required.' : undefined} />
+          <Field required label="Current tech & systems" type="checkboxes" options={CURRENT_TECH_OPTIONS} value={profile.operations.currentSystems} onChange={(v) => setField('operations', 'currentSystems', v)} verification={profile.verification['operations.currentSystems']} onVerify={(v) => setVerify('operations.currentSystems', v)} error={fieldErrors['operations.currentSystems'] ? 'Pick at least one.' : undefined} />
         </div>
       )}
 
       {sectionKey === 'performance' && (
         <div className="biz-proplist">
-          <Field half label="Revenue range" value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} placeholder="e.g. KES 120,000/mo" />
-          <Field half label="Customer volume" value={profile.performance.customerVolume} onChange={(v) => setField('performance', 'customerVolume', v)} verification={profile.verification['performance.customerVolume']} onVerify={(v) => setVerify('performance.customerVolume', v)} placeholder="e.g. ~200 customers/month" />
-          <Field half label="Major revenue streams" type="textarea" value={profile.performance.revenueStreams} onChange={(v) => setField('performance', 'revenueStreams', v)} verification={profile.verification['performance.revenueStreams']} onVerify={(v) => setVerify('performance.revenueStreams', v)} />
-          <Field half label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} />
-          <Field label="Growth trend" type="select" options={GROWTH_TRENDS} value={profile.performance.growthTrend} onChange={(v) => setField('performance', 'growthTrend', v)} verification={profile.verification['performance.growthTrend']} onVerify={(v) => setVerify('performance.growthTrend', v)} />
-          <Field label="Financial challenges" type="textarea" value={profile.performance.financialChallenges} onChange={(v) => setField('performance', 'financialChallenges', v)} verification={profile.verification['performance.financialChallenges']} onVerify={(v) => setVerify('performance.financialChallenges', v)} />
+          <Field required half label="Revenue range" value={profile.performance.revenueRange} onChange={(v) => setField('performance', 'revenueRange', v)} verification={profile.verification['performance.revenueRange']} onVerify={(v) => setVerify('performance.revenueRange', v)} placeholder="e.g. KES 120,000/mo" error={fieldErrors['performance.revenueRange'] ? 'Required.' : undefined} />
+          <Field required half label="Customer volume" value={profile.performance.customerVolume} onChange={(v) => setField('performance', 'customerVolume', v)} verification={profile.verification['performance.customerVolume']} onVerify={(v) => setVerify('performance.customerVolume', v)} placeholder="e.g. ~200 customers/month" error={fieldErrors['performance.customerVolume'] ? 'Required.' : undefined} />
+          <Field required half label="Major revenue streams" type="textarea" value={profile.performance.revenueStreams} onChange={(v) => setField('performance', 'revenueStreams', v)} verification={profile.verification['performance.revenueStreams']} onVerify={(v) => setVerify('performance.revenueStreams', v)} placeholder="e.g. Walk-in sales, M-Pesa till, delivery orders" error={fieldErrors['performance.revenueStreams'] ? 'Required.' : undefined} />
+          <Field required half label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} placeholder="e.g. Rent, staff wages, water & electricity" error={fieldErrors['performance.operatingExpenses'] ? 'Required.' : undefined} />
+          <Field required label="Growth trend" type="select" options={GROWTH_TRENDS} value={profile.performance.growthTrend} onChange={(v) => setField('performance', 'growthTrend', v)} verification={profile.verification['performance.growthTrend']} onVerify={(v) => setVerify('performance.growthTrend', v)} error={fieldErrors['performance.growthTrend'] ? 'Required.' : undefined} />
+          <Field required label="Financial challenges" type="textarea" value={profile.performance.financialChallenges} onChange={(v) => setField('performance', 'financialChallenges', v)} verification={profile.verification['performance.financialChallenges']} onVerify={(v) => setVerify('performance.financialChallenges', v)} placeholder="e.g. Irregular cash flow, high cost of raw materials" error={fieldErrors['performance.financialChallenges'] ? 'Required.' : undefined} />
         </div>
       )}
 
@@ -1327,6 +1426,7 @@ export default function BusinessIntelPanel() {
               onChange={(v) => setInfra(area.key, v)}
               verification={profile.verification[`infrastructure.${area.key}`]}
               onVerify={(v) => setVerify(`infrastructure.${area.key}`, v)}
+              error={fieldErrors[`infrastructure.${area.key}`]}
             />
           ))}
         </div>
@@ -1334,6 +1434,9 @@ export default function BusinessIntelPanel() {
 
       {sectionKey === 'challenges' && (
         <div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+            Select at least one<span className="biz-req" aria-hidden="true"> *</span>
+          </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {CHALLENGES.map((c) => {
               const active = profile.challenges.selected.includes(c);
@@ -1344,8 +1447,9 @@ export default function BusinessIntelPanel() {
               );
             })}
           </div>
+          {fieldErrors.challenges && <div className="biz-field-error" style={{ marginTop: 6 }}>Select at least one challenge.</div>}
           <div className="biz-proplist" style={{ marginTop: 8 }}>
-            <Field label="Other / details" type="textarea" value={profile.challenges.other} onChange={(v) => setProfile((p) => ({ ...p, challenges: { ...p.challenges, other: v } }))} placeholder="Anything not covered above, or more detail on the ones selected" />
+            <Field label="Other / details" type="textarea" value={profile.challenges.other} onChange={(v) => setProfile((p) => ({ ...p, challenges: { ...p.challenges, other: v } }))} placeholder="e.g. Landlord raised rent mid-lease with no notice" />
           </div>
         </div>
       )}
@@ -1367,7 +1471,7 @@ export default function BusinessIntelPanel() {
             })}
           </div>
           <div className="biz-proplist" style={{ marginTop: 12 }}>
-            <Field label="Growth notes" type="textarea" value={profile.growthNeeds.notes} onChange={(v) => setProfile((p) => ({ ...p, growthNeeds: { ...p.growthNeeds, notes: v } }))} placeholder="Opportunities, partnerships or next steps to explore with this business" />
+            <Field label="Growth notes" type="textarea" value={profile.growthNeeds.notes} onChange={(v) => setProfile((p) => ({ ...p, growthNeeds: { ...p.growthNeeds, notes: v } }))} placeholder="e.g. Could add pickup & delivery if given a motorbike" />
           </div>
         </div>
       )}
@@ -1385,6 +1489,15 @@ export default function BusinessIntelPanel() {
       </div>
     );
   }
+
+  const incompleteSteps = [
+    registeredByError && 'Registration',
+    nameError && 'Identity',
+    Object.keys(fieldErrors).some((k) => k.startsWith('operations.')) && 'Operations',
+    Object.keys(fieldErrors).some((k) => k.startsWith('performance.')) && 'Performance',
+    Object.keys(fieldErrors).some((k) => k.startsWith('infrastructure.')) && 'Infrastructure',
+    fieldErrors.challenges && 'Challenges',
+  ].filter(Boolean);
 
   return (
     <div style={{ maxWidth: view === 'detail' ? 1120 : 960, margin: '0 auto', padding: isMobile ? '14px 12px 60px' : '16px 16px 60px' }}>
@@ -1572,13 +1685,9 @@ export default function BusinessIntelPanel() {
             </div>
           )}
 
-          {!isViewOnly && (nameError || registeredByError) && (
+          {!isViewOnly && incompleteSteps.length > 0 && (
             <div className="biz-notice error">
-              {nameError && registeredByError
-                ? 'Add who registered this business (Registration step) and a business name (Identity step) to continue.'
-                : nameError
-                  ? 'Give it a business name in the Identity step to continue.'
-                  : 'Add who registered this business in the Registration step to continue.'}
+              Complete the required fields in {incompleteSteps.length === 1 ? incompleteSteps[0] : `${incompleteSteps.slice(0, -1).join(', ')} and ${incompleteSteps[incompleteSteps.length - 1]}`} to continue.
             </div>
           )}
 

@@ -48,6 +48,11 @@ function WorkspaceContent() {
 
   const titleRef = useRef(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
+  // Blocks rendering Home/currentPage/currentView until the saved last-location
+  // has had a chance to apply — otherwise, on every refresh, Home flashes on
+  // screen for the brief moment before loadWorkspace's restoreLastLocation()
+  // resolves and swaps in the view the user was actually on.
+  const [locationReady, setLocationReady] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -59,6 +64,7 @@ function WorkspaceContent() {
         // auto-open the first demo page.
         initDemoWorkspace();
       }
+      setLocationReady(true);
     }
     init();
 
@@ -161,7 +167,15 @@ function WorkspaceContent() {
           backgroundSize: '40px 40px',
         }}>
           <div key={currentView || currentPage?.id || 'home'} className="page-enter">
-          {currentView === 'acquisition' ? (
+          {!locationReady ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%',
+                border: '3px solid var(--color-border)', borderTopColor: 'var(--color-accent-primary)',
+                animation: 'spin 0.7s linear infinite', display: 'inline-block',
+              }} />
+            </div>
+          ) : currentView === 'acquisition' ? (
             <AcquisitionPanel />
           ) : currentView === 'meetings' ? (
             <MeetingsPanel />
