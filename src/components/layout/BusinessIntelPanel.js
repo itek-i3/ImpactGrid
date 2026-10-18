@@ -293,19 +293,19 @@ const STEPS = [
 // are stored as their own top-level registry columns, not inside `data`.
 const IDENTITY_FIELD_COUNT = 15;
 const OPERATIONS_FIELD_COUNT = 7;
-const PERFORMANCE_FIELD_COUNT = 6;
+const PERFORMANCE_FIELD_COUNT = 7;
 
 // Every field in these two sections is required (unlike Identity, where only
 // the business name is) — the Operations/Performance steps can't be left
 // until all of them are filled.
 const OPERATIONS_REQUIRED = ['productsServices', 'employeeCount', 'locationCount', 'operatingModel', 'suppliers', 'customerSegments', 'currentSystems'];
-const PERFORMANCE_REQUIRED = ['revenueRange', 'customerVolume', 'revenueStreams', 'operatingExpenses', 'growthTrend', 'financialChallenges'];
+const PERFORMANCE_REQUIRED = ['revenueRange', 'customerVolume', 'revenueStreams', 'operatingExpenses', 'growthTrend', 'financialChallenges', 'financialChallengesSolution'];
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
   identity: { ownerName: '', ownerGender: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
   operations: { productsServices: '', employeeCount: '', locationCount: '', operatingModel: '', suppliers: '', customerSegments: '', currentSystems: '' },
-  performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '' },
+  performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '', financialChallengesSolution: '' },
   infrastructure: Object.fromEntries(INFRA_AREAS.map((a) => [a.key, { level: '', note: '' }])),
   challenges: { selected: [], other: '' },
   growthNeeds: { selected: [], notes: '' },
@@ -611,6 +611,7 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
     ['Major revenue streams', perf.revenueStreams, 'performance.revenueStreams'],
     ['Major operating expenses', perf.operatingExpenses, 'performance.operatingExpenses'],
     ['Financial challenges', perf.financialChallenges, 'performance.financialChallenges'],
+    ['How they solve these challenges', perf.financialChallengesSolution, 'performance.financialChallengesSolution'],
   ]);
   const infra = INFRA_AREAS
     .map((a) => ({ area: a, level: profile.infrastructure[a.key]?.level || '', note: profile.infrastructure[a.key]?.note || '', vKey: `infrastructure.${a.key}` }))
@@ -1415,6 +1416,7 @@ export default function BusinessIntelPanel() {
           <Field required half label="Major operating expenses" type="textarea" value={profile.performance.operatingExpenses} onChange={(v) => setField('performance', 'operatingExpenses', v)} verification={profile.verification['performance.operatingExpenses']} onVerify={(v) => setVerify('performance.operatingExpenses', v)} placeholder="e.g. Rent, staff wages, water & electricity" error={fieldErrors['performance.operatingExpenses'] ? 'Required.' : undefined} />
           <Field required label="Growth trend" type="select" options={GROWTH_TRENDS} value={profile.performance.growthTrend} onChange={(v) => setField('performance', 'growthTrend', v)} verification={profile.verification['performance.growthTrend']} onVerify={(v) => setVerify('performance.growthTrend', v)} error={fieldErrors['performance.growthTrend'] ? 'Required.' : undefined} />
           <Field required label="Financial challenges" type="textarea" value={profile.performance.financialChallenges} onChange={(v) => setField('performance', 'financialChallenges', v)} verification={profile.verification['performance.financialChallenges']} onVerify={(v) => setVerify('performance.financialChallenges', v)} placeholder="e.g. Irregular cash flow, high cost of raw materials" error={fieldErrors['performance.financialChallenges'] ? 'Required.' : undefined} />
+          <Field required label="How do they solve these financial challenges?" type="textarea" value={profile.performance.financialChallengesSolution} onChange={(v) => setField('performance', 'financialChallengesSolution', v)} verification={profile.verification['performance.financialChallengesSolution']} onVerify={(v) => setVerify('performance.financialChallengesSolution', v)} placeholder="e.g. Borrows from family during low season, delays supplier payments, uses a chama/savings group" error={fieldErrors['performance.financialChallengesSolution'] ? 'Required.' : undefined} />
         </div>
       )}
 
