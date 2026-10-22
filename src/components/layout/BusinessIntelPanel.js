@@ -932,6 +932,20 @@ export default function BusinessIntelPanel() {
   // none registered yet) and their profile pictures.
   const [members, setMembers] = useState([]);
   const [exportingReport, setExportingReport] = useState(false);
+  // Report-options modal — lets the download be scoped to just the data the
+  // viewer wants, instead of always shipping every section at once.
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [rptSections, setRptSections] = useState({ summary: true, findings: true, portfolio: true, registry: true });
+  const [rptApplyFilters, setRptApplyFilters] = useState(false);
+  // Data Registry filters — one per wizard step (Operations/Performance/
+  // Infrastructure/Challenges/Growth needs), plus the Portfolio-only status filter.
+  const [rptOperatingModel, setRptOperatingModel] = useState('');
+  const [rptGrowthTrend, setRptGrowthTrend] = useState('');
+  const [rptInfraArea, setRptInfraArea] = useState('');
+  const [rptInfraLevel, setRptInfraLevel] = useState('');
+  const [rptChallenge, setRptChallenge] = useState('');
+  const [rptGrowthNeed, setRptGrowthNeed] = useState('');
+  const [rptManagedStatus, setRptManagedStatus] = useState('');
   const agencyName = agencies?.find((a) => a.id === activeAgencyId)?.name || '';
 
   // Everyone who can appear as a registrant: each agency member, plus anyone whose
@@ -1137,10 +1151,66 @@ export default function BusinessIntelPanel() {
     setRegisteredByError(false);
   };
 
+  // Opens the report-options modal pre-filled with whatever's already on screen —
+  // if the registry list is filtered, the "use current filters" box starts checked.
+  const openReportModal = () => {
+    setRptApplyFilters(Boolean(filterCountry || filterCity || filterRegistrar));
+    setReportModalOpen(true);
+  };
+
+  const toggleRptSection = (key) => setRptSections((s) => ({ ...s, [key]: !s[key] }));
+
+  const activeFilterChips = [
+    filterCountry && `Country: ${filterCountry}`,
+    filterCity && `City: ${filterCity}`,
+    selectedRegistrar && `Registered by: ${selectedRegistrar.id === NO_REGISTRAR ? 'Not recorded' : selectedRegistrar.name}`,
+  ].filter(Boolean);
+
+  // One filter per Data Registry wizard step, so the report can be scoped the
+  // same way the registry itself is organized — Operations, Performance,
+  // Infrastructure, Challenges, Growth needs.
+  const registryFilterFields = [
+    { label: 'Operating model', value: rptOperatingModel, onChange: setRptOperatingModel, options: OPERATING_MODELS },
+    { label: 'Growth trend', value: rptGrowthTrend, onChange: setRptGrowthTrend, options: GROWTH_TRENDS },
+    { label: 'Infrastructure area', value: rptInfraArea, onChange: setRptInfraArea, options: INFRA_AREAS.map((a) => ({ value: a.key, label: a.label })) },
+    { label: 'Infrastructure level', value: rptInfraLevel, onChange: setRptInfraLevel, options: INFRA_LEVELS.map((l) => ({ value: l.key, label: l.label })) },
+    { label: 'Challenge', value: rptChallenge, onChange: setRptChallenge, options: CHALLENGES },
+    { label: 'Growth need', value: rptGrowthNeed, onChange: setRptGrowthNeed, options: GROWTH_NEEDS.map((n) => ({ value: n.key, label: n.name })) },
+  ];
+
   const handleDownloadReport = async () => {
     setExportingReport(true);
     try {
-      await downloadAcrCombinedReport({ agencyId, isDemo, agencyName });
+      const infraAreaLabel = rptInfraArea && INFRA_AREAS.find((a) => a.key === rptInfraArea)?.label;
+      const infraLevelLabel = rptInfraLevel && INFRA_LEVELS.find((l) => l.key === rptInfraLevel)?.label;
+      const growthNeedName = rptGrowthNeed && GROWTH_NEEDS.find((n) => n.key === rptGrowthNeed)?.name;
+
+      const filterNote = [
+        ...(rptApplyFilters ? activeFilterChips : []),
+        rptOperatingModel && `Operating model: ${rptOperatingModel}`,
+        rptGrowthTrend && `Growth trend: ${rptGrowthTrend}`,
+        rptInfraLevel && `Infrastructure: ${infraAreaLabel || 'any area'} — ${infraLevelLabel}`,
+        rptChallenge && `Challenge: ${rptChallenge}`,
+        rptGrowthNeed && `Growth need: ${growthNeedName}`,
+        rptManagedStatus && `Portfolio: ${rptManagedStatus === 'managed' ? 'Managed only' : 'Not managed only'}`,
+      ].filter(Boolean).join(' · ') || null;
+
+      await downloadAcrCombinedReport({
+        agencyId, isDemo, agencyName,
+        registryEntries: rptApplyFilters ? filteredEntries : undefined,
+        sections: rptSections,
+        filters: {
+          operatingModel: rptOperatingModel,
+          growthTrend: rptGrowthTrend,
+          infraArea: rptInfraArea,
+          infraLevel: rptInfraLevel,
+          challenge: rptChallenge,
+          growthNeed: rptGrowthNeed,
+          managedStatus: rptManagedStatus,
+        },
+        filterNote,
+      });
+      setReportModalOpen(false);
     } catch (err) {
       console.error(err);
       toast.error('Could not build report', err.message || 'Try again.');
@@ -1514,7 +1584,7 @@ export default function BusinessIntelPanel() {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {isDemo && <button className="biz-btn ghost" onClick={loadSampleData}><Sparkles size={14} /> Load sample data</button>}
-              <button className="biz-btn ghost" onClick={handleDownloadReport} disabled={exportingReport} title="Download a report of Portfolio Business + Data Registry">
+              <button className="biz-btn ghost" onClick={openReportModal} disabled={exportingReport} title="Choose what to include, then download a PDF report">
                 {exportingReport ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />} Download report
               </button>
               <button className="biz-btn primary" onClick={startNewBusiness}><Plus size={15} /> Register business</button>
@@ -1742,6 +1812,95 @@ export default function BusinessIntelPanel() {
           </div>
           )}
         </>
+      )}
+
+      {reportModalOpen && (
+        <div onClick={() => !exportingReport && setReportModalOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ width: 'min(480px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', borderRadius: 16, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>Download report</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 2 }}>Choose what goes into the PDF.</div>
+              </div>
+              <button className="biz-icon" onClick={() => setReportModalOpen(false)}><X size={16} /></button>
+            </div>
+
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--color-text-tertiary)', margin: '18px 0 8px' }}>Include</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { key: 'portfolio', label: 'Portfolio Business', hint: 'Businesses ACR owns and tracks finances for' },
+                { key: 'registry', label: 'Data Registry', hint: `TOIG's business roster${entries.length ? ` · ${entries.length} businesses` : ''}` },
+                { key: 'summary', label: 'Executive summary', hint: 'Headline stats at the top of the report' },
+                { key: 'findings', label: 'Key findings', hint: rptSections.registry ? 'Top support needs & challenges' : 'Needs Data Registry included' },
+              ].map((s) => {
+                const disabled = s.key === 'findings' && !rptSections.registry;
+                return (
+                  <label key={s.key} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 10,
+                    border: '1px solid var(--color-border)', cursor: disabled ? 'not-allowed' : 'pointer',
+                    background: rptSections[s.key] && !disabled ? 'var(--color-accent-primary-subtle)' : 'transparent',
+                    opacity: disabled ? 0.55 : 1,
+                  }}>
+                    <input type="checkbox" checked={rptSections[s.key]} disabled={disabled} onChange={() => toggleRptSection(s.key)} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>{s.label}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>{s.hint}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {activeFilterChips.length > 0 && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 11, borderRadius: 10, border: '1px solid var(--color-border)', marginTop: 14, cursor: 'pointer' }}>
+                <input type="checkbox" checked={rptApplyFilters} onChange={(e) => setRptApplyFilters(e.target.checked)} style={{ marginTop: 2 }} />
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-primary)' }}>Use the registry filters on screen</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{activeFilterChips.join(' · ')} — {filteredEntries.length} of {entries.length} businesses</div>
+                </div>
+              </label>
+            )}
+
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--color-text-tertiary)', margin: '18px 0 8px' }}>
+              Data Registry filters
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {registryFilterFields.map((f) => {
+                const opts = f.options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+                return (
+                  <div key={f.label}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>{f.label}</label>
+                    <select className="biz-input" value={f.value} onChange={(e) => f.onChange(e.target.value)} disabled={!rptSections.registry}>
+                      <option value="">All</option>
+                      {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--color-text-tertiary)', margin: '18px 0 8px' }}>
+              Portfolio filters
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Status</label>
+              <select className="biz-input" value={rptManagedStatus} onChange={(e) => setRptManagedStatus(e.target.value)} disabled={!rptSections.portfolio}>
+                <option value="">All</option>
+                <option value="managed">Managed only</option>
+                <option value="not-managed">Not managed only</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+              <button className="biz-btn ghost" onClick={() => setReportModalOpen(false)} disabled={exportingReport}>Cancel</button>
+              <button className="biz-btn primary" onClick={handleDownloadReport} disabled={exportingReport || (!rptSections.portfolio && !rptSections.registry)}>
+                {exportingReport ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />} {exportingReport ? 'Building…' : 'Download PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style jsx>{`
