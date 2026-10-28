@@ -59,6 +59,7 @@ export const CONTRIBUTOR_TYPES = [
 export const CONTRIBUTOR_TYPE_BY_KEY = Object.fromEntries(CONTRIBUTOR_TYPES.map((c) => [c.key, c]));
 
 export const PROJECT_STATUSES = [
+  { key: 'prospect', label: 'Prospect', tint: '#F5A623' },
   { key: 'active', label: 'Active', tint: '#5B9BFF' },
   { key: 'completed', label: 'Completed', tint: '#22C55E' },
 ];
@@ -115,15 +116,15 @@ export const isPaidMember = (contributions, memberId, membershipFee) => {
 };
 
 // Members vs. investors vs. donors, read straight off whichever id column
-// is set — no join needed to tell them apart. `other` catches a deleted
-// member's old contributions (member_id set null on delete, but the
-// money and its category stay in the ledger) — without it those
-// shillings would still count in totalOf() but vanish from this
-// breakdown, so the two numbers would quietly stop matching.
+// is set — no join needed to tell them apart. Deleting a member/
+// contributor now cascades their contributions away entirely, so `other`
+// should normally stay at 0 — it only still exists as a safety net for
+// any row that somehow ends up with neither id set.
 export const raisedByType = (contributions) => {
   const members = (contributions || []).filter((c) => c.member_id).reduce((s, c) => s + num(c.amount), 0);
-  const investors = (contributions || []).filter((c) => c.category === 'investment').reduce((s, c) => s + num(c.amount), 0);
-  const donors = (contributions || []).filter((c) => c.category === 'donation').reduce((s, c) => s + num(c.amount), 0);
+  // Gated on contributor_id, not just category, for the same reason.
+  const investors = (contributions || []).filter((c) => c.contributor_id && c.category === 'investment').reduce((s, c) => s + num(c.amount), 0);
+  const donors = (contributions || []).filter((c) => c.contributor_id && c.category === 'donation').reduce((s, c) => s + num(c.amount), 0);
   const other = (contributions || []).filter((c) => !c.member_id && !c.contributor_id).reduce((s, c) => s + num(c.amount), 0);
   return { members, investors, donors, other };
 };
@@ -419,6 +420,20 @@ export const loanCapitalBalance = (contributions, loans, repayments, settings) =
 export const fundAccountBalance = (contributions) => (contributions || [])
   .filter((c) => !c.project_id && !['membership', 'monthly', 'project', 'project_baseline'].includes(c.category))
   .reduce((s, c) => s + num(c.amount), 0);
+
+// What's been raised, split across the fund's four real accounts (member
+// handbook §5) instead of one lump "total raised" figure — gross money in,
+// not a current balance, so this never nets out loans issued or setup
+// costs the way reserveBalance/loansOpsBalance do. The four filters are
+// exhaustive and mutually exclusive over every contribution, so the parts
+// always add back up to totalOf(contributions) exactly.
+export const raisedByAccount = (contributions) => {
+  const reserve = (contributions || []).filter((c) => c.category === 'membership').reduce((s, c) => s + num(c.amount), 0);
+  const loansOps = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
+  const projects = (contributions || []).filter((c) => c.project_id || c.category === 'project' || c.category === 'project_baseline').reduce((s, c) => s + num(c.amount), 0);
+  const fund = fundAccountBalance(contributions);
+  return { reserve, loansOps, projects, fund };
+};
 
 // ── Project baselines — a required monthly due, set per project, owed by
 // every member once a project has one (same model as the chama's own

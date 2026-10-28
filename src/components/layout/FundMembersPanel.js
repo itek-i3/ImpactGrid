@@ -195,17 +195,18 @@ export default function FundMembersPanel() {
     if (error) toast.error('Could not save', error.message);
   };
 
-  // Loans and project pledges go with the member (cascade); contributions
-  // stay — the money already moved and stays in the fund's history, it
-  // just loses its name tag (member_id set to null), same as every other
-  // fund total that's never a stored balance.
+  // Everything about a deleted member goes with them — their logged
+  // contributions, loans, and project goals are all removed, not just
+  // unlinked. Real mode does this with one delete (fund_contributions,
+  // fund_loans and fund_project_pledges all cascade from fund_members);
+  // demo mode simulates the same cascade by hand below.
   const removeMember = async (id) => {
     setConfirmDeleteId(null);
     if (historyId === id) setHistoryId(null);
     if (isDemo) {
       const nextMembers = members.filter((m) => m.id !== id);
       setMembers(nextMembers); saveDemo(membersKey, nextMembers);
-      const nextContributions = contributions.map((c) => c.member_id === id ? { ...c, member_id: null } : c);
+      const nextContributions = contributions.filter((c) => c.member_id !== id);
       setContributions(nextContributions); saveDemo(contributionsKey, nextContributions);
       const loans = loadDemo(loansKey, DEMO_LOANS_SEED);
       const removedLoanIds = loans.filter((l) => l.member_id === id).map((l) => l.id);
@@ -573,7 +574,7 @@ function MemberGroup({ title, rows, tint, canEdit, onSelect, onLog, onTrack, car
             {confirmDeleteId === m.id && (
               <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 12px' }}>
                 <span style={{ fontSize: 11.5, color: '#EF4444', fontWeight: 600, flex: 1, lineHeight: 1.4 }}>
-                  Delete {m.name}? Their loan records and project goals go with them — their contributions stay in the fund&rsquo;s history, just without their name.
+                  Delete {m.name}? Everything about them — contributions, loan records, and project goals — is deleted too. This can&rsquo;t be undone.
                 </span>
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, background: 'linear-gradient(135deg,#B91C1C,#EF4444)', border: 'none', color: '#fff', flexShrink: 0 }} onClick={() => onDeleteConfirm(m.id)}>Delete</button>
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, flexShrink: 0 }} onClick={() => onDeleteRequest(null)}>Cancel</button>

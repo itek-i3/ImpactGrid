@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
-import { Map, Pencil, Plus, X, Check, TrendingUp, Square, CheckSquare } from 'lucide-react';
+import { Map, Pencil, Plus, X, Check, TrendingUp, Square, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 
@@ -71,6 +71,10 @@ export default function RoadmapCard() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  // Which quarter's objectives are shown below the wave — one at a time,
+  // stepped via the pill row or the wave's own markers, instead of all four
+  // competing for space at once.
+  const [activeQuarter, setActiveQuarter] = useState('Q1');
 
   useEffect(() => {
     let cancelled = false;
@@ -305,49 +309,88 @@ export default function RoadmapCard() {
               {[16, 8, 0, -8, -16].map((offset) => (
                 <path key={offset} d={WAVE_PATH} fill="none" stroke="url(#roadmap-wave-grad)" strokeWidth={offset === 0 ? 3 : 1.5} opacity={offset === 0 ? 0.9 : 0.22} strokeLinecap="round" transform={`translate(0 ${offset})`} />
               ))}
-              {WAVE_POINTS.map((q) => (
-                <g key={q.key}>
-                  <circle cx={q.x} cy={q.y} r={15} fill="none" stroke={q.tint} strokeWidth={1.5} opacity={0.35} />
-                  <circle cx={q.x} cy={q.y} r={9} fill={q.tint} stroke="var(--color-bg-elevated, #0B1630)" strokeWidth={3} />
-                </g>
-              ))}
-            </svg>
-
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 14, marginTop: 10 }}>
-              {QUARTERS.map((q) => {
-                const entries = quarterEntries[q.key];
+              {WAVE_POINTS.map((q) => {
+                const active = q.key === activeQuarter;
                 return (
-                  <div key={q.key} style={{ borderTop: `2px solid ${q.tint}`, paddingTop: 9, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: q.tint }}>{q.label} · {q.range}</div>
-                    {entries.length === 0 ? (
-                      <div style={{ fontSize: 11.5, color: tSub, fontStyle: 'italic', marginTop: 7 }}>No targets set.</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                        {entries.map((group, gi) => (
-                          <div key={gi}>
-                            <div style={{ fontSize: 11.5, fontWeight: 800, color: tKey, lineHeight: 1.35 }}>{group.objective}</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 3 }}>
-                              {group.items.map((item, ii) => (
-                                <div
-                                  key={ii}
-                                  onClick={() => toggleTargetDone(item.oi, item.ki, q.key)}
-                                  style={{ display: 'flex', alignItems: 'flex-start', gap: 6, cursor: canEdit ? 'pointer' : 'default' }}
-                                >
-                                  {item.done ? <CheckSquare size={12} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 1 }} /> : <Square size={12} style={{ color: tSub, flexShrink: 0, marginTop: 1 }} />}
-                                  <span style={{ fontSize: 11, lineHeight: 1.35, overflowWrap: 'break-word', color: item.done ? tSub : tSub, textDecoration: item.done ? 'line-through' : 'none' }}>
-                                    {item.keyResult}: <span style={{ fontWeight: 700, color: item.done ? tSub : q.tint }}>{item.target}</span>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <g key={q.key} onClick={() => setActiveQuarter(q.key)} style={{ cursor: 'pointer' }}>
+                    <circle cx={q.x} cy={q.y} r={active ? 20 : 15} fill="none" stroke={q.tint} strokeWidth={active ? 2 : 1.5} opacity={active ? 0.6 : 0.3} />
+                    <circle cx={q.x} cy={q.y} r={active ? 10.5 : 8} fill={q.tint} stroke="var(--color-bg-elevated, #0B1630)" strokeWidth={3} opacity={active ? 1 : 0.55} />
+                  </g>
                 );
               })}
+            </svg>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <button
+                onClick={() => setActiveQuarter(QUARTERS[(QUARTERS.findIndex((q) => q.key === activeQuarter) + 3) % 4].key)}
+                aria-label="Previous quarter"
+                style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <div style={{ display: 'flex', flex: 1, gap: 6, minWidth: 0 }}>
+                {QUARTERS.map((q) => {
+                  const active = q.key === activeQuarter;
+                  return (
+                    <button
+                      key={q.key}
+                      onClick={() => setActiveQuarter(q.key)}
+                      style={{
+                        flex: 1, minWidth: 0, padding: '7px 2px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                        border: `1.5px solid ${active ? q.tint : 'var(--color-border)'}`,
+                        background: active ? `${q.tint}1f` : 'transparent',
+                        color: active ? q.tint : tSub, fontSize: isMobile ? 11 : 11.5, fontWeight: 800,
+                      }}
+                    >
+                      {q.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setActiveQuarter(QUARTERS[(QUARTERS.findIndex((q) => q.key === activeQuarter) + 1) % 4].key)}
+                aria-label="Next quarter"
+                style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronRight size={14} />
+              </button>
             </div>
+
+            {(() => {
+              const q = QUARTERS.find((x) => x.key === activeQuarter) || QUARTERS[0];
+              const entries = quarterEntries[q.key];
+              return (
+                <div style={{ borderTop: `2px solid ${q.tint}`, paddingTop: 10, marginTop: 6 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: q.tint }}>{q.label} · {q.range}</div>
+                  {entries.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: tSub, fontStyle: 'italic', marginTop: 7 }}>No targets set.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 9 }}>
+                      {entries.map((group, gi) => (
+                        <div key={gi}>
+                          <div style={{ fontSize: 12.5, fontWeight: 800, color: tKey, lineHeight: 1.35 }}>{group.objective}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
+                            {group.items.map((item, ii) => (
+                              <div
+                                key={ii}
+                                onClick={() => toggleTargetDone(item.oi, item.ki, q.key)}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 7, cursor: canEdit ? 'pointer' : 'default' }}
+                              >
+                                {item.done ? <CheckSquare size={13} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 1 }} /> : <Square size={13} style={{ color: tSub, flexShrink: 0, marginTop: 1 }} />}
+                                <span style={{ display: 'flex', flexDirection: 'column', fontSize: 12, lineHeight: 1.4, overflowWrap: 'break-word', color: tSub, textDecoration: item.done ? 'line-through' : 'none' }}>
+                                  <span>{item.keyResult}</span>
+                                  <span style={{ fontWeight: 700, color: item.done ? tSub : q.tint }}>Target : &quot;{item.target}&quot;</span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

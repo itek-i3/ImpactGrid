@@ -45,6 +45,7 @@ export default function FundProjectsPanel() {
   const [addOpen, setAddOpen] = useState(false);
   const [pTitle, setPTitle] = useState('');
   const [pSummary, setPSummary] = useState('');
+  const [pStatus, setPStatus] = useState('active');
   const [pTarget, setPTarget] = useState('');
   const [pBaseline, setPBaseline] = useState('');
   const [pledgeAmounts, setPledgeAmounts] = useState({});
@@ -159,14 +160,14 @@ export default function FundProjectsPanel() {
   const totalPledgedFor = (projectId) => pledges.filter((pl) => pl.project_id === projectId).reduce((s, pl) => s + num(pl.amount), 0);
   const openDetail = (id) => { setDetailId(id); setDetailTab('goals'); setEditingBaseline(false); setConfirmDeleteProject(false); setEditingMyPledge(false); };
 
-  const resetAdd = () => { setPTitle(''); setPSummary(''); setPTarget(''); setPBaseline(''); setPledgeAmounts({}); };
+  const resetAdd = () => { setPTitle(''); setPSummary(''); setPStatus('active'); setPTarget(''); setPBaseline(''); setPledgeAmounts({}); };
 
   const addProject = async () => {
     if (!pTitle.trim()) return;
     setSaving(true);
     const row = {
       title: pTitle.trim(), summary: pSummary.trim() || null, target_amount: pTarget ? num(pTarget) : null,
-      baseline_monthly_amount: pBaseline ? num(pBaseline) : null, status: 'active', created_by: myId,
+      baseline_monthly_amount: pBaseline ? num(pBaseline) : null, status: pStatus, created_by: myId,
     };
     const pledgeRows = Object.entries(pledgeAmounts).filter(([, v]) => num(v) > 0).map(([memberId, v]) => ({ member_id: memberId, amount: num(v) }));
     if (isDemo) {
@@ -282,16 +283,16 @@ export default function FundProjectsPanel() {
     toast.success(next ? 'Baseline set' : 'Baseline removed', next ? `${money(next)}/month, owed by every member` : undefined);
   };
 
-  // Backers' contributions lose their project tag (SET NULL) but stay in
-  // the fund's history, same philosophy as deleting a member; goals set
-  // for this project (fund_project_pledges) cascade-delete with it.
+  // Everything about a deleted project goes with it — every backer's
+  // contribution to it (baseline or extra) is removed, not just unlinked,
+  // and any goals set for it (fund_project_pledges) cascade-delete too.
   const removeProject = async (id) => {
     setConfirmDeleteProject(false);
     setDetailId(null);
     if (isDemo) {
       const nextProjects = projects.filter((p) => p.id !== id);
       setProjects(nextProjects); saveDemo(projectsKey, nextProjects);
-      const nextContributions = contributions.map((c) => c.project_id === id ? { ...c, project_id: null } : c);
+      const nextContributions = contributions.filter((c) => c.project_id !== id);
       setContributions(nextContributions); saveDemo(contributionsKey, nextContributions);
       const nextPledges = pledges.filter((pl) => pl.project_id !== id);
       setPledges(nextPledges); saveDemo(pledgesKey, nextPledges);
@@ -536,6 +537,19 @@ export default function FundProjectsPanel() {
                               <Plus size={12} />
                             </button>
                           )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openDetail(p.id); setConfirmDeleteProject(true); }}
+                              title="Delete this project"
+                              style={{
+                                width: 22, height: 22, borderRadius: 7, border: 'none', cursor: 'pointer', flexShrink: 0,
+                                background: 'rgba(239,68,68,0.16)', color: '#EF4444',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -552,6 +566,16 @@ export default function FundProjectsPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Title"><input className="fund-input" value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="What is the project?" /></Field>
           <Field label="Summary"><textarea className="fund-input" rows={2} value={pSummary} onChange={(e) => setPSummary(e.target.value)} placeholder="What it is and the value it creates" /></Field>
+          <Field label="Status">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {PROJECT_STATUSES.filter((s) => s.key !== 'completed').map((s) => (
+                <Chip key={s.key} active={pStatus === s.key} onClick={() => setPStatus(s.key)} label={s.label} tint={s.tint} />
+              ))}
+            </div>
+            <div style={{ fontSize: 10.5, color: tSub, marginTop: 4 }}>
+              {pStatus === 'prospect' ? 'An idea being pitched — not yet raising, won’t show as something members owe toward.' : 'Raising now — shows up as an active goal members can back.'}
+            </div>
+          </Field>
           <Field label="Target amount (KES, optional)"><input className="fund-input" type="number" value={pTarget} onChange={(e) => setPTarget(e.target.value)} placeholder="180000" /></Field>
           <Field label="Monthly baseline per member (KES, optional)">
             <input className="fund-input" type="number" value={pBaseline} onChange={(e) => setPBaseline(e.target.value)} placeholder="2000" />
@@ -614,7 +638,7 @@ export default function FundProjectsPanel() {
             {confirmDeleteProject && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', borderRadius: 10, padding: '9px 12px' }}>
                 <span style={{ fontSize: 11.5, color: '#EF4444', fontWeight: 600, flex: 1, lineHeight: 1.4 }}>
-                  Delete &ldquo;{detail.title}&rdquo;? Every backer&rsquo;s contribution loses its project tag (the money stays in the fund&rsquo;s history) and any goals set for it are gone. This can&rsquo;t be undone.
+                  Delete &ldquo;{detail.title}&rdquo;? Every backer&rsquo;s contribution to it and any goals set for it are deleted too. This can&rsquo;t be undone.
                 </span>
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, background: 'linear-gradient(135deg,#B91C1C,#EF4444)', border: 'none', color: '#fff', flexShrink: 0 }} onClick={() => removeProject(detail.id)}>Delete</button>
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, flexShrink: 0 }} onClick={() => setConfirmDeleteProject(false)}>Cancel</button>

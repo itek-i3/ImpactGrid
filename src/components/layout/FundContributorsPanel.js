@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { TrendingUp, Gift, Plus, Wallet, Eye, Link2, X, Check } from 'lucide-react';
+import { TrendingUp, Gift, Plus, Wallet, Eye, Link2, Trash2 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -38,10 +38,11 @@ export default function FundContributorsPanel({ type }) {
   const contributorsKey = `demo-fund-contributors-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;
   // ACR is a separate agency from ImpactFund — resolve its id from the
-  // agencies this account can see (same match Sidebar uses to find ACR),
-  // so investors here can be linked to ACR's own investor pipeline. Not
-  // found at all (not superadmin, not an ACR member) just means the
-  // linking UI stays hidden for this account — no error, nothing to link.
+  // agencies this account can see (same match Sidebar uses to find ACR).
+  // The investor list below is sourced straight from ACR's own pipeline
+  // when this account can see it; not found at all (not superadmin, not
+  // an ACR member) just means investors fall back to the old manual-add
+  // flow instead — no error, nothing breaks.
   const acrAgency = agencies?.find((a) => a.slug === 'acr' || a.name?.toLowerCase().includes('acr'));
   const acrAgencyId = acrAgency?.id || null;
 
@@ -51,6 +52,7 @@ export default function FundContributorsPanel({ type }) {
   const [potentialInvestors, setPotentialInvestors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [historyId, setHistoryId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [aName, setAName] = useState('');
@@ -59,11 +61,7 @@ export default function FundContributorsPanel({ type }) {
   const [aAmount, setAAmount] = useState('');
   const [aDate, setADate] = useState(() => new Date().toISOString().slice(0, 10));
   const [aNote, setANote] = useState('');
-  const [aAcrLinkId, setAAcrLinkId] = useState('');
   const [saving, setSaving] = useState(false);
-
-  const [editingAcrLinkId, setEditingAcrLinkId] = useState(null); // contributor id being re-linked
-  const [acrLinkInput, setAcrLinkInput] = useState('');
 
   const [logOpen, setLogOpen] = useState(null); // contributor
   const [mAmount, setMAmount] = useState('');
@@ -90,8 +88,26 @@ export default function FundContributorsPanel({ type }) {
       }
       const [{ data: c }, { data: contribs }, { data: projs }, piRes] = await Promise.all(queries);
       if (cancelled) return;
-      setContributors(c || []); setContributions(contribs || []); setProjects(projs || []);
-      setPotentialInvestors(piRes?.data || []);
+      let finalContributors = c || [];
+      const pis = piRes?.data || [];
+      setPotentialInvestors(pis);
+      // Investors aren't added by hand then optionally linked to ACR —
+      // the list IS ACR's investor pipeline. Whoever opens this page first
+      // after a new one shows up there provisions their (zero-contribution)
+      // row here; the agency_id+potential_investor_id unique constraint
+      // keeps two concurrent loads from ever doubling one up.
+      if (type === 'investor' && acrAgencyId && canEdit && pis.length) {
+        const linkedIds = new Set(finalContributors.filter((x) => x.potential_investor_id).map((x) => x.potential_investor_id));
+        const missing = pis.filter((pi) => !linkedIds.has(pi.id));
+        if (missing.length) {
+          const { data: inserted } = await sb.from('fund_contributors')
+            .upsert(missing.map((pi) => ({ agency_id: agencyId, type: 'investor', name: pi.name, potential_investor_id: pi.id, created_by: myId })), { onConflict: 'agency_id,potential_investor_id', ignoreDuplicates: true })
+            .select();
+          if (!cancelled && inserted?.length) finalContributors = [...inserted, ...finalContributors];
+        }
+      }
+      if (cancelled) return;
+      setContributors(finalContributors); setContributions(contribs || []); setProjects(projs || []);
       setLoading(false);
     }
     load();
@@ -105,7 +121,7 @@ export default function FundContributorsPanel({ type }) {
     }
     const ch = channel.subscribe();
     return () => { cancelled = true; sb.removeChannel(ch); };
-  }, [agencyId, isDemo, type, contributorsKey, contributionsKey, acrAgencyId]);
+  }, [agencyId, isDemo, type, contributorsKey, contributionsKey, acrAgencyId, canEdit, myId]);
 
   const totalsById = useMemo(() => {
     const map = {};
@@ -127,13 +143,13 @@ export default function FundContributorsPanel({ type }) {
   const historyList = contributions.filter((c) => c.contributor_id === historyId);
 
   const resetAdd = () => {
-    setAName(''); setAContact(''); setAReturn(''); setAAmount(''); setANote(''); setAAcrLinkId('');
+    setAName(''); setAContact(''); setAReturn(''); setAAmount(''); setANote('');
     setADate(new Date().toISOString().slice(0, 10));
   };
 
-  // Adding a contributor and logging their first contribution happen in
-  // one step, same as adding a member — nobody shows up without having
-  // already sent something.
+  // Manual add is donor-only now (and the fallback for an investor whose
+  // ACR pipeline this account can't see) — a visible ACR pipeline means
+  // the investor list is provisioned automatically, never by hand.
   const addContributor = async () => {
     const amount = num(aAmount);
     if (!aName.trim() || !amount) return;
@@ -141,7 +157,6 @@ export default function FundContributorsPanel({ type }) {
     const contributorRow = {
       type, name: aName.trim(), contact: aContact.trim() || null,
       expected_return: type === 'investor' ? (aReturn.trim() || null) : null,
-      potential_investor_id: type === 'investor' && aAcrLinkId ? aAcrLinkId : null,
       created_by: myId,
     };
     const contribBase = { category: typeInfo.category, amount, project_id: null, description: aNote.trim() || null, created_at: new Date(aDate).toISOString() };
@@ -186,22 +201,25 @@ export default function FundContributorsPanel({ type }) {
     toast.success('Contribution logged', money(amount));
   };
 
-  const openAcrLink = (contributor) => {
-    setAcrLinkInput(contributor.potential_investor_id || '');
-    setEditingAcrLinkId(contributor.id);
-  };
-
-  const saveAcrLink = async (contributorId) => {
-    const next = acrLinkInput || null;
-    setEditingAcrLinkId(null);
+  // Everything about a deleted contributor goes with them — their logged
+  // contributions are removed too, not just unlinked (fund_contributions.
+  // contributor_id cascades). An ACR-sourced investor who's still in
+  // ACR's pipeline will simply reappear with a fresh, zero-contribution
+  // row next load.
+  const removeContributor = async (id) => {
+    setConfirmDeleteId(null);
+    if (historyId === id) setHistoryId(null);
     if (isDemo) {
-      const nextContributors = contributors.map((c) => c.id === contributorId ? { ...c, potential_investor_id: next } : c);
+      const nextContributors = contributors.filter((c) => c.id !== id);
       setContributors(nextContributors); saveDemo(contributorsKey, nextContributors);
+      const nextContributions = contributions.filter((c) => c.contributor_id !== id);
+      setContributions(nextContributions); saveDemo(contributionsKey, nextContributions);
+      toast.success(`${typeInfo.label} deleted`);
       return;
     }
-    const { error } = await createClient().from('fund_contributors').update({ potential_investor_id: next }).eq('id', contributorId);
-    if (error) { toast.error('Could not save', error.message); return; }
-    toast.success(next ? 'Linked to ACR' : 'Unlinked from ACR');
+    const { error } = await createClient().from('fund_contributors').delete().eq('id', id);
+    if (error) { toast.error('Could not delete', error.message); return; }
+    toast.success(`${typeInfo.label} deleted`);
   };
 
   const tKey = 'var(--color-text-primary, #E2EEFF)';
@@ -227,7 +245,7 @@ export default function FundContributorsPanel({ type }) {
             <div style={{ fontSize: 12.5, color: tSub }}>{typeInfo.blurb} — money from outside the membership</div>
           </div>
         </div>
-        {canEdit && (
+        {canEdit && !(type === 'investor' && acrAgencyId) && (
           <ShimmerButton onClick={() => setAddOpen(true)} background={`linear-gradient(135deg, ${typeInfo.tint}CC, ${typeInfo.tint})`} className="gap-2 text-[13px] font-bold">
             <Plus size={15} /> Add {typeInfo.label.toLowerCase()}
           </ShimmerButton>
@@ -254,34 +272,53 @@ export default function FundContributorsPanel({ type }) {
         {rows.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: tSub, fontSize: 12.5, fontStyle: 'italic' }}>No {label.toLowerCase()} yet.</div>
         ) : rows.map((c) => (
-          <div
-            key={c.id}
-            onClick={() => setHistoryId(c.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--color-divider, rgba(255,255,255,0.06))', cursor: 'pointer' }}
-          >
-            <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: `${typeInfo.tint}22`, color: typeInfo.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>
-              {c.name.charAt(0).toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-              {c.contact && <div style={{ fontSize: 10.5, color: tSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.contact}</div>}
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(c.total)}</div>
-            <button
-              onClick={(e) => { e.stopPropagation(); setHistoryId(c.id); }}
-              title="View contributions"
-              style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          <div key={c.id} style={{ borderBottom: '1px solid var(--color-divider, rgba(255,255,255,0.06))' }}>
+            <div
+              onClick={() => setHistoryId(c.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer' }}
             >
-              <Eye size={14} />
-            </button>
-            {canEdit && (
+              <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: `${typeInfo.tint}22`, color: typeInfo.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>
+                {c.name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                {c.contact && <div style={{ fontSize: 10.5, color: tSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.contact}</div>}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(c.total)}</div>
               <button
-                onClick={(e) => { e.stopPropagation(); openLog(c); }}
-                title={`Log a payment from this ${typeInfo.label.toLowerCase()}`}
-                style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: `${typeInfo.tint}22`, color: typeInfo.tint, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={(e) => { e.stopPropagation(); setHistoryId(c.id); }}
+                title="View contributions"
+                style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <Plus size={14} />
+                <Eye size={14} />
               </button>
+              {canEdit && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openLog(c); }}
+                  title={`Log a payment from this ${typeInfo.label.toLowerCase()}`}
+                  style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: `${typeInfo.tint}22`, color: typeInfo.tint, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Plus size={14} />
+                </button>
+              )}
+              {canEdit && !c.potential_investor_id && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(c.id); }}
+                  title={`Delete this ${typeInfo.label.toLowerCase()}`}
+                  style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.14)', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+            {confirmDeleteId === c.id && (
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 12px' }}>
+                <span style={{ fontSize: 11.5, color: '#EF4444', fontWeight: 600, flex: 1, lineHeight: 1.4 }}>
+                  Delete {c.name}? Everything they&rsquo;ve contributed is deleted too. This can&rsquo;t be undone.
+                </span>
+                <button className="fund-btn" style={{ height: 30, fontSize: 11.5, background: 'linear-gradient(135deg,#B91C1C,#EF4444)', border: 'none', color: '#fff', flexShrink: 0 }} onClick={() => removeContributor(c.id)}>Delete</button>
+                <button className="fund-btn" style={{ height: 30, fontSize: 11.5, flexShrink: 0 }} onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+              </div>
             )}
           </div>
         ))}
@@ -299,32 +336,14 @@ export default function FundContributorsPanel({ type }) {
               </div>
             </div>
             {historyContributor.expected_return && <div style={{ fontSize: 12, color: tSub }}>Expects <strong style={{ color: tKey }}>{historyContributor.expected_return}</strong></div>}
-            {type === 'investor' && (() => {
-              const linked = acrAgencyId && historyContributor.potential_investor_id
-                ? potentialInvestors.find((pi) => pi.id === historyContributor.potential_investor_id)
-                : null;
+            {type === 'investor' && historyContributor.potential_investor_id && (() => {
+              const linked = acrAgencyId ? potentialInvestors.find((pi) => pi.id === historyContributor.potential_investor_id) : null;
               return (
                 <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(91,155,255,0.08)', border: '1px solid rgba(91,155,255,0.18)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      <Link2 size={11} /> ACR link
-                    </span>
-                    {canEdit && acrAgencyId && editingAcrLinkId !== historyContributor.id && (
-                      <button className="fund-btn" style={{ height: 24, fontSize: 10.5 }} onClick={() => openAcrLink(historyContributor)}>
-                        {historyContributor.potential_investor_id ? 'Change' : 'Link'}
-                      </button>
-                    )}
-                  </div>
-                  {editingAcrLinkId === historyContributor.id ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <select className="fund-input" style={{ height: 32 }} value={acrLinkInput} onChange={(e) => setAcrLinkInput(e.target.value)}>
-                        <option value="">Not linked</option>
-                        {potentialInvestors.map((pi) => <option key={pi.id} value={pi.id}>{pi.name}{pi.investor_type ? ` — ${pi.investor_type}` : ''}</option>)}
-                      </select>
-                      <button className="fund-btn" style={{ height: 32 }} onClick={() => saveAcrLink(historyContributor.id)}><Check size={12} /></button>
-                      <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingAcrLinkId(null)}><X size={12} /></button>
-                    </div>
-                  ) : linked ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    <Link2 size={11} /> From ACR
+                  </span>
+                  {linked ? (
                     <div style={{ marginTop: 6 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: tKey }}>{linked.name}</div>
                       <div style={{ fontSize: 11, color: tSub, marginTop: 2 }}>
@@ -336,10 +355,8 @@ export default function FundContributorsPanel({ type }) {
                         ].filter(Boolean).join(' · ')}
                       </div>
                     </div>
-                  ) : historyContributor.potential_investor_id ? (
-                    <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic', marginTop: 4 }}>Linked — ACR details not visible to you.</div>
                   ) : (
-                    <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic', marginTop: 4 }}>Not linked to an ACR investor record.</div>
+                    <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic', marginTop: 4 }}>ACR details not visible to you.</div>
                   )}
                 </div>
               );
@@ -380,16 +397,6 @@ export default function FundContributorsPanel({ type }) {
             <label style={{ display: 'block' }}>
               <span className="fund-label">Expected return (optional)</span>
               <input className="fund-input" value={aReturn} onChange={(e) => setAReturn(e.target.value)} placeholder="e.g. 12% annually" />
-            </label>
-          )}
-          {type === 'investor' && acrAgencyId && (
-            <label style={{ display: 'block' }}>
-              <span className="fund-label">Link to ACR investor (optional)</span>
-              <select className="fund-input" value={aAcrLinkId} onChange={(e) => setAAcrLinkId(e.target.value)}>
-                <option value="">Not linked</option>
-                {potentialInvestors.map((pi) => <option key={pi.id} value={pi.id}>{pi.name}{pi.investor_type ? ` — ${pi.investor_type}` : ''}</option>)}
-              </select>
-              <div style={{ fontSize: 10.5, color: tSub, marginTop: 4 }}>If this is the same investor ACR is tracking in its own pipeline, mark it so both sides stay connected.</div>
             </label>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

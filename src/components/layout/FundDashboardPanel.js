@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { DotPattern } from '@/components/magicui/dot-pattern';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  money, num, canEditFund, totalOf, raisedByType, topContributors, isPaidMember, loadDemo,
+  money, num, canEditFund, totalOf, raisedByType, raisedByAccount, topContributors, isPaidMember, loadDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTORS_SEED, DEMO_PROJECTS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_SETTINGS_SEED,
 } from '@/lib/fund/shared';
 
@@ -72,6 +72,7 @@ export default function FundDashboardPanel() {
 
   const totalRaised = useMemo(() => totalOf(contributions), [contributions]);
   const raised = useMemo(() => raisedByType(contributions), [contributions]);
+  const byAccount = useMemo(() => raisedByAccount(contributions), [contributions]);
   const leaders = useMemo(() => (canEdit ? topContributors(contributions, members, contributors, 3) : []), [contributions, members, contributors, canEdit]);
   const paidMemberCount = useMemo(() => members.filter((m) => isPaidMember(contributions, m.id, settings?.membership_fee)).length, [members, contributions, settings]);
   const raisedByProjectId = useMemo(() => {
@@ -106,8 +107,7 @@ export default function FundDashboardPanel() {
           <div style={{ fontSize: 13, color: tSub, maxWidth: 560, lineHeight: 1.5, marginBottom: 20 }}>
             Every shilling in is tracked back to who gave it and, where it applies, which project it&rsquo;s backing.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 14 }}>
-            <StatTile label="Total raised" value={totalRaised} prefix="KSh " Icon={Wallet} tint="#5B9BFF" />
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 14 }}>
             <StatTile label="Projects" value={projects.length} Icon={Boxes} tint="#14B8A6" />
             <StatTile label="Investors & donors" value={contributors.length} Icon={HeartHandshake} tint="#9333EA" />
             <StatTile label="Members" value={paidMemberCount} Icon={Users} tint="#F5A623" />
@@ -115,22 +115,38 @@ export default function FundDashboardPanel() {
         </div>
       </div>
 
-      {/* Money trail */}
+      {/* Money trail — two breakdowns, never one lump sum. The total is
+          shown as context for the parts below it, not as its own figure. */}
       <div className="dash-card" style={{ ...card, marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <div className="card-icon-badge" style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(48,108,236,0.18)', color: 'var(--color-accent-text, #7EB3FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Wallet size={16} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="card-icon-badge" style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(48,108,236,0.18)', color: 'var(--color-accent-text, #7EB3FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Wallet size={16} />
+            </div>
+            <h2 style={{ fontSize: 14.5, fontWeight: 800, color: tKey, margin: 0, letterSpacing: '-.01em' }}>The money trail</h2>
           </div>
-          <h2 style={{ fontSize: 14.5, fontWeight: 800, color: tKey, margin: 0, letterSpacing: '-.01em' }}>Where the money&rsquo;s coming from</h2>
+          <div style={{ fontSize: 12, color: tSub }}>All-time total <strong style={{ color: tKey, fontWeight: 800 }}>{money(totalRaised)}</strong></div>
         </div>
-        <MoneyBar segments={[
-          { label: 'Members', value: raised.members, tint: '#5B9BFF' },
-          { label: 'Investors', value: raised.investors, tint: '#9333EA' },
-          { label: 'Donors', value: raised.donors, tint: '#EC4899' },
-          // A deleted member's old contributions — their money stays in
-          // the fund's history, just without a name attached to it.
-          ...(raised.other > 0 ? [{ label: 'Other', value: raised.other, tint: '#6C82A3' }] : []),
-        ]} />
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 9 }}>By who</div>
+          <MoneyBar segments={[
+            { label: 'Members', value: raised.members, tint: '#5B9BFF' },
+            { label: 'Investors', value: raised.investors, tint: '#9333EA' },
+            { label: 'Donors', value: raised.donors, tint: '#EC4899' },
+            // A deleted member/contributor's old contributions — the money
+            // stays in the fund's history, just without a name on it.
+            ...(raised.other > 0 ? [{ label: 'Other', value: raised.other, tint: '#6C82A3' }] : []),
+          ]} />
+        </div>
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 9 }}>By account — member handbook §5</div>
+          <MoneyBar segments={[
+            { label: 'Reserve', value: byAccount.reserve, tint: '#F5A623' },
+            { label: 'Loans & Operations', value: byAccount.loansOps, tint: '#22C55E' },
+            { label: 'Project accounts', value: byAccount.projects, tint: '#9333EA' },
+            { label: 'Fund Account', value: byAccount.fund, tint: '#5B9BFF' },
+          ]} />
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
