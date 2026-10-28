@@ -28,8 +28,17 @@ import {
   Lock,
   Landmark,
   Boxes,
+  Users,
+  LayoutDashboard,
+  HeartHandshake,
+  Gift,
+  Repeat,
+  HandCoins,
+  IdCard,
+  Layers,
 } from 'lucide-react';
 import { useWorkspaceStore, SIDEBAR_WIDTH, clampSidebarWidth } from '@/lib/store/useWorkspaceStore';
+import { isImpactFundAgency, isFundPlainMember as isFundPlainMemberOf } from '@/lib/fund/shared';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import PageTree from './PageTree';
@@ -74,6 +83,7 @@ export default function Sidebar() {
     permanentlyDeletePage,
     emptyTrash,
     userProfile,
+    isDemo,
     agencies,
     activeAgencyId,
     switchAgency,
@@ -232,6 +242,17 @@ export default function Sidebar() {
   const favoritePages = pages.filter((p) => p.isFavorite && !p.isArchived);
   const archivedPages = pages.filter((p) => p.isArchived);
 
+  // ImpactFund runs a completely different, much simpler sidebar — just its
+  // own tabs, none of the generic workspace sections (Home, Team, Finance,
+  // Personal, Pages, Trash) that every other agency gets. Both checks live
+  // in shared.js now, the same ones WorkspaceClient uses to actually gate
+  // which panel renders — not just which button shows here.
+  const isImpactFund = isImpactFundAgency(agencies, activeAgencyId);
+  // A plain member (not manager/superadmin, and not the demo walkthrough)
+  // only gets Projects and their own profile — the fund's totals, the full
+  // member roster, loans and settings stay manager-only.
+  const isFundPlainMember = isFundPlainMemberOf(agencies, activeAgencyId, userProfile, isDemo);
+
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);
     if (pathname !== '/') router.push('/');
@@ -310,6 +331,8 @@ export default function Sidebar() {
             {/* Scrolls as one region so header/footer stay pinned no matter
                 how much nav + page-tree content there is. */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {!isImpactFund && (
+              <>
             {/* ── Quick Actions ── */}
             <nav style={{ padding: '8px 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
               {/* Home — always first */}
@@ -388,6 +411,8 @@ export default function Sidebar() {
                 </>
               );
             })()}
+              </>
+            )}
 
             {agencies?.find(a => a.id === activeAgencyId)?.name?.toLowerCase().includes('acr') && (
               <>
@@ -452,6 +477,151 @@ export default function Sidebar() {
               </>
             )}
 
+            {isImpactFund && (
+              <>
+                {/* ── ImpactFund ── */}
+                <div className={styles.sidebarSectionLabel}>
+                  <span className={styles.sidebarSectionTitle}>ImpactFund</span>
+                </div>
+                {isFundPlainMember ? (
+                  // A plain member only sees what's open to everyone and
+                  // their own pages — the managers' tabs (money totals,
+                  // every member's record, settings) stay out of the nav
+                  // entirely rather than just disabled. Four items reads
+                  // fine flat, no sub-grouping needed.
+                  <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('fundProjects'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'fundProjects' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <Boxes size={15} />
+                      <span>Projects</span>
+                    </button>
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('fundMyProfile'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'fundMyProfile' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <IdCard size={15} />
+                      <span>My Profile</span>
+                    </button>
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('fundMyInstallments'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'fundMyInstallments' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <Repeat size={15} />
+                      <span>My Instalments</span>
+                    </button>
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('fundMyLoans'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'fundMyLoans' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <HandCoins size={15} />
+                      <span>Loans</span>
+                    </button>
+                  </nav>
+                ) : (
+                  // A manager's nine tabs, grouped so the list scans at a
+                  // glance: the money overview first (no sub-label — it's
+                  // the natural lead-in right under "ImpactFund"), then
+                  // who's involved, then what's actually happening.
+                  <>
+                    <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundDashboard'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundDashboard' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <LayoutDashboard size={15} />
+                        <span>Dashboard</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundAccounts'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundAccounts' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Layers size={15} />
+                        <span>Accounts</span>
+                      </button>
+                    </nav>
+
+                    <div className={styles.sidebarSectionLabel}>
+                      <span className={styles.sidebarSectionTitle}>People</span>
+                    </div>
+                    <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundMembers'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundMembers' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Users size={15} />
+                        <span>Members</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundInvestors'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundInvestors' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <HeartHandshake size={15} />
+                        <span>Investors</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundDonors'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundDonors' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Gift size={15} />
+                        <span>Donors</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundProfile'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundProfile' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <IdCard size={15} />
+                        <span>Profile</span>
+                      </button>
+                    </nav>
+
+                    <div className={styles.sidebarSectionLabel}>
+                      <span className={styles.sidebarSectionTitle}>Activity</span>
+                    </div>
+                    <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundProjects'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundProjects' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Boxes size={15} />
+                        <span>Projects</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundInstallments'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundInstallments' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <Repeat size={15} />
+                        <span>Installments</span>
+                      </button>
+                      <button
+                        className="ig-nav"
+                        onClick={() => { setCurrentView('fundLoans'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                        style={currentView === 'fundLoans' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                      >
+                        <HandCoins size={15} />
+                        <span>Loans</span>
+                      </button>
+                    </nav>
+                  </>
+                )}
+              </>
+            )}
+
+            {!isImpactFund && (
+              <>
             {/* ── Personal ── */}
             <div className={styles.sidebarSectionLabel}>
               <span className={styles.sidebarSectionTitle}>Personal</span>
@@ -541,6 +711,8 @@ export default function Sidebar() {
                 onCopyTo={userProfile?.role !== 'member' ? (page) => setCopyModal({ open: true, page }) : null}
               />
             </div>
+              </>
+            )}
             </div>
 
             {/* ── Footer ── */}
@@ -552,7 +724,7 @@ export default function Sidebar() {
               flexDirection: 'column',
               gap: 1,
             }}>
-              {userProfile?.role !== 'member' && (
+              {!isImpactFund && userProfile?.role !== 'member' && (
                 <button className="ig-nav" onClick={handleNewPage}>
                   <SquarePen size={15} />
                   <span>New page</span>
@@ -617,29 +789,31 @@ export default function Sidebar() {
                 </div>
               )}
 
-              <button
-                className="ig-nav"
-                onClick={() => { setTrashSearch(''); setTrashOpen(true); closeMobileSidebar(); }}
-                style={{ position: 'relative' }}
-              >
-                <Trash2 size={15} />
-                <span>Trash</span>
-                {archivedPages.length > 0 && (
-                  <span style={{
-                    marginLeft: 'auto',
-                    background: 'rgba(239,68,68,0.18)',
-                    color: '#f87171',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    borderRadius: 99,
-                    padding: '1px 6px',
-                    minWidth: 18,
-                    textAlign: 'center',
-                  }}>
-                    {archivedPages.length}
-                  </span>
-                )}
-              </button>
+              {!isImpactFund && (
+                <button
+                  className="ig-nav"
+                  onClick={() => { setTrashSearch(''); setTrashOpen(true); closeMobileSidebar(); }}
+                  style={{ position: 'relative' }}
+                >
+                  <Trash2 size={15} />
+                  <span>Trash</span>
+                  {archivedPages.length > 0 && (
+                    <span style={{
+                      marginLeft: 'auto',
+                      background: 'rgba(239,68,68,0.18)',
+                      color: '#f87171',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      borderRadius: 99,
+                      padding: '1px 6px',
+                      minWidth: 18,
+                      textAlign: 'center',
+                    }}>
+                      {archivedPages.length}
+                    </span>
+                  )}
+                </button>
+              )}
 
             </div>
           </>

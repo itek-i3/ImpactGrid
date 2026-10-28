@@ -31,6 +31,7 @@ function AdminPanelContent() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [kind, setKind] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -218,7 +219,8 @@ function AdminPanelContent() {
         body: JSON.stringify({
           name: name.trim(),
           slug: slug.trim(),
-          logoUrl: logoUrl.trim() || null
+          logoUrl: logoUrl.trim() || null,
+          kind: kind || null
         })
       });
 
@@ -227,6 +229,7 @@ function AdminPanelContent() {
         setName('');
         setSlug('');
         setLogoUrl('');
+        setKind('');
         loadAgencies();
       } else {
         const json = await res.json();
@@ -925,6 +928,18 @@ function AdminPanelContent() {
                       {fieldErrors.slug
                         ? <span className="admin-field-error-msg">{fieldErrors.slug}</span>
                         : <span style={{ fontSize: 10, color: '#3D5A8A', marginTop: 4, display: 'block' }}>Used for scoping users and workspaces (a-z, 0-9, hyphens).</span>}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#3D5A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Agency Type</label>
+                      <select
+                        className="admin-input"
+                        value={kind}
+                        onChange={e => setKind(e.target.value)}
+                      >
+                        <option value="">Standard — the full generic workspace</option>
+                        <option value="impactfund">ImpactFund — its own restricted sidebar and member/manager roles</option>
+                      </select>
                     </div>
 
                     <div>

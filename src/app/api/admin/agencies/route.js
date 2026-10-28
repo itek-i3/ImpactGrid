@@ -56,6 +56,7 @@ export async function GET() {
     name: agency.name,
     slug: agency.slug,
     logoUrl: agency.logo_url,
+    kind: agency.kind,
     createdAt: agency.created_at,
     memberCount: (agency.profiles || []).length,
     workspaceId: (agency.workspaces || [])[0]?.id || null,
@@ -75,12 +76,12 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const { name, slug, logoUrl } = body;
+  const { name, slug, logoUrl, kind } = body;
 
   if (!name || !slug) return badRequest('Name and slug are required');
 
   // 1. Create the agency
-  const { data: agency, error: agError } = await createAgency({ name, slug, logoUrl });
+  const { data: agency, error: agError } = await createAgency({ name, slug, logoUrl, kind: kind || null });
   if (agError) return fromSupabaseError(agError);
 
   // 2. Automatically create default workspace for this agency

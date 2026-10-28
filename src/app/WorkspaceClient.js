@@ -4,10 +4,12 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { useEditorStore } from '@/lib/store/useEditorStore';
+import { isFundPlainMember, FUND_MANAGER_ONLY_VIEWS } from '@/lib/fund/shared';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import SearchModal from '@/components/layout/SearchModal';
 import FloatingChat from '@/components/layout/FloatingChat';
+import FundTourGuide from '@/components/layout/FundTourGuide';
 import BlockEditor from '@/components/editor/BlockEditor';
 import HomeDashboard from '@/components/layout/HomeDashboard';
 import AcquisitionPanel from '@/components/layout/AcquisitionPanel';
@@ -22,6 +24,18 @@ import InvestorsPanel from '@/components/layout/InvestorsPanel';
 import TeamPanel from '@/components/layout/TeamPanel';
 import ScoreboardPanel from '@/components/layout/ScoreboardPanel';
 import WeeklyReviewPanel from '@/components/layout/WeeklyReviewPanel';
+import FundDashboardPanel from '@/components/layout/FundDashboardPanel';
+import FundAccountsPanel from '@/components/layout/FundAccountsPanel';
+import FundMyProfilePanel from '@/components/layout/FundMyProfilePanel';
+import FundMyInstallmentsPanel from '@/components/layout/FundMyInstallmentsPanel';
+import FundMyLoansPanel from '@/components/layout/FundMyLoansPanel';
+import FundMembersPanel from '@/components/layout/FundMembersPanel';
+import FundInvestorsPanel from '@/components/layout/FundInvestorsPanel';
+import FundDonorsPanel from '@/components/layout/FundDonorsPanel';
+import FundProjectsPanel from '@/components/layout/FundProjectsPanel';
+import FundInstallmentsPanel from '@/components/layout/FundInstallmentsPanel';
+import FundLoansPanel from '@/components/layout/FundLoansPanel';
+import FundProfilesPanel from '@/components/layout/FundProfilesPanel';
 import { ToastProvider } from '@/components/ui/Toast';
 import styles from '@/styles/layout.module.css';
 
@@ -42,7 +56,19 @@ function WorkspaceContent() {
     loadWorkspace,
     userProfile,
     sidebarOpen,
+    isDemo,
+    agencies,
+    activeAgencyId,
   } = useWorkspaceStore();
+
+  // A manager-only ImpactFund view must never actually render for a plain
+  // member, however currentView got set (a stale restored location from
+  // localStorage, a left-over link, a future bug) — the Sidebar only
+  // hides the buttons that would set it, it doesn't stop it rendering.
+  // Falls back to their own profile rather than showing nothing.
+  const effectiveView = (isFundPlainMember(agencies, activeAgencyId, userProfile, isDemo) && FUND_MANAGER_ONLY_VIEWS.includes(currentView))
+    ? 'fundMyProfile'
+    : currentView;
 
   const { initBlocks, addBlock, blocks } = useEditorStore();
 
@@ -175,30 +201,54 @@ function WorkspaceContent() {
                 animation: 'spin 0.7s linear infinite', display: 'inline-block',
               }} />
             </div>
-          ) : currentView === 'acquisition' ? (
+          ) : effectiveView === 'acquisition' ? (
             <AcquisitionPanel />
-          ) : currentView === 'meetings' ? (
+          ) : effectiveView === 'meetings' ? (
             <MeetingsPanel />
-          ) : currentView === 'finance' ? (
+          ) : effectiveView === 'finance' ? (
             <FinancePanel />
-          ) : currentView === 'personalFinance' ? (
+          ) : effectiveView === 'personalFinance' ? (
             <PersonalFinancePanel />
-          ) : currentView === 'businesses' ? (
+          ) : effectiveView === 'businesses' ? (
             <BusinessesPanel />
-          ) : currentView === 'acquiredBusinesses' ? (
+          ) : effectiveView === 'acquiredBusinesses' ? (
             <AcquiredBusinessesPanel />
-          ) : currentView === 'bizIntel' ? (
+          ) : effectiveView === 'bizIntel' ? (
             <BusinessIntelPanel />
-          ) : currentView === 'valuation' ? (
+          ) : effectiveView === 'valuation' ? (
             <ValuationPanel />
-          ) : currentView === 'investors' ? (
+          ) : effectiveView === 'investors' ? (
             <InvestorsPanel />
-          ) : currentView === 'team' ? (
+          ) : effectiveView === 'team' ? (
             <TeamPanel />
-          ) : currentView === 'scoreboard' ? (
+          ) : effectiveView === 'scoreboard' ? (
             <ScoreboardPanel />
-          ) : currentView === 'reviews' ? (
+          ) : effectiveView === 'reviews' ? (
             <WeeklyReviewPanel />
+          ) : effectiveView === 'fundDashboard' ? (
+            <FundDashboardPanel />
+          ) : effectiveView === 'fundAccounts' ? (
+            <FundAccountsPanel />
+          ) : effectiveView === 'fundMembers' ? (
+            <FundMembersPanel />
+          ) : effectiveView === 'fundInvestors' ? (
+            <FundInvestorsPanel />
+          ) : effectiveView === 'fundDonors' ? (
+            <FundDonorsPanel />
+          ) : effectiveView === 'fundProjects' ? (
+            <FundProjectsPanel />
+          ) : effectiveView === 'fundInstallments' ? (
+            <FundInstallmentsPanel />
+          ) : effectiveView === 'fundLoans' ? (
+            <FundLoansPanel />
+          ) : effectiveView === 'fundProfile' ? (
+            <FundProfilesPanel />
+          ) : effectiveView === 'fundMyProfile' ? (
+            <FundMyProfilePanel />
+          ) : effectiveView === 'fundMyInstallments' ? (
+            <FundMyInstallmentsPanel />
+          ) : effectiveView === 'fundMyLoans' ? (
+            <FundMyLoansPanel />
           ) : currentPage ? (
             <div className={`${styles.pageContainer} ${!sidebarOpen ? styles.pageContainerWide : ''}`}>
               <div className={styles.pageHeader}>
@@ -296,6 +346,7 @@ function WorkspaceContent() {
 
       <SearchModal />
       <FloatingChat />
+      <FundTourGuide />
 
       <style jsx>{`
         /* No fill-mode: a lingering transform after the animation ends would

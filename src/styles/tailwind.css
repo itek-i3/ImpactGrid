@@ -1,0 +1,37 @@
+/* Tailwind v4 — utilities + theme tokens only, no Preflight.
+   This app's own design system (globals.css) already owns the global
+   reset (box-sizing/margin/padding) and every color token every panel
+   uses. Importing Tailwind's Preflight on top would re-reset element
+   defaults app-wide for the sake of the few Magic UI components that use
+   Tailwind classes, so it's left out — utility classes (`flex`, `rounded-xl`,
+   arbitrary values, etc.) still work everywhere they're used. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Magic UI's Shimmer Button animates via these two custom animations. */
+@theme inline {
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+
+  @keyframes shimmer-slide {
+    to {
+      transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+  @keyframes spin-around {
+    0% {
+      transform: translateZ(0) rotate(0);
+    }
+    15%,
+    35% {
+      transform: translateZ(0) rotate(90deg);
+    }
+    65%,
+    85% {
+      transform: translateZ(0) rotate(270deg);
+    }
+    100% {
+      transform: translateZ(0) rotate(360deg);
+    }
+  }
+}

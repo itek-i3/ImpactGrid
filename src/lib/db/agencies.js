@@ -54,11 +54,11 @@ export async function listAgencyMembers(agencyId) {
   return { data, error };
 }
 
-export async function createAgency({ name, slug, logoUrl = null }) {
+export async function createAgency({ name, slug, logoUrl = null, kind = null }) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('agencies')
-    .insert({ name, slug, logo_url: logoUrl })
+    .insert({ name, slug, logo_url: logoUrl, kind })
     .select()
     .single();
   return { data, error };

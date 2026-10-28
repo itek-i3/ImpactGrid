@@ -7,7 +7,7 @@ export async function getUserProfile() {
 
   const { data: profile, error: profileErr } = await supabase
     .from('profiles')
-    .select('*, agency:agency_id(id, slug, name, logo_url)')
+    .select('*, agency:agency_id(id, slug, name, logo_url, kind)')
     .eq('id', user.id)
     .single();
 
@@ -20,7 +20,7 @@ export async function getUserProfile() {
     const admin = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
     const { data: allAgencies } = await admin
       .from('agencies')
-      .select('id, slug, name, logo_url')
+      .select('id, slug, name, logo_url, kind')
       .order('name');
     agencies = (allAgencies || []).map((a) => ({ ...a, role: 'superadmin' }));
   } else {
@@ -28,7 +28,7 @@ export async function getUserProfile() {
     try {
       const { data: memberships, error: memErr } = await supabase
         .from('agency_members')
-        .select('role, agency:agency_id(id, slug, name, logo_url)')
+        .select('role, agency:agency_id(id, slug, name, logo_url, kind)')
         .eq('user_id', user.id)
         .order('joined_at');
 

@@ -3,6 +3,7 @@ import ThemeInitializer from '@/components/layout/ThemeInitializer';
 import SessionProvider from '@/components/layout/SessionProvider';
 import PageTransition from '@/components/layout/PageTransition';
 import '@/styles/globals.css';
+import '@/styles/tailwind.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const leagueSpartan = League_Spartan({ subsets: ['latin'], variable: '--font-spartan', display: 'swap' });

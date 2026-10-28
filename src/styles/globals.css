@@ -431,6 +431,20 @@ body {
   white-space: nowrap; letter-spacing: .01em;
 }
 
+/* Hover lift for dashboard cards (Home/Hope/Roadmap/ImpactFund) — same
+   treatment as .ig-hover, kept as its own name since these cards set their
+   own border-radius/background inline instead of via .ig-card. */
+.dash-card { transition: transform .18s, box-shadow .18s, border-color .18s; }
+.dash-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 48px rgba(0,0,0,0.70), 0 0 0 1px rgba(48,108,236,0.40), inset 0 1px 0 rgba(91,155,255,0.15);
+  border-color: rgba(48,108,236,0.55);
+}
+[data-theme="light"] .dash-card:hover {
+  box-shadow: 0 16px 40px rgba(20,33,61,.13), 0 4px 12px rgba(48,108,236,.10);
+  border-color: rgba(48,108,236,.40);
+}
+
 .ig-kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

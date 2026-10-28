@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Pencil, Plus, X, Check, Flag, Rocket, Compass, Target,
+  Pencil, Plus, X, Check, Rocket, Compass, Target,
   ListChecks, Square, CheckSquare, TrendingUp, TrendingDown, Sigma, BarChart3,
   Users, Trophy, ArrowRight, MessageSquare,
 } from 'lucide-react';
@@ -13,22 +13,14 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { focusFirstError } from '@/lib/utils/formErrors';
 import { useToast } from '@/components/ui/Toast';
 import ImgOrFallback from '@/components/ui/ImgOrFallback';
+import RoadmapCard from '@/components/layout/RoadmapCard';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 const STAGES = ['Launching', 'Growing', 'Scaling', 'Optimizing'];
 const STAGE_TINT = { Launching: '#EC4899', Growing: '#22C55E', Scaling: '#5B9BFF', Optimizing: '#F5A623' };
 const DEFAULT_VISION = 'We are not building agencies. We are building an interconnected African innovation ecosystem where every company strengthens the others and creates lasting economic impact.';
 
-const emptyObjective = () => ({ text: '', successMeasures: [''] });
-const emptyForm = () => ({ purpose: '', lead_name: '', stage: 'Growing', vision: '', mission: '', objectives_year: String(new Date().getFullYear()), objectives: [emptyObjective()], monthly_goals: [''], metrics: [{ label: '', value: '' }] });
-
-// Objectives used to be plain strings; normalize old data into the current
-// { text, successMeasures } shape so existing agencies' data still renders.
-const normalizeObjective = (o) => (
-  typeof o === 'string'
-    ? { text: o, successMeasures: [] }
-    : { text: o?.text || '', successMeasures: Array.isArray(o?.successMeasures) ? o.successMeasures.filter(Boolean) : [] }
-);
+const emptyForm = () => ({ purpose: '', lead_name: '', stage: 'Growing', vision: '', mission: '', monthly_goals: [''], metrics: [{ label: '', value: '' }] });
 
 export default function HomeDashboard() {
   const { userProfile, workspace, agencies, activeAgencyId, isDemo, setCurrentView, unreadChatChannels, chatNotifs, clearChatNotifications } = useWorkspaceStore();
@@ -140,7 +132,6 @@ export default function HomeDashboard() {
     return map;
   }, [teamMissions]);
 
-  const objectives = Array.isArray(strategy?.objectives) ? strategy.objectives.map(normalizeObjective).filter((o) => o.text) : [];
   const monthlyGoals = Array.isArray(strategy?.monthly_goals) ? strategy.monthly_goals.filter(Boolean) : [];
   const scoreMetrics = Array.isArray(strategy?.metrics) ? strategy.metrics.filter((m) => m?.label) : [];
 
@@ -273,10 +264,6 @@ export default function HomeDashboard() {
       stage: strategy?.stage || 'Growing',
       vision: strategy?.vision || '',
       mission: strategy?.mission || '',
-      objectives_year: strategy?.objectives_year || String(now.getFullYear()),
-      objectives: objectives.length
-        ? objectives.map((o) => ({ text: o.text, successMeasures: o.successMeasures.length ? [...o.successMeasures] : [''] }))
-        : [emptyObjective()],
       monthly_goals: monthlyGoals.length ? [...monthlyGoals] : [''],
       metrics: scoreMetrics.length ? scoreMetrics.map((m) => ({ label: m.label || '', value: m.value ?? '' })) : [{ label: '', value: '' }],
     });
@@ -291,10 +278,6 @@ export default function HomeDashboard() {
       stage: form.stage || null,
       vision: form.vision.trim() || null,
       mission: form.mission.trim() || null,
-      objectives_year: form.objectives_year.trim() || null,
-      objectives: form.objectives
-        .map((o) => ({ text: (o.text || '').trim(), successMeasures: (o.successMeasures || []).map((s) => s.trim()).filter(Boolean) }))
-        .filter((o) => o.text),
       monthly_goals: form.monthly_goals.map((o) => o.trim()).filter(Boolean),
       metrics: form.metrics.map((m) => ({ label: (m.label || '').trim(), value: (m.value || '').toString().trim() })).filter((m) => m.label),
     };
@@ -427,10 +410,8 @@ export default function HomeDashboard() {
         </div>
       </div>
 
-      {/* Second hero row — Tasks (left) and Messages (right) share this grid row so their tops align exactly */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: isMobile ? 20 : 32, marginBottom: 28, alignItems: 'stretch' }}>
-        {/* My Tasks This Week + Strategic Objectives, stacked in this grid cell */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
+      {/* Second hero row — Tasks (left) and Messages (right) share this grid row so their tops align exactly; both stay their own natural (short) height instead of stretching to fill it */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: isMobile ? 20 : 32, marginBottom: 28, alignItems: 'start' }}>
         <div className="dash-card" style={{ ...card, minHeight: isMobile ? undefined : 280 }}>
           {cardHeader(ListChecks, '#EC4899', 'My Tasks This Week',
             <button onClick={() => setCurrentView('team')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pink-text, #EC4899)', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
@@ -473,36 +454,6 @@ export default function HomeDashboard() {
           )}
         </div>
 
-        {/* Strategic Direction */}
-        <div className="dash-card" style={card}>
-          {cardHeader(Flag, '#F5A623', `Our ${strategy?.objectives_year || now.getFullYear()} Objective`)}
-          {objectives.length === 0 ? (
-            <div style={{ fontSize: 13.5, color: tSub, fontStyle: 'italic' }}>No objectives set yet.{canEdit ? ' Add them via "Edit strategy".' : ''}</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {objectives.map((o, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    <span style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 6, background: 'rgba(245,166,35,0.16)', color: 'var(--color-warning-text, #F5A623)', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{i + 1}</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{o.text}</span>
-                  </div>
-                  {o.successMeasures.length > 0 && (
-                    <div style={{ marginLeft: 30, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Success measure</div>
-                      {o.successMeasures.map((m, j) => (
-                        <div key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12.5, color: tSub, lineHeight: 1.4 }}>
-                          <span style={{ flexShrink: 0 }}>•</span><span>{m}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </div>
-
         {/* Messages — unread conversations */}
         <div className="dash-card" style={{ ...card, minWidth: 0, minHeight: isMobile ? undefined : 280 }}>
           {cardHeader(MessageSquare, '#5B9BFF', 'Messages',
@@ -537,6 +488,11 @@ export default function HomeDashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Forward Roadmap — full width, so the timeline has room to breathe */}
+      <div style={{ marginBottom: 28 }}>
+        <RoadmapCard />
       </div>
 
       {/* Two-column dashboard: content stream (left) + widget rail (right) */}
@@ -674,36 +630,6 @@ export default function HomeDashboard() {
               <Field label="Core mandate"><textarea className="strat-in" rows={2} value={form.purpose} onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))} placeholder="What this agency exists to do and the value it creates" /></Field>
               <Field label="Our Vision"><textarea className="strat-in" rows={2} value={form.vision} onChange={(e) => setForm((f) => ({ ...f, vision: e.target.value }))} placeholder="The long-term vision" /></Field>
               <Field label="Our Mission"><textarea className="strat-in" rows={2} value={form.mission} onChange={(e) => setForm((f) => ({ ...f, mission: e.target.value }))} placeholder="How the agency delivers on the vision" /></Field>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '120px 1fr', gap: 12, alignItems: 'start' }}>
-                <Field label="Objectives year"><input className="strat-in" value={form.objectives_year} onChange={(e) => setForm((f) => ({ ...f, objectives_year: e.target.value }))} placeholder="2026" /></Field>
-                <Field label="Strategic objectives">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {form.objectives.map((o, i) => (
-                      <div key={i} style={{ border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 10, padding: 9, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                        <div style={{ display: 'flex', gap: 7 }}>
-                          <input className="strat-in" value={o.text} onChange={(e) => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, text: e.target.value } : x) }))} placeholder={`Objective ${i + 1}`} />
-                          <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.length > 1 ? f.objectives.filter((_, j) => j !== i) : [emptyObjective()] }))} style={{ width: 34, flexShrink: 0, borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={13} /></button>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingLeft: 14 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Success measures</span>
-                          {o.successMeasures.map((m, k) => (
-                            <div key={k} style={{ display: 'flex', gap: 6 }}>
-                              <input className="strat-in" value={m} style={{ fontSize: 12.5 }}
-                                onChange={(e) => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: x.successMeasures.map((y, l) => l === k ? e.target.value : y) } : x) }))}
-                                placeholder={`Success measure ${k + 1}`} />
-                              <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: x.successMeasures.length > 1 ? x.successMeasures.filter((_, l) => l !== k) : [''] } : x) }))}
-                                style={{ width: 28, flexShrink: 0, borderRadius: 7, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #8FB4E8)', cursor: 'pointer' }}><X size={11} /></button>
-                            </div>
-                          ))}
-                          <button onClick={() => setForm((f) => ({ ...f, objectives: f.objectives.map((x, j) => j === i ? { ...x, successMeasures: [...x.successMeasures, ''] } : x) }))}
-                            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 7, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={12} /> Add success measure</button>
-                        </div>
-                      </div>
-                    ))}
-                    <button onClick={() => setForm((f) => ({ ...f, objectives: [...f.objectives, emptyObjective()] }))} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 8, border: '1px dashed rgba(48,108,236,0.4)', background: 'transparent', color: 'var(--color-accent-text, #7EB3FF)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}><Plus size={13} /> Add objective</button>
-                  </div>
-                </Field>
-              </div>
               <Field label="Monthly goals">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                   {form.monthly_goals.map((g, i) => (
