@@ -9,12 +9,25 @@
 
 export const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 export const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
-export const canEditFund = (userProfile, isDemo) => isDemo || ['manager', 'superadmin'].includes(userProfile?.role);
+
+// A person's fund role is read per-agency, off the `agencies` list each
+// entry already carries its own `role` for (superadmin for every agency;
+// otherwise whatever agency_members.role says for that one agency_id) —
+// never the account's global profiles.role. That's what lets a manager be
+// promoted for just this one agency's fund without becoming a manager
+// anywhere else they happen to belong to. The database enforces the same
+// split: every fund_* write policy checks is_agency_manager(agency_id),
+// which accepts a global manager/superadmin exactly as before, plus a
+// plain agency_members.role = 'manager' row scoped to that agency_id —
+// see supabase/migrations/20261122000000_fund_agency_scoped_managers.sql.
+export const fundRoleOf = (agencies, activeAgencyId) => agencies?.find((a) => a.id === activeAgencyId)?.role || null;
+
+export const canEditFund = (agencies, activeAgencyId, isDemo) => isDemo || ['manager', 'superadmin'].includes(fundRoleOf(agencies, activeAgencyId));
 // Deleting a project is one step more destructive than everything else a
 // manager can do to it (edit, change status, log contributions) — every
 // backer's contribution loses its project tag, every goal set for it is
 // gone — so it's superadmin-only, not manager-or-superadmin like the rest.
-export const canDeleteFundProject = (userProfile, isDemo) => isDemo || userProfile?.role === 'superadmin';
+export const canDeleteFundProject = (agencies, activeAgencyId, isDemo) => isDemo || fundRoleOf(agencies, activeAgencyId) === 'superadmin';
 
 // Whether the active agency *is* the ImpactFund module. Reads the
 // explicit agencies.kind column first — set when an agency is created
@@ -38,8 +51,8 @@ export const isImpactFundAgency = (agencies, activeAgencyId) => {
 // a future bug), not just stay hidden from the sidebar's own buttons.
 export const FUND_MANAGER_ONLY_VIEWS = ['fundDashboard', 'fundAccounts', 'fundMembers', 'fundInvestors', 'fundDonors', 'fundInstallments', 'fundLoans', 'fundProfile'];
 
-export const isFundPlainMember = (agencies, activeAgencyId, userProfile, isDemo) =>
-  isImpactFundAgency(agencies, activeAgencyId) && !isDemo && userProfile?.role === 'member';
+export const isFundPlainMember = (agencies, activeAgencyId, isDemo) =>
+  isImpactFundAgency(agencies, activeAgencyId) && !isDemo && !['manager', 'superadmin'].includes(fundRoleOf(agencies, activeAgencyId));
 
 export const CONTRIBUTION_CATEGORIES = [
   { key: 'membership', label: 'Membership fee' },

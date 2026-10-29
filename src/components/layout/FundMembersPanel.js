@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Users, Plus, Pencil, Check, X, Eye, Repeat, Sparkles, Link2, Trash2 } from 'lucide-react';
+import { Users, Plus, Pencil, Check, X, Eye, Repeat, Sparkles, Link2, Trash2, ShieldCheck, Shield } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -18,11 +18,11 @@ import {
 const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 export default function FundMembersPanel() {
-  const { workspace, activeAgencyId, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
+  const { workspace, activeAgencyId, agencies, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const membersKey = `demo-fund-members-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;
@@ -58,6 +58,14 @@ export default function FundMembersPanel() {
   const [editingLogin, setEditingLogin] = useState(false);
   const [loginInput, setLoginInput] = useState('');
 
+  // This agency's accounts and their role here — fetched only for a manager,
+  // only in real mode (demo has no real accounts to promote). Used purely to
+  // show/toggle manager access for a fund member's linked login, matched by
+  // email the same way the rest of the fund resolves "who is this person."
+  const [agencyMembers, setAgencyMembers] = useState([]);
+  const [agencyMembersVersion, setAgencyMembersVersion] = useState(0);
+  const [togglingManager, setTogglingManager] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -92,6 +100,41 @@ export default function FundMembersPanel() {
       .subscribe();
     return () => { cancelled = true; sb.removeChannel(ch); };
   }, [agencyId, isDemo, membersKey, contributionsKey, settingsKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAgencyMembers() {
+      if (isDemo || !agencyId || !canEdit) { if (!cancelled) setAgencyMembers([]); return; }
+      const res = await fetch(`/api/agencies/${agencyId}/members`);
+      const json = await res.json().catch(() => ({}));
+      if (!cancelled && res.ok) setAgencyMembers(json.data || []);
+    }
+    loadAgencyMembers();
+    return () => { cancelled = true; };
+  }, [agencyId, isDemo, canEdit, agencyMembersVersion]);
+
+  // The account (if any) whose login matches this fund member's linked
+  // email — same loose match (case/whitespace-insensitive) the rest of the
+  // fund uses to resolve "who is this person."
+  const linkedAccountFor = (loginEmail) => {
+    const needle = (loginEmail || '').trim().toLowerCase();
+    if (!needle) return null;
+    return agencyMembers.find((m) => (m.user?.email || '').trim().toLowerCase() === needle) || null;
+  };
+
+  const setManagerAccess = async (loginEmail, makeManager) => {
+    setTogglingManager(true);
+    const res = await fetch(`/api/agencies/${agencyId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: loginEmail, role: makeManager ? 'manager' : 'member' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setTogglingManager(false);
+    if (!res.ok) { toast.error('Could not update', json.error || 'Something went wrong.'); return; }
+    setAgencyMembersVersion((v) => v + 1);
+    toast.success(makeManager ? 'Manager access granted' : 'Manager access removed');
+  };
 
   const membershipFee = num(settings?.membership_fee);
   const projectName = (id) => projects.find((p) => p.id === id)?.title || null;
@@ -359,6 +402,39 @@ export default function FundMembersPanel() {
                   )}
                 </div>
               )}
+
+              {/* Manager access — grants full ImpactFund view+edit to just this
+                  one linked account, scoped to this agency only (their role
+                  in any other agency they belong to is untouched). Needs a
+                  linked account to act on, so it only shows once one's set. */}
+              {canEdit && historyMember.login_email && (() => {
+                const linked = linkedAccountFor(historyMember.login_email);
+                const isManager = linked?.role === 'manager';
+                const isSuperadmin = linked?.role === 'superadmin';
+                return (
+                  <div style={{ ...innerCard, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {isManager || isSuperadmin ? <ShieldCheck size={14} style={{ color: '#22C55E', flexShrink: 0 }} /> : <Shield size={14} style={{ color: tSub, flexShrink: 0 }} />}
+                    <span style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Manager access</span>
+                    {!linked ? (
+                      <span style={{ fontSize: 12, color: tSub, fontStyle: 'italic', flex: 1, minWidth: 160 }}>Hasn’t signed in with this email yet — once they do, you can grant it.</span>
+                    ) : isSuperadmin ? (
+                      <span style={{ fontSize: 12.5, color: tKey, flex: 1, minWidth: 0 }}>Already a superadmin — full access everywhere.</span>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 12.5, color: isManager ? '#22C55E' : tSub, fontWeight: 600, flex: 1, minWidth: 0 }}>
+                          {isManager ? 'Can view and edit everything in this fund' : 'View-only, member pages only'}
+                        </span>
+                        <button
+                          className="fund-btn" style={{ height: 28, fontSize: 11 }} disabled={togglingManager}
+                          onClick={() => setManagerAccess(historyMember.login_email, !isManager)}
+                        >
+                          {isManager ? 'Remove manager access' : 'Make manager'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Membership */}
               <div style={innerCard}>

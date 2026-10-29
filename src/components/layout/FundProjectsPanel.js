@@ -20,12 +20,12 @@ import {
 const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 export default function FundProjectsPanel() {
-  const { workspace, activeAgencyId, userProfile, isDemo } = useWorkspaceStore();
+  const { workspace, activeAgencyId, agencies, userProfile, isDemo } = useWorkspaceStore();
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
-  const canDelete = canDeleteFundProject(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
+  const canDelete = canDeleteFundProject(agencies, activeAgencyId, isDemo);
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const projectsKey = `demo-fund-projects-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;

@@ -33,7 +33,7 @@ export default function FundContributorsPanel({ type }) {
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const contributorsKey = `demo-fund-contributors-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;

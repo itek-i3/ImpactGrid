@@ -23,11 +23,11 @@ const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-GB', { day: 'numer
 // already earmarked to a project); the loans themselves and their
 // repayments are their own small append-only ledger, same philosophy.
 export default function FundLoansPanel() {
-  const { workspace, activeAgencyId, userProfile, isDemo } = useWorkspaceStore();
+  const { workspace, activeAgencyId, agencies, userProfile, isDemo } = useWorkspaceStore();
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const membersKey = `demo-fund-members-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;

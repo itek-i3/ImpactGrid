@@ -20,11 +20,11 @@ const thisMonthKey = () => new Date().toISOString().slice(0, 7);
 // members list itself lives here now, each row tracking that member's own
 // instalment record instead of a flat all-members ledger.
 export default function FundInstallmentsPanel() {
-  const { workspace, activeAgencyId, userProfile, isDemo } = useWorkspaceStore();
+  const { workspace, activeAgencyId, agencies, userProfile, isDemo } = useWorkspaceStore();
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const membersKey = `demo-fund-members-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;

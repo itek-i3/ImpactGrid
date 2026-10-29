@@ -40,11 +40,11 @@ const ACCOUNTS_INFO = [
 ];
 
 export default function FundAccountsPanel() {
-  const { workspace, activeAgencyId, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
+  const { workspace, activeAgencyId, agencies, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
   const toast = useToast();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;
   const settingsKey = `demo-fund-settings-${agencyId || 'x'}`;
   const loansKey = `demo-fund-loans-${agencyId || 'x'}`;

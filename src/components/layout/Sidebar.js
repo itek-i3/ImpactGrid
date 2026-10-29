@@ -251,7 +251,7 @@ export default function Sidebar() {
   // A plain member (not manager/superadmin, and not the demo walkthrough)
   // only gets Projects and their own profile — the fund's totals, the full
   // member roster, loans and settings stay manager-only.
-  const isFundPlainMember = isFundPlainMemberOf(agencies, activeAgencyId, userProfile, isDemo);
+  const isFundPlainMember = isFundPlainMemberOf(agencies, activeAgencyId, isDemo);
 
   const handleOpenPage = useCallback((page) => {
     setCurrentPage(page);

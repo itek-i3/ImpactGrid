@@ -30,9 +30,9 @@ const MEMBER_STEPS = [
 ];
 
 export default function FundTourGuide() {
-  const { agencies, activeAgencyId, userProfile, isDemo, currentView, setCurrentView, sidebarOpen, setSidebarOpen } = useWorkspaceStore();
+  const { agencies, activeAgencyId, isDemo, currentView, setCurrentView, sidebarOpen, setSidebarOpen } = useWorkspaceStore();
   const isFund = isImpactFundAgency(agencies, activeAgencyId);
-  const isMember = isFundPlainMember(agencies, activeAgencyId, userProfile, isDemo);
+  const isMember = isFundPlainMember(agencies, activeAgencyId, isDemo);
   const steps = isMember ? MEMBER_STEPS : MANAGER_STEPS;
   const storageKey = `fund-tour-seen-${activeAgencyId || 'x'}-${isMember ? 'member' : 'manager'}`;
 

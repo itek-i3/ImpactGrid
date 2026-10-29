@@ -66,7 +66,7 @@ function WorkspaceContent() {
   // localStorage, a left-over link, a future bug) — the Sidebar only
   // hides the buttons that would set it, it doesn't stop it rendering.
   // Falls back to their own profile rather than showing nothing.
-  const effectiveView = (isFundPlainMember(agencies, activeAgencyId, userProfile, isDemo) && FUND_MANAGER_ONLY_VIEWS.includes(currentView))
+  const effectiveView = (isFundPlainMember(agencies, activeAgencyId, isDemo) && FUND_MANAGER_ONLY_VIEWS.includes(currentView))
     ? 'fundMyProfile'
     : currentView;
 

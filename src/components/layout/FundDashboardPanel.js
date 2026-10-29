@@ -16,7 +16,7 @@ export default function FundDashboardPanel() {
   const { workspace, activeAgencyId, agencies, userProfile, isDemo, setCurrentView } = useWorkspaceStore();
   const isMobile = useIsMobile();
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = canEditFund(userProfile, isDemo);
+  const canEdit = canEditFund(agencies, activeAgencyId, isDemo);
   const agencyName = agencies?.find((a) => a.id === activeAgencyId)?.name || 'ImpactFund';
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;
   const contributorsKey = `demo-fund-contributors-${agencyId || 'x'}`;
