@@ -58,6 +58,9 @@ export default function FundMembersPanel() {
   const [editingLogin, setEditingLogin] = useState(false);
   const [loginInput, setLoginInput] = useState('');
 
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
   // This agency's accounts and their role here — fetched only for a manager,
   // only in real mode (demo has no real accounts to promote). Used purely to
   // show/toggle manager access for a fund member's linked login, matched by
@@ -275,6 +278,14 @@ export default function FundMembersPanel() {
     await patchMember(historyId, { login_email: next });
   };
 
+  const saveName = async () => {
+    if (!historyId) return;
+    const next = nameInput.trim();
+    if (!next) return;
+    setEditingName(false);
+    await patchMember(historyId, { name: next });
+  };
+
   const tKey = 'var(--color-text-primary, #E2EEFF)';
   const tSub = 'var(--color-text-tertiary, #6C82A3)';
   const card = {
@@ -341,7 +352,7 @@ export default function FundMembersPanel() {
       {/* History modal — read-only: M-Pesa number, membership total, and the
           monthly chama/loan instalments. Entering a new payment happens via
           the "+" button on the row, not here. */}
-      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditingLogin(false); }} title={historyMember ? historyMember.name : 'Contributions'} maxWidth="460px">
+      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditingLogin(false); setEditingName(false); }} title={historyMember ? historyMember.name : 'Contributions'} maxWidth="460px">
         {historyMember && (() => {
           const monthlyList = historyList.filter((c) => c.category === 'monthly');
           const otherList = historyList.filter((c) => c.category !== 'monthly' && c.category !== 'membership');
@@ -380,6 +391,26 @@ export default function FundMembersPanel() {
                   {feeDone ? 'Member' : 'Prospective'}
                 </span>
               </div>
+
+              {/* Full name — editable so a typo or legal-name change doesn't
+                  require deleting and re-adding the member. */}
+              {canEdit && (
+                <div style={{ ...innerCard, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Full name</span>
+                  {editingName ? (
+                    <>
+                      <input className="fund-input" style={{ flex: 1, minWidth: 140, height: 32 }} autoFocus value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="Full name" />
+                      <button className="fund-btn" style={{ height: 32 }} onClick={saveName} disabled={!nameInput.trim()}><Check size={13} /></button>
+                      <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingName(false)}><X size={13} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 12.5, color: tKey, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{historyMember.name}</span>
+                      <button className="fund-btn" style={{ height: 28, fontSize: 11 }} onClick={() => { setNameInput(historyMember.name || ''); setEditingName(true); }}><Pencil size={11} /> Edit</button>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Linked account — lets this person see their own profile once they're a paid member */}
               {canEdit && (
