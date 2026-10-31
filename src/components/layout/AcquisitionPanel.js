@@ -35,6 +35,21 @@ const CRITERIA = [
   { id: 9,  title: 'Investment Size & Returns', short: 'Returns',     Icon: BarChart3,   inputType: 'investment-inputs',  desc: 'Enter acquisition cost and monthly profit to calculate the payback period' },
 ];
 
+// Groups the eleven criteria into themed categories — the same idea as the Data
+// Registry's Identity/Operations/Performance/... sections, so the worksheet reads
+// as a handful of focused questions instead of eleven in a row. Purely a display
+// grouping: scoring, saving, and the overall 1–11 numbering are unaffected.
+const CRITERIA_CATEGORIES = [
+  { key: 'fundamentals', label: 'Business Fundamentals', icon: Factory,     desc: 'Industry fit, operating history, and legal standing',                   ids: [0, 1, 4] },
+  { key: 'financials',   label: 'Financial Health',      icon: DollarSign,  desc: 'Revenue, cash flow quality, and the size of the deal itself',           ids: [2, 3, 9] },
+  { key: 'operations',   label: 'Operations & Market',   icon: Users,       desc: 'Who runs the business day to day, and how well it competes and grows', ids: [6, 7, 5] },
+  { key: 'risk',         label: 'Risk & Deal Context',   icon: ShieldAlert, desc: 'Why the owner is selling, and what could still go wrong',               ids: [8, 10] },
+];
+
+// Criterion id → its fixed position in CRITERIA, so the "01..11" row numbers stay
+// stable across category boundaries.
+const CRITERIA_ORDER = Object.fromEntries(CRITERIA.map((c, i) => [c.id, i]));
+
 const TARGET_INDUSTRIES = [
   { value: 'laundromat',   label: 'Laundromat' },
   { value: 'car-wash',     label: 'Car Wash' },
@@ -145,9 +160,17 @@ function parseFinancialNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Sum of itemized cost line items (e.g. rent, salaries, utilities) that make up operating cost.
+function sumCostItems(items) {
+  return (Array.isArray(items) ? items : []).reduce((sum, it) => sum + (parseFinancialNumber(it.amount) || 0), 0);
+}
+
 function calculateRevenueMetrics(values = {}) {
   const revenue = parseFinancialNumber(values.revenue);
-  const totalExpenses = parseFinancialNumber(values.totalExpenses);
+  // When operating cost has been broken down into line items, the breakdown is the
+  // source of truth and the manual total-expenses field is ignored.
+  const hasCostItems = Array.isArray(values.costItems) && values.costItems.length > 0;
+  const totalExpenses = hasCostItems ? sumCostItems(values.costItems) : parseFinancialNumber(values.totalExpenses);
 
   const netProfit = revenue !== null && totalExpenses !== null ? revenue - totalExpenses : null;
   const netMargin = revenue !== null && revenue !== 0 && netProfit !== null ? (netProfit / revenue) * 100 : null;
@@ -163,7 +186,7 @@ function calculateRevenueMetrics(values = {}) {
       })()
     : null;
 
-  return { netProfit, netMargin, score };
+  return { totalExpenses, netProfit, netMargin, score };
 }
 
 function calculateInvestmentMetrics(values = {}) {
@@ -598,6 +621,47 @@ function SectionHead({ icon: Icon, title, sub, num, color = ACCENT }) {
   );
 }
 
+// The evaluation form is a stepped wizard — one focused step at a time, just like
+// the Data Registry's registration wizard — instead of every section open at once.
+// "Details" and "Due Diligence" bookend the four themed criteria categories.
+const EVAL_STEPS = [
+  { key: 'details', icon: Target, label: 'Details', title: 'Business details', desc: 'Name the business and the basic facts about it.' },
+  ...CRITERIA_CATEGORIES.map(cat => ({ key: cat.key, icon: cat.icon, label: cat.label, title: cat.label, desc: cat.desc })),
+  { key: 'duediligence', icon: ShieldAlert, label: 'Due Diligence', title: 'Due Diligence Risk Validation', desc: 'A validation/risk layer over the score above — findings here never change it, but can block the deal.' },
+];
+
+// Clickable step chips — numbered, with a filled dot for the done/current step —
+// the same idea as the Data Registry's Stepper, styled to match this file's
+// inline-style convention rather than its scoped CSS classes.
+function EvalStepper({ steps, current, onGo }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:6, overflowX:'auto', padding:'2px 2px 6px' }}>
+      {steps.map((st, i) => {
+        const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+        return (
+          <button key={st.key} type="button" onClick={() => onGo(i)}
+            style={{
+              display:'flex', alignItems:'center', gap:7, padding:'6px 11px 6px 7px', borderRadius:99, flexShrink:0,
+              border: `1px solid ${state === 'current' ? ACCENT : 'var(--color-border)'}`,
+              background: state === 'current' ? `${ACCENT}1C` : 'transparent',
+              cursor:'pointer', fontFamily:'inherit', transition:'all .12s',
+            }}>
+            <span style={{
+              width:20, height:20, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:10, fontWeight:700, flexShrink:0,
+              background: state === 'done' ? SUCCESS : state === 'current' ? ACCENT : 'var(--color-bg-tertiary)',
+              color: state === 'todo' ? 'var(--color-text-tertiary)' : '#fff',
+            }}>
+              {state === 'done' ? <Check size={11}/> : i + 1}
+            </span>
+            <span style={{ fontSize:11.5, fontWeight:600, whiteSpace:'nowrap', color: state === 'todo' ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)' }}>{st.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Status pill for one Due Diligence check — grey "Not evaluated" until enough data is entered.
 function DdStatusBadge({ result }) {
   if (!result.status) {
@@ -652,7 +716,7 @@ export default function AcquisitionPanel() {
   const [ddLegalDispute, setDdLegalDispute] = useState('');
   const [ddCompliance,  setDdCompliance]  = useState({ status: '', daysToResolve: '' });
   const [ddEquipment,   setDdEquipment]   = useState({ replacementCost: '', budget: '' });
-  const [revenueMetrics,  setRevenueMetrics]  = useState({ revenue: '', totalExpenses: '', grossProfit: '' });
+  const [revenueMetrics,  setRevenueMetrics]  = useState({ revenue: '', totalExpenses: '', grossProfit: '', costItems: [] }); // costItems: [{ id, label, amount }]
   const [investmentMetrics, setInvestmentMetrics] = useState({ acquisitionCost: '', monthlyProfit: '' });
   const [valuation,       setValuation]       = useState(EMPTY_VALUATION);
   const [valuationOpen,   setValuationOpen]   = useState(false);
@@ -671,6 +735,7 @@ export default function AcquisitionPanel() {
   const [tableSearch,     setTableSearch]     = useState('');
   const [tableFilter,     setTableFilter]     = useState('all'); // all | strong | review | fail
   const [formOpen,        setFormOpen]        = useState(false); // evaluation form modal
+  const [wizardStep,      setWizardStep]      = useState(0);     // which EVAL_STEPS step is showing, edit mode only
   const panelRef = useRef(null);
 
   const isAcrAgency = useMemo(() =>
@@ -806,6 +871,7 @@ export default function AcquisitionPanel() {
     Object.values(legalChecks).some(Boolean) ||
     customLegalItems.length > 0 || customMotivations.length > 0 || assets.length > 0 ||
     revenueMetrics.revenue !== '' || revenueMetrics.totalExpenses !== '' || revenueMetrics.grossProfit !== '' ||
+    (revenueMetrics.costItems?.length > 0) ||
     investmentMetrics.acquisitionCost !== '' || investmentMetrics.monthlyProfit !== '';
 
   // Snapshot source: a business picked from the table wins; else the live draft
@@ -846,7 +912,7 @@ export default function AcquisitionPanel() {
     setValuation(prev => {
       const next = { ...prev };
       const rev = parseFinancialNumber(revenueMetrics.revenue);
-      const exp = parseFinancialNumber(revenueMetrics.totalExpenses);
+      const exp = calculateRevenueMetrics(revenueMetrics).totalExpenses;
       const netProfit = rev !== null && exp !== null ? rev - exp : null;
       if (next.netProfit === '' && netProfit !== null) next.netProfit = String(netProfit);
       if (next.annualRevenue === '' && rev !== null) next.annualRevenue = String(rev);
@@ -1011,7 +1077,8 @@ export default function AcquisitionPanel() {
   }, [undoStack, redoStack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSave() {
-    if (!businessName.trim()) { setBusinessNameError(true); focusFirstError(); return; }
+    // Business Name lives on step 0 of the wizard — jump there so the error is visible.
+    if (!businessName.trim()) { setWizardStep(0); setBusinessNameError(true); focusFirstError(panelRef); return; }
     setBusinessNameError(false);
     if (!activeAgencyId) { toast.error('No agency', 'Open an agency workspace to save evaluations.'); return; }
     setSaving(true);
@@ -1107,7 +1174,7 @@ export default function AcquisitionPanel() {
     setDdLegalDispute(ev.ddLegalDispute || '');
     setDdCompliance({ status: '', daysToResolve: '', ...(ev.ddCompliance || {}) });
     setDdEquipment({ replacementCost: '', budget: '', ...(ev.ddEquipment || {}) });
-    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '', ...(ev.revenueMetrics || {}) });
+    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '', costItems: [], ...(ev.revenueMetrics || {}) });
     setInvestmentMetrics(ev.investmentMetrics || { acquisitionCost: '', monthlyProfit: '' });
     setValuation(ev.valuation ? { ...EMPTY_VALUATION, ...ev.valuation } : EMPTY_VALUATION);
     setEditingEvalId(ev.id); // saving will REPLACE this record, not create a duplicate
@@ -1116,6 +1183,7 @@ export default function AcquisitionPanel() {
     setFormReadOnly(readOnly);
     setFormOpen(true);
     setBusinessNameError(false);
+    setWizardStep(0);
   }
 
   // Open a blank form for a brand-new evaluation.
@@ -1142,13 +1210,14 @@ export default function AcquisitionPanel() {
     setDdLegalDispute('');
     setDdCompliance({ status: '', daysToResolve: '' });
     setDdEquipment({ replacementCost: '', budget: '' });
-    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '' });
+    setRevenueMetrics({ revenue: '', totalExpenses: '', grossProfit: '', costItems: [] });
     setInvestmentMetrics({ acquisitionCost: '', monthlyProfit: '' });
     setValuation(EMPTY_VALUATION);
     setViewedEvalId(null);
     setEditingEvalId(null);
     setFormReadOnly(false);
     setBusinessNameError(false);
+    setWizardStep(0);
   }
 
   function handleCopy() {
@@ -1182,6 +1251,13 @@ export default function AcquisitionPanel() {
         `Critical Red Flags: ${ddSummary.criticalRedFlags}`,
         ...ddChecks.filter(c => c.result.status && c.result.status !== 'PASS').map(c => `- ${c.label}: ${c.result.status}`),
         '', `FINAL DECISION: ${finalDecision.text}`,
+      );
+    }
+    if (revenueMetrics.costItems?.length > 0) {
+      const costMetrics = calculateRevenueMetrics(revenueMetrics);
+      lines.push('', 'OPERATIONAL COST BREAKDOWN', '---------------------------',
+        ...revenueMetrics.costItems.map(item => `- ${item.label || '(unlabeled)'}: ${item.amount ? formatCurrency(parseFinancialNumber(item.amount)) : '—'}`),
+        `Total operational cost: ${formatCurrency(costMetrics.totalExpenses)}`,
       );
     }
     if (assets.length > 0) {
@@ -1259,16 +1335,61 @@ export default function AcquisitionPanel() {
               />
             </div>
             <div>
-              <label className="acqp-lbl">Operational cost</label>
-              <input
-                className="acqp-input"
-                type="number"
-                step="0.01"
-                inputMode="decimal"
-                value={revenueMetrics.totalExpenses}
-                onChange={e => setRevenueMetrics(prev => ({ ...prev, totalExpenses: e.target.value }))}
-                placeholder="e.g. 400000"
-              />
+              <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8 }}>
+                <label className="acqp-lbl">Operational cost</label>
+                {(revenueMetrics.costItems || []).length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRevenueMetrics(prev => ({
+                      ...prev,
+                      costItems: [{ id: crypto.randomUUID(), label: '', amount: prev.totalExpenses || '' }],
+                      totalExpenses: '',
+                    }))}
+                    style={{ fontSize:11, fontWeight:600, color:'var(--color-accent-primary)', background:'transparent', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0 }}>
+                    Break down costs
+                  </button>
+                )}
+              </div>
+
+              {(revenueMetrics.costItems || []).length === 0 ? (
+                <input
+                  className="acqp-input"
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={revenueMetrics.totalExpenses}
+                  onChange={e => setRevenueMetrics(prev => ({ ...prev, totalExpenses: e.target.value }))}
+                  placeholder="e.g. 400000"
+                />
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:4 }}>
+                  {revenueMetrics.costItems.map((item, i) => (
+                    <div key={item.id} style={{ display:'grid', gridTemplateColumns:'2fr 1fr 32px', gap:8 }}>
+                      <input className="acqp-input" value={item.label} placeholder="e.g. Rent, salaries, utilities"
+                        onChange={e => setRevenueMetrics(prev => ({ ...prev, costItems: prev.costItems.map((x, j) => j === i ? { ...x, label: e.target.value } : x) }))}/>
+                      <input className="acqp-input" type="number" step="0.01" inputMode="decimal" value={item.amount} placeholder="Amount"
+                        onChange={e => setRevenueMetrics(prev => ({ ...prev, costItems: prev.costItems.map((x, j) => j === i ? { ...x, amount: e.target.value } : x) }))}/>
+                      <button type="button" onClick={() => setRevenueMetrics(prev => ({ ...prev, costItems: prev.costItems.filter((_, j) => j !== i) }))}
+                        style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--color-border)', background:'transparent', color:'var(--color-text-tertiary)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        <X size={13}/>
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                    <button type="button" onClick={() => setRevenueMetrics(prev => ({ ...prev, costItems: [...prev.costItems, { id: crypto.randomUUID(), label: '', amount: '' }] }))}
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:8, border:'1px dashed var(--color-border)', background:'transparent', color:'var(--color-text-secondary)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+                      <Plus size={13}/> Add cost item
+                    </button>
+                    <button type="button" onClick={() => setRevenueMetrics(prev => ({ ...prev, totalExpenses: sumCostItems(prev.costItems) ? String(sumCostItems(prev.costItems)) : '', costItems: [] }))}
+                      style={{ fontSize:11, fontWeight:600, color:'var(--color-text-tertiary)', background:'transparent', border:'none', cursor:'pointer', fontFamily:'inherit', padding:0, textDecoration:'underline' }}>
+                      Use a single total instead
+                    </button>
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--color-text-secondary)' }}>
+                    Total operational cost: <strong style={{ color:'var(--color-text-primary)' }}>{formatCurrency(metrics.totalExpenses)}</strong>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label className="acqp-lbl">Gross profit</label>
@@ -1607,13 +1728,30 @@ export default function AcquisitionPanel() {
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:'10px 16px' }}>
             <InfoField label="Revenue" value={revenueMetrics.revenue !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.revenue)) : null}/>
-            <InfoField label="Operational cost" value={revenueMetrics.totalExpenses !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.totalExpenses)) : null}/>
+            <InfoField label="Operational cost" value={formatCurrency(metrics.totalExpenses)}/>
             <InfoField label="Gross profit" value={revenueMetrics.grossProfit !== '' ? formatCurrency(parseFinancialNumber(revenueMetrics.grossProfit)) : null}/>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:'10px 16px' }}>
             <InfoField label="Net profit" value={formatCurrency(metrics.netProfit)}/>
             <InfoField label="Net margin" value={formatPercent(metrics.netMargin)}/>
           </div>
+          {(revenueMetrics.costItems || []).length > 0 && (
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>Operational cost breakdown</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {revenueMetrics.costItems.map(item => (
+                  <div key={item.id} style={{ display:'flex', justifyContent:'space-between', gap:10, fontSize:12.5, color:'var(--color-text-secondary)' }}>
+                    <span>{item.label?.trim() || '(unlabeled)'}</span>
+                    <span style={{ fontWeight:700, color:'var(--color-text-primary)', fontVariantNumeric:'tabular-nums' }}>{item.amount ? formatCurrency(parseFinancialNumber(item.amount)) : '—'}</span>
+                  </div>
+                ))}
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:'var(--color-text-primary)', paddingTop:6, borderTop:'1px solid var(--color-border-subtle)' }}>
+                  <span>Total</span>
+                  <span>{formatCurrency(metrics.totalExpenses)}</span>
+                </div>
+              </div>
+            </div>
+          )}
           {assets.length > 0 && (
             <div>
               <div style={{ fontSize:10, fontWeight:700, color:'var(--color-text-tertiary)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>Assets owned & worth</div>
@@ -2433,52 +2571,58 @@ export default function AcquisitionPanel() {
                     </div>
                   </div>
 
-                  {/* Criteria worksheet — read-only */}
-                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <SectionHead icon={BarChart3} title="Criteria worksheet" sub={`${evaluatedCount} of 11 scored`} num="02" />
+                  {/* Criteria worksheet — grouped into categories, read-only */}
+                  {CRITERIA_CATEGORIES.map((cat, catIdx) => {
+                    const catCriteria = cat.ids.map(id => CRITERIA.find(c => c.id === id));
+                    const catScored = catCriteria.filter(c => derivedScores[c.id] !== null).length;
+                    return (
+                      <div key={cat.key} style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                        <SectionHead icon={cat.icon} title={cat.label} sub={`${cat.desc} · ${catScored} of ${catCriteria.length} scored`} num={String(catIdx + 2).padStart(2, '0')} />
 
-                    {CRITERIA.map((c, idx) => {
-                      const s      = derivedScores[c.id];
-                      const col    = scoreColor(s);
-                      const scored = s !== null;
-                      const Icon   = c.Icon;
-                      return (
-                        <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < CRITERIA.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+                        {catCriteria.map((c, idx) => {
+                          const s      = derivedScores[c.id];
+                          const col    = scoreColor(s);
+                          const scored = s !== null;
+                          const Icon   = c.Icon;
+                          return (
+                            <div key={c.id} style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < catCriteria.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
 
-                          {/* Icon chip */}
-                          <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                            <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
-                          </div>
-
-                          {/* Content */}
-                          <div style={{ minWidth:0 }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                              <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
-                              <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
-                            </div>
-                            <div style={{ marginTop:9 }}>{renderReadOnlyAnswer(c)}</div>
-                            {notes[c.id]?.trim() && (
-                              <div style={{ marginTop:9, padding:'8px 11px', borderRadius:'var(--radius-lg)', background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border-subtle)', fontSize:12, color:'var(--color-text-secondary)', lineHeight:1.55, maxWidth:520 }}>
-                                {notes[c.id]}
+                              {/* Icon chip */}
+                              <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
                               </div>
-                            )}
-                          </div>
 
-                          {/* Score cell */}
-                          <div style={{ textAlign:'right', paddingTop:2 }}>
-                            <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
-                              {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                              {/* Content */}
+                              <div style={{ minWidth:0 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                  <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(CRITERIA_ORDER[c.id] + 1).padStart(2, '0')}</span>
+                                  <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                                </div>
+                                <div style={{ marginTop:9 }}>{renderReadOnlyAnswer(c)}</div>
+                                {notes[c.id]?.trim() && (
+                                  <div style={{ marginTop:9, padding:'8px 11px', borderRadius:'var(--radius-lg)', background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border-subtle)', fontSize:12, color:'var(--color-text-secondary)', lineHeight:1.55, maxWidth:520 }}>
+                                    {notes[c.id]}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Score cell */}
+                              <div style={{ textAlign:'right', paddingTop:2 }}>
+                                <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
+                                  {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                                </div>
+                                <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
+                              </div>
                             </div>
-                            <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
 
                   {/* Due Diligence Risk Validation — read-only */}
                   <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <SectionHead icon={ShieldAlert} title="Due Diligence Risk Validation" sub="A risk layer over the viability score above — separate from it, not a second formula" num="03" />
+                    <SectionHead icon={ShieldAlert} title="Due Diligence Risk Validation" sub="A risk layer over the viability score above — separate from it, not a second formula" num="06" />
                     <div>
                       {ddChecks.map((c, idx) => (
                         <div key={c.key} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'12px 18px', borderBottom: idx < ddChecks.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
@@ -2509,7 +2653,22 @@ export default function AcquisitionPanel() {
                 </>
               ) : (
                 <>
+                  {/* Stepped wizard — one focused step at a time, same idea as the Data Registry's form */}
+                  <EvalStepper steps={EVAL_STEPS} current={wizardStep} onGo={setWizardStep}/>
+
+                  <div style={{ display:'flex', alignItems:'center', gap:11, padding:'11px 2px' }}>
+                    <span style={{ width:34, height:34, borderRadius:'var(--radius-lg)', background:`${ACCENT}1C`, border:`1px solid ${ACCENT}33`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      {(() => { const StepIcon = EVAL_STEPS[wizardStep].icon; return <StepIcon size={16} style={{ color:ACCENT }}/>; })()}
+                    </span>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:14.5, fontWeight:800, color:'var(--color-text-primary)', letterSpacing:'-.01em' }}>{EVAL_STEPS[wizardStep].title}</div>
+                      <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', marginTop:1 }}>{EVAL_STEPS[wizardStep].desc}</div>
+                    </div>
+                    <div style={{ fontSize:11, color:'var(--color-text-muted)', fontFamily: MONO, flexShrink:0 }}>Step {wizardStep + 1} of {EVAL_STEPS.length}</div>
+                  </div>
+
                   {/* Business details — one field per row, easier to scan and fill in order */}
+                  {wizardStep === 0 && (
                   <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                     <div>
                       <label className="acqp-lbl">Business Name *</label>
@@ -2604,64 +2763,69 @@ export default function AcquisitionPanel() {
                       </div>
                     </div>
                   </div>
+                  )}
 
-                  {/* Criteria worksheet */}
-                  <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Criteria worksheet</div>
-                      <div style={{ fontSize:11.5, color:'var(--color-text-tertiary)', fontVariantNumeric:'tabular-nums' }}>{evaluatedCount} of 11 scored</div>
-                    </div>
+                  {/* Criteria worksheet — one themed category per step */}
+                  {CRITERIA_CATEGORIES.filter(cat => cat.key === EVAL_STEPS[wizardStep].key).map(cat => {
+                    const catCriteria = cat.ids.map(id => CRITERIA.find(c => c.id === id));
+                    const catScored = catCriteria.filter(c => derivedScores[c.id] !== null).length;
+                    return (
+                      <div key={cat.key} style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
+                        <SectionHead icon={cat.icon} title={cat.label} sub={`${cat.desc} · ${catScored} of ${catCriteria.length} scored`} />
 
-                    {CRITERIA.map((c, idx) => {
-                const s      = derivedScores[c.id];
-                const col    = scoreColor(s);
-                const scored = s !== null;
-                const Icon   = c.Icon;
-                return (
-                  <div key={c.id} className="acqp-row" style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < CRITERIA.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
+                        {catCriteria.map((c, idx) => {
+                          const s      = derivedScores[c.id];
+                          const col    = scoreColor(s);
+                          const scored = s !== null;
+                          const Icon   = c.Icon;
+                          return (
+                            <div key={c.id} className="acqp-row" style={{ display:'grid', gridTemplateColumns:'40px 1fr 68px', gap:13, padding:'15px 20px', borderBottom: idx < catCriteria.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', transition:'background .12s' }}>
 
-                    {/* Icon chip */}
-                    <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .2s' }}>
-                      <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
-                    </div>
+                              {/* Icon chip */}
+                              <div style={{ width:36, height:36, borderRadius:'var(--radius-lg)', background: scored ? `${col}1C` : 'var(--color-bg-tertiary)', border:`1px solid ${scored ? `${col}33` : 'var(--color-border-subtle)'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'all .2s' }}>
+                                <Icon size={16} style={{ color: scored ? col : 'var(--color-text-secondary)' }} strokeWidth={2}/>
+                              </div>
 
-                    {/* Content */}
-                    <div style={{ minWidth:0 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(idx + 1).padStart(2, '0')}</span>
-                        <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                              {/* Content */}
+                              <div style={{ minWidth:0 }}>
+                                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                  <span style={{ fontSize:10.5, fontWeight:700, color:'var(--color-text-muted)', fontFamily: MONO }}>{String(CRITERIA_ORDER[c.id] + 1).padStart(2, '0')}</span>
+                                  <span style={{ fontSize:13, fontWeight:650, color:'var(--color-text-primary)', letterSpacing:'-.005em' }}>{c.title}</span>
+                                </div>
+                                <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:3, lineHeight:1.5 }}>{c.desc}</div>
+                                <div style={{ marginTop:11 }}>{renderControl(c)}</div>
+
+                                {/* Note */}
+                                <div style={{ marginTop:9 }}>
+                                  <button onClick={() => setNotesOpen(p => ({ ...p, [c.id]: !p[c.id] }))}
+                                    style={{ background:'none', border:'none', cursor:'pointer', color: notes[c.id] ? 'var(--color-text-link)' : 'var(--color-text-muted)', fontSize:10.5, fontFamily:'inherit', display:'flex', alignItems:'center', gap:4, padding:0, fontWeight:600 }}>
+                                    <ChevronDown size={10} style={{ transform: notesOpen[c.id] ? 'rotate(180deg)' : 'none', transition:'transform .12s' }}/>
+                                    {notes[c.id] ? `Note (${notes[c.id].split(/\s+/).filter(Boolean).length}w)` : 'Add note'}
+                                  </button>
+                                  {notesOpen[c.id] && (
+                                    <textarea value={notes[c.id]} onChange={e => setNotes(p => ({ ...p, [c.id]: e.target.value }))}
+                                      placeholder="Observations, red flags, supporting context…" rows={2}
+                                      style={{ marginTop:7, width:'100%', maxWidth:520, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)', padding:'8px 11px', color:'var(--color-text-primary)', fontSize:12, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.55 }}/>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Score cell */}
+                              <div style={{ textAlign:'right', paddingTop:2 }}>
+                                <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
+                                  {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
+                                </div>
+                                <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div style={{ fontSize:11, color:'var(--color-text-tertiary)', marginTop:3, lineHeight:1.5 }}>{c.desc}</div>
-                      <div style={{ marginTop:11 }}>{renderControl(c)}</div>
+                    );
+                  })}
 
-                      {/* Note */}
-                      <div style={{ marginTop:9 }}>
-                        <button onClick={() => setNotesOpen(p => ({ ...p, [c.id]: !p[c.id] }))}
-                          style={{ background:'none', border:'none', cursor:'pointer', color: notes[c.id] ? 'var(--color-text-link)' : 'var(--color-text-muted)', fontSize:10.5, fontFamily:'inherit', display:'flex', alignItems:'center', gap:4, padding:0, fontWeight:600 }}>
-                          <ChevronDown size={10} style={{ transform: notesOpen[c.id] ? 'rotate(180deg)' : 'none', transition:'transform .12s' }}/>
-                          {notes[c.id] ? `Note (${notes[c.id].split(/\s+/).filter(Boolean).length}w)` : 'Add note'}
-                        </button>
-                        {notesOpen[c.id] && (
-                          <textarea value={notes[c.id]} onChange={e => setNotes(p => ({ ...p, [c.id]: e.target.value }))}
-                            placeholder="Observations, red flags, supporting context…" rows={2}
-                            style={{ marginTop:7, width:'100%', maxWidth:520, background:'var(--color-bg-tertiary)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)', padding:'8px 11px', color:'var(--color-text-primary)', fontSize:12, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.55 }}/>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Score cell */}
-                    <div style={{ textAlign:'right', paddingTop:2 }}>
-                      <div style={{ fontSize:17, fontWeight:800, color: scored ? col : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', letterSpacing:'-.02em', lineHeight:1 }}>
-                        {scored ? s : '—'}{scored && <span style={{ fontSize:10, fontWeight:600 }}>%</span>}
-                      </div>
-                      <div style={{ fontSize:9.5, fontWeight:600, color: scored ? col : 'var(--color-text-muted)', marginTop:4 }}>{bandLabel(s)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-                  </div>
-
-                  {/* Due Diligence Risk Validation — six independent checks over the score above */}
+                  {/* Due Diligence Risk Validation — six independent checks over the score above, last step */}
+                  {wizardStep === EVAL_STEPS.length - 1 && (
                   <div style={{ border:'1px solid var(--color-border)', borderRadius:'var(--radius-xl)', overflow:'hidden' }}>
                     <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--color-border-subtle)', background:'var(--color-bg-tertiary)' }}>
                       <div style={{ fontSize:13, fontWeight:700, color:'var(--color-text-primary)' }}>Due Diligence Risk Validation</div>
@@ -2816,6 +2980,24 @@ export default function AcquisitionPanel() {
                         <div style={{ fontSize:13, fontWeight:800, color:finalDecision.color, marginTop:3 }}>{finalDecision.text}</div>
                       </div>
                     </div>
+                  </div>
+                  )}
+
+                  {/* Step navigation — Previous / Next; Save stays in the modal footer below, available on every step */}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 2px 0' }}>
+                    {wizardStep > 0 ? (
+                      <button type="button" onClick={() => setWizardStep(s => s - 1)} className="acqp-ghost" style={ghostBtn}>Previous</button>
+                    ) : <span/>}
+                    {wizardStep < EVAL_STEPS.length - 1 && (
+                      <button type="button" onClick={() => setWizardStep(s => s + 1)} style={{
+                        display:'flex', alignItems:'center', gap:6, padding:'8px 20px', borderRadius:'var(--radius-lg)',
+                        background:'var(--color-accent-gradient)', border:'none', color:'#fff',
+                        cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                        boxShadow:'0 4px 14px rgba(48,108,236,0.35)', transition:'all .15s',
+                      }}>
+                        Next <ChevronDown size={13} style={{ transform:'rotate(-90deg)' }}/>
+                      </button>
+                    )}
                   </div>
                 </>
               )}
