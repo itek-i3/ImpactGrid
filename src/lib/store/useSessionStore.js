@@ -54,7 +54,9 @@ async function swSend(msg) {
 async function registerSW() {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
-    await navigator.serviceWorker.register('/session-sw.js', { scope: '/' });
+    // Must match the app's "/os" basePath (see SessionProvider's own
+    // registration + next.config.mjs) — registering at the bare root 404s.
+    await navigator.serviceWorker.register('/os/session-sw.js', { scope: '/os' });
   } catch {}
 }
 
@@ -94,12 +96,16 @@ export const useSessionStore = create((set, get) => ({
   // ── Fetch team sessions ─────────────────────────────────────────────
   fetchTeamSessions: async (workspaceId) => {
     if (!workspaceId || isDemo()) return;
+    const myUserId = get().session?.userId
+      || require('./useWorkspaceStore').useWorkspaceStore.getState().userProfile?.id;
+    // Profile hasn't loaded yet — we can't reliably exclude our own session,
+    // so skip this round rather than risk showing ourselves as a "teammate".
+    // The next poll (SessionProvider runs one every 20s) will have it.
+    if (!myUserId) return;
     try {
       const res = await fetch(`/os/api/sessions?workspaceId=${workspaceId}`);
       if (!res.ok) return;
       const { data } = await res.json();
-      const myUserId = get().session?.userId
-        || require('./useWorkspaceStore').useWorkspaceStore.getState().userProfile?.id;
       set({ teamSessions: (data || []).filter((s) => s.user_id !== myUserId) });
     } catch {}
   },
@@ -197,7 +203,20 @@ export const useSessionStore = create((set, get) => ({
     const { session, history } = get();
     if (!session) return;
     const completedAt = Date.now();
-    set({ session: null, history: [{ ...session, completionNote: note, status: 'completed', completedAt }, ...history].slice(0, 30) });
+    // Shaped to match listMySessionHistory's snake_case columns (what the
+    // History list renders) — the in-memory session uses camelCase, so a
+    // naive spread here renders as a blank "Focus session · 0m" entry until
+    // the next server refetch overwrites it.
+    const historyEntry = {
+      id: session.dbId || session.id,
+      task_description: session.taskDescription,
+      duration_seconds: session.durationSeconds,
+      started_at: new Date(session.startedAt).toISOString(),
+      completed_at: new Date(completedAt).toISOString(),
+      completion_note: note,
+      snooze_count: session.snoozeCount,
+    };
+    set({ session: null, history: [historyEntry, ...history].slice(0, 30) });
     saveSession(null);
     swSend({ type: 'SESSION_CANCEL' });
     if (session.dbId && !isDemo()) api.patch(`/os/api/sessions/${session.dbId}`, { status: 'completed', completion_note: note, completed_at: completedAt }).catch(() => {});

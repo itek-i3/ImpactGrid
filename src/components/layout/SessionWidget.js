@@ -51,7 +51,7 @@ export default function SessionWidget() {
 
   const dotColor    = isExpired ? '#f87171' : isPaused ? '#f59e0b' : '#4ade80';
   const borderColor = isExpired ? 'rgba(239,68,68,0.35)' : isPaused ? 'rgba(245,158,11,0.35)' : 'rgba(48,108,236,0.40)';
-  const progress    = isExpired ? 1 : Math.min(1, 1 - timeLeft / (session.durationSeconds || 1));
+  const progress    = isExpired ? 1 : Math.max(0, Math.min(1, 1 - timeLeft / (session.durationSeconds || 1)));
   const circ        = 2 * Math.PI * 16;
 
   return (

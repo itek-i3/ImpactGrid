@@ -74,7 +74,7 @@ function restoreFromStorage() {
 
 export default function SessionProvider() {
   const router = useRouter();
-  const { sessionModalOpen, closeSessionModal, rearmSW, session } = useSessionStore();
+  const { sessionModalOpen, closeSessionModal, rearmSW, session, fetchTeamSessions } = useSessionStore();
   
   // Workspace and profile status from global store
   const userId = useWorkspaceStore((s) => s.userProfile?.id);
@@ -140,6 +140,19 @@ export default function SessionProvider() {
     }
     prevStatusRef.current = sessionStatus;
   }, [sessionStatus, session?.taskDescription]);
+
+  // ── 1b. Team Sessions: keep the sidebar's live-count badge accurate ──────────
+  // `teamSessions` otherwise only gets fetched while the Sessions modal is open
+  // (see SessionModal), so a teammate's session never shows up anywhere — not
+  // even as the sidebar badge — until someone has opened that modal at least
+  // once, and it goes stale again the moment it's closed. Poll here instead,
+  // for the lifetime of the app, independent of the modal.
+  useEffect(() => {
+    if (!workspaceId) return;
+    fetchTeamSessions(workspaceId);
+    const t = setInterval(() => fetchTeamSessions(workspaceId), 20_000);
+    return () => clearInterval(t);
+  }, [workspaceId, fetchTeamSessions]);
 
   // ── 2. Load Workspace Members (to resolve display names) ────────────────────
   useEffect(() => {

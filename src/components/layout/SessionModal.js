@@ -102,7 +102,9 @@ function MySessionPanel({
   // ── Active / Paused ──
   if (session.status === 'active' || session.status === 'paused') {
     const isPaused = session.status === 'paused';
-    const progress = Math.min(1, 1 - timeLeft / session.durationSeconds);
+    // Clamped: snoozing past the original duration would otherwise push
+    // timeLeft above durationSeconds and swing progress negative.
+    const progress = Math.max(0, Math.min(1, 1 - timeLeft / session.durationSeconds));
     const circ     = 2 * Math.PI * 54;
     return (
       <div style={sectionBox}>
@@ -331,7 +333,6 @@ export default function SessionModal({ isOpen, onClose }) {
   const [logNote,        setLogNote]        = useState('');
   const [timeLeft,       setTimeLeft]       = useState(0);
   const intervalRef = useRef(null);
-  const pollRef     = useRef(null);
 
   // Countdown timer
   useEffect(() => {
@@ -360,13 +361,13 @@ export default function SessionModal({ isOpen, onClose }) {
     }
   }, [session?.status, session?.pausedAt]);
 
-  // Poll team sessions and fetch history while modal is open
+  // Refresh team sessions + history the instant the modal opens. Ongoing
+  // freshness — including while this modal is closed — comes from the
+  // persistent poll in SessionProvider.
   useEffect(() => {
     if (!isOpen || !workspaceId) return;
     fetchTeamSessions(workspaceId);
     fetchHistory(workspaceId);
-    pollRef.current = setInterval(() => fetchTeamSessions(workspaceId), 20_000);
-    return () => clearInterval(pollRef.current);
   }, [isOpen, workspaceId, fetchTeamSessions, fetchHistory]);
 
   const handleStart = () => {
