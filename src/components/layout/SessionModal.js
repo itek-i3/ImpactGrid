@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, CheckCircle, Users, Plus, X, RotateCcw, History, Trash2 } from 'lucide-react';
+import { Play, Pause, CheckCircle, Users, Plus, X, RotateCcw, History, Trash2, Check, UserPlus } from 'lucide-react';
 import { useSessionStore } from '@/lib/store/useSessionStore';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import Modal from '@/components/ui/Modal';
@@ -44,6 +44,32 @@ function initials(name, email) {
   return (email || '?').slice(0, 2).toUpperCase();
 }
 
+// ── Shared teammate checklist — used both when starting a session and when
+// inviting more people into one already running ──────────────────────────
+function MemberPicker({ candidates, selected, onToggle }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto' }}>
+      {candidates.map((m) => {
+        const isSelected = selected.some((p) => p.id === m.id);
+        const name = m.full_name || m.email || 'Team member';
+        return (
+          <button key={m.id} onClick={() => onToggle(m)} style={memberRow(isSelected)}>
+            {m.avatar_url ? (
+              <img src={m.avatar_url} alt={name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(48,108,236,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 10, fontWeight: 700, color: '#7EB3FF' }}>
+                {initials(m.full_name, m.email)}
+              </div>
+            )}
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+            {isSelected && <Check size={13} style={{ color: '#4ade80', flexShrink: 0 }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Your Session panel ───────────────────────────────────────────────────────
 function MySessionPanel({
   session, timeLeft,
@@ -52,6 +78,7 @@ function MySessionPanel({
   showCustom, setShowCustom,
   customMinutes, setCustomMinutes,
   logNote, setLogNote,
+  inviteCandidates, selectedParticipants, onToggleParticipant,
   onStart, onPause, onResume, onBeginLog, onSnooze, onComplete, onDiscard,
 }) {
   // ── No session: start form ──
@@ -91,8 +118,23 @@ function MySessionPanel({
               </div>
             )}
           </div>
+
+          {inviteCandidates.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 6, fontWeight: 600 }}>
+                <UserPlus size={11} /> Invite teammates (optional) — a group session, each logs their own note at the end
+              </div>
+              <MemberPicker candidates={inviteCandidates} selected={selectedParticipants} onToggle={onToggleParticipant} />
+              {selectedParticipants.length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
+                  {selectedParticipants.length} teammate{selectedParticipants.length > 1 ? 's' : ''} will join this session
+                </div>
+              )}
+            </div>
+          )}
+
           <button onClick={onStart} style={primaryBtn}>
-            <Play size={14} /> Start Session
+            <Play size={14} /> {selectedParticipants.length > 0 ? 'Start Group Session' : 'Start Session'}
           </button>
         </div>
       </div>
@@ -135,6 +177,11 @@ function MySessionPanel({
             {session.taskDescription && (
               <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontStyle: 'italic', lineHeight: 1.4 }}>
                 &ldquo;{session.taskDescription}&rdquo;
+              </div>
+            )}
+            {session.groupMembers?.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Users size={11} /> With {session.groupMembers.map((m) => m.full_name || m.email || 'teammate').join(', ')}
               </div>
             )}
             {session.snoozeCount > 0 && (
@@ -215,7 +262,11 @@ function MySessionPanel({
 }
 
 // ── Team Sessions list ───────────────────────────────────────────────────────
-function TeamSessionsList({ teamSessions }) {
+function TeamSessionsList({
+  teamSessions,
+  canInvite, inviteCandidates, selectedParticipants, onToggleParticipant,
+  showInvitePicker, onToggleInvitePicker, onSendInvite, invitingInProgress,
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 5000);
@@ -232,11 +283,38 @@ function TeamSessionsList({ teamSessions }) {
           Team Sessions
         </span>
         {active.length > 0 && (
-          <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', borderRadius: 99, padding: '1px 7px' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', borderRadius: 99, padding: '1px 7px' }}>
             {active.length} online
           </span>
         )}
+        {canInvite && (
+          <button
+            onClick={onToggleInvitePicker}
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer' }}
+          >
+            <UserPlus size={11} /> Add team session
+          </button>
+        )}
       </div>
+
+      {showInvitePicker && canInvite && (
+        <div style={{ marginBottom: 14, padding: 11, borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+            They&rsquo;ll get a notification and join with the time already remaining.
+          </div>
+          <MemberPicker candidates={inviteCandidates} selected={selectedParticipants} onToggle={onToggleParticipant} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button onClick={onToggleInvitePicker} style={{ ...ghostBtn, flex: 1, padding: '7px 0', fontSize: 12 }}>Cancel</button>
+            <button
+              onClick={onSendInvite}
+              disabled={selectedParticipants.length === 0 || invitingInProgress}
+              style={{ ...primaryBtn, flex: 2, padding: '7px 0', fontSize: 12, opacity: selectedParticipants.length === 0 || invitingInProgress ? 0.6 : 1 }}
+            >
+              <UserPlus size={12} /> {invitingInProgress ? 'Inviting…' : `Invite${selectedParticipants.length ? ` (${selectedParticipants.length})` : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {active.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
@@ -279,6 +357,11 @@ function TeamSessionsList({ teamSessions }) {
                       {s.task_description}
                     </div>
                   )}
+                  {s.group_id && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3, fontSize: 9.5, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.14)', borderRadius: 99, padding: '1px 7px' }}>
+                      <Users size={9} /> Group
+                    </div>
+                  )}
                 </div>
 
                 {/* Status + time */}
@@ -311,6 +394,7 @@ export default function SessionModal({ isOpen, onClose }) {
     teamSessions,
     history,
     startSession,
+    inviteToSession,
     pauseSession,
     resumeSession,
     expireSession,
@@ -323,8 +407,9 @@ export default function SessionModal({ isOpen, onClose }) {
     clearHistory,
   } = useSessionStore();
 
-  const { workspace } = useWorkspaceStore();
+  const { workspace, userProfile } = useWorkspaceStore();
   const workspaceId = workspace?.id;
+  const myUserId = userProfile?.id;
 
   const [taskDesc,       setTaskDesc]       = useState('');
   const [selectedPreset, setSelectedPreset] = useState(25 * 60);
@@ -332,7 +417,34 @@ export default function SessionModal({ isOpen, onClose }) {
   const [customMinutes,  setCustomMinutes]  = useState('');
   const [logNote,        setLogNote]        = useState('');
   const [timeLeft,       setTimeLeft]       = useState(0);
+  const [members,              setMembers]              = useState([]);
+  const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [showInvitePicker,     setShowInvitePicker]     = useState(false);
+  const [invitingInProgress,   setInvitingInProgress]   = useState(false);
   const intervalRef = useRef(null);
+
+  const inviteCandidates = members.filter((m) => m.id !== myUserId);
+  // Who's left to add to MY OWN running session — the "Add team session"
+  // button next to Team Sessions only shows once there's a session to add
+  // them into and at least one teammate not already in it.
+  const notYetInGroup = session ? inviteCandidates.filter((c) => !session.groupMembers?.some((g) => g.id === c.id)) : [];
+  const canInviteToOwnSession = !!(session?.dbId && (session.status === 'active' || session.status === 'paused') && notYetInGroup.length > 0);
+  const toggleParticipant = (m) => setSelectedParticipants((prev) =>
+    prev.some((p) => p.id === m.id) ? prev.filter((p) => p.id !== m.id) : [...prev, m]);
+
+  // Closing/reopening the picker always starts from an empty pick.
+  const toggleInvitePicker = () => { setShowInvitePicker((v) => !v); setSelectedParticipants([]); };
+  const handleSendInvite = async () => {
+    if (!selectedParticipants.length) return;
+    setInvitingInProgress(true);
+    try {
+      await inviteToSession(selectedParticipants);
+      setSelectedParticipants([]);
+      setShowInvitePicker(false);
+    } finally {
+      setInvitingInProgress(false);
+    }
+  };
 
   // Countdown timer
   useEffect(() => {
@@ -368,12 +480,17 @@ export default function SessionModal({ isOpen, onClose }) {
     if (!isOpen || !workspaceId) return;
     fetchTeamSessions(workspaceId);
     fetchHistory(workspaceId);
+    fetch(`/os/api/workspaces/${workspaceId}/chat-members`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((j) => { if (j?.data) setMembers(j.data); })
+      .catch(() => {});
   }, [isOpen, workspaceId, fetchTeamSessions, fetchHistory]);
 
   const handleStart = () => {
     const dur = showCustom ? Math.max(1, parseInt(customMinutes) || 25) * 60 : selectedPreset;
-    startSession(dur, taskDesc.trim(), workspaceId);
+    startSession(dur, taskDesc.trim(), workspaceId, selectedParticipants);
     setLogNote('');
+    setSelectedParticipants([]);
   };
 
   const handleComplete = (note) => {
@@ -400,6 +517,9 @@ export default function SessionModal({ isOpen, onClose }) {
           showCustom={showCustom}   setShowCustom={setShowCustom}
           customMinutes={customMinutes} setCustomMinutes={setCustomMinutes}
           logNote={logNote}         setLogNote={setLogNote}
+          inviteCandidates={inviteCandidates}
+          selectedParticipants={selectedParticipants}
+          onToggleParticipant={toggleParticipant}
           onStart={handleStart}
           onPause={pauseSession}
           onResume={resumeSession}
@@ -413,7 +533,17 @@ export default function SessionModal({ isOpen, onClose }) {
         <div style={{ height: 1, background: 'var(--color-border)' }} />
 
         {/* Team Sessions */}
-        <TeamSessionsList teamSessions={teamSessions} />
+        <TeamSessionsList
+          teamSessions={teamSessions}
+          canInvite={canInviteToOwnSession}
+          inviteCandidates={notYetInGroup}
+          selectedParticipants={selectedParticipants}
+          onToggleParticipant={toggleParticipant}
+          showInvitePicker={showInvitePicker}
+          onToggleInvitePicker={toggleInvitePicker}
+          onSendInvite={handleSendInvite}
+          invitingInProgress={invitingInProgress}
+        />
 
         {/* History */}
         {history.length > 0 && (
@@ -495,6 +625,13 @@ const inputStyle = {
   color: 'var(--color-text-primary)',
   fontSize: 13, outline: 'none', fontFamily: 'inherit',
 };
+
+const memberRow = (selected) => ({
+  display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8,
+  border: '1px solid', borderColor: selected ? '#306CEC' : 'var(--color-border)',
+  background: selected ? 'rgba(48,108,236,0.12)' : 'var(--color-bg-secondary)',
+  cursor: 'pointer', textAlign: 'left', width: '100%',
+});
 
 const presetBtn = (active) => ({
   flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid',

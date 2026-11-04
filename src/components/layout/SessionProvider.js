@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Video, X } from 'lucide-react';
+import { Bell, Video, X, BarChart3 } from 'lucide-react';
 import SessionWidget from './SessionWidget';
 import SessionModal from './SessionModal';
 import { useSessionStore } from '@/lib/store/useSessionStore';
@@ -10,7 +10,7 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { applyAllPrefs } from '@/app/customize/page';
 import { createClient } from '@/lib/supabase/client';
 import { playMessageSound, playSessionCompleteSound } from '@/lib/utils/soundEffects';
-import { isDmParticipant } from '@/lib/chat/dmChannels';
+import { isDmParticipant, buildDmChannel } from '@/lib/chat/dmChannels';
 import { writeReceipt } from '@/lib/chat/receipts';
 import { fetchUnreadChannels } from '@/lib/chat/unreadState';
 
@@ -74,7 +74,7 @@ function restoreFromStorage() {
 
 export default function SessionProvider() {
   const router = useRouter();
-  const { sessionModalOpen, closeSessionModal, rearmSW, session, fetchTeamSessions } = useSessionStore();
+  const { sessionModalOpen, closeSessionModal, rearmSW, session, fetchTeamSessions, acknowledgeInvite, cancelSession } = useSessionStore();
   
   // Workspace and profile status from global store
   const userId = useWorkspaceStore((s) => s.userProfile?.id);
@@ -109,6 +109,21 @@ export default function SessionProvider() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pop the Sessions modal open when arriving from a "you were invited to a
+  // focus session" push notification (see /api/sessions's notifyInvitees —
+  // the notification links to ?openSessions=1). Plain DOM/URL access rather
+  // than useSearchParams, since that needs a Suspense boundary and this only
+  // needs to run once on mount.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('openSessions') !== '1') return;
+    useSessionStore.getState().openSessionModal();
+    params.delete('openSessions');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }, []);
 
   // ── 1. Focus Session Expiration Sound & Notification ────────────────────────
   const sessionStatus = session?.status;
@@ -432,13 +447,73 @@ export default function SessionProvider() {
 
   const dismissReminder = (key) => setDueReminders((prev) => prev.filter((r) => r.key !== key));
 
+  // Who invited me — approximated as the first other member of the group,
+  // which is exact for the common 2-person case. Rows don't record a
+  // separate "started by" field, only who else shares the group_id.
+  const inviter = session?.invitePending ? (session.groupMembers?.[0] || null) : null;
+  const inviterName = inviter?.full_name || inviter?.email || 'A teammate';
+  const inviteDmChannel = inviter?.id && agencyId && userId ? buildDmChannel(agencyId, userId, inviter.id) : null;
+  const declineInvite = () => cancelSession();
+
   return (
     <>
       <SessionWidget />
       <SessionModal isOpen={sessionModalOpen} onClose={closeSessionModal} />
 
-      {dueReminders.length > 0 && (
+      {(dueReminders.length > 0 || session?.invitePending) && (
         <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 100000, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 'calc(100vw - 32px)' }}>
+          {session?.invitePending && (
+            <div className="ig-reminder" style={{ width: 400, maxWidth: '100%', background: 'rgba(8,14,30,0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: 16, color: '#E2EEFF', position: 'relative', overflow: 'hidden' }}>
+              <button onClick={acknowledgeInvite} title="Dismiss" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#6C82A3', cursor: 'pointer', padding: 2, display: 'flex', zIndex: 1 }}><X size={15} /></button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: '#306CEC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <BarChart3 size={18} color="#fff" />
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1, paddingRight: 16 }}>
+                      <div style={{ fontSize: 13.5, lineHeight: 1.4 }}>
+                        <span style={{ fontWeight: 800 }}>{inviterName}</span> invited you to a focus session
+                      </div>
+                      {session.taskDescription && (
+                        <div style={{ fontSize: 11.5, color: '#8FB4E8', marginTop: 3, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          &ldquo;{session.taskDescription}&rdquo;
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                    <button onClick={acknowledgeInvite} style={{ flex: 1, height: 34, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Accept</button>
+                    <button onClick={declineInvite} style={{ flex: 1, height: 34, borderRadius: 9, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#E2EEFF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Decline</button>
+                  </div>
+                  {inviteDmChannel && (
+                    <a
+                      href={`/os/chat?workspaceId=${workspaceId}&channel=${encodeURIComponent(inviteDmChannel)}`}
+                      onClick={acknowledgeInvite}
+                      style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#6C82A3', textDecoration: 'none' }}
+                    >
+                      Write message.
+                    </a>
+                  )}
+                </div>
+
+                {/* Decorative laptop + popup — purely illustrative, hidden from screen readers */}
+                <svg aria-hidden="true" width="92" height="96" viewBox="0 0 92 96" style={{ flexShrink: 0, alignSelf: 'flex-end', marginBottom: -16, marginRight: -8 }}>
+                  <line x1="8" y1="18" x2="14" y2="10" stroke="#306CEC" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="6" y1="30" x2="15" y2="27" stroke="#306CEC" strokeWidth="2.5" strokeLinecap="round" />
+                  <rect x="30" y="8" width="56" height="62" rx="4" fill="#0F172A" stroke="#2A3A5C" strokeWidth="1.5" />
+                  <rect x="18" y="70" width="80" height="7" rx="3.5" fill="#1A2744" />
+                  <rect x="40" y="38" width="36" height="24" rx="6" fill="#F3F6FC" />
+                  <rect x="45" y="44" width="12" height="12" rx="3" fill="#306CEC" />
+                  <rect x="48.5" y="47.5" width="2" height="5" fill="#fff" />
+                  <rect x="51.5" y="49.5" width="2" height="3" fill="#fff" />
+                  <rect x="60" y="46" width="13" height="2.4" rx="1.2" fill="#C7D1E3" />
+                  <rect x="60" y="51" width="9" height="2.4" rx="1.2" fill="#DCE3F0" />
+                  <circle cx="72.5" cy="46.2" r="2.4" fill="#306CEC" />
+                </svg>
+              </div>
+            </div>
+          )}
           {dueReminders.map((r) => (
             <div key={r.key} className="ig-reminder" style={{ width: 320, maxWidth: '100%', background: 'rgba(8,14,30,0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: 14, color: '#E2EEFF' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>

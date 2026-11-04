@@ -29,7 +29,7 @@ export async function listSessionsForWorkspace(workspaceId) {
 
   const { data: rows, error } = await admin
     .from('sessions')
-    .select('id, workspace_id, user_id, task_description, duration_seconds, started_at, end_time, paused_at, status, snooze_count, completion_note, completed_at, created_at, updated_at')
+    .select('id, workspace_id, user_id, task_description, duration_seconds, started_at, end_time, paused_at, status, snooze_count, completion_note, completed_at, created_at, updated_at, group_id')
     .eq('workspace_id', workspaceId)
     .neq('status', 'completed')
     .order('started_at', { ascending: false });
@@ -75,6 +75,125 @@ export async function createSession({
     .single();
 
   return { data, error };
+}
+
+// A group session is one row per participant, sharing a single group_id —
+// each still runs their own pause/resume/snooze/completion note (exactly
+// like createSession's row), they just started together on the same task,
+// duration and end time. Needs the admin client because RLS only lets a
+// user insert a row for themselves; participants are re-validated here
+// server-side rather than trusted from the client.
+export async function createGroupSession({
+  workspaceId,
+  taskDescription = '',
+  durationSeconds,
+  endTime,
+  participantIds = [],
+}) {
+  const { userId } = await clientForUser();
+  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+
+  const admin = createAdminClient();
+
+  const { data: workspace } = await admin.from('workspaces').select('agency_id').eq('id', workspaceId).maybeSingle();
+  if (!workspace) return { data: null, error: { message: 'Workspace not found' } };
+
+  // Same membership rule as the chat-members picker this list is drawn from:
+  // profile.agency_id match, OR admin-granted cross-agency access.
+  const candidateIds = [...new Set([userId, ...participantIds])].filter(Boolean);
+  const [{ data: byProfile }, { data: byGrant }] = await Promise.all([
+    admin.from('profiles').select('id').eq('agency_id', workspace.agency_id).in('id', candidateIds),
+    admin.from('agency_members').select('user_id').eq('agency_id', workspace.agency_id).in('user_id', candidateIds),
+  ]);
+  const validIds = new Set([
+    userId,
+    ...(byProfile || []).map((p) => p.id),
+    ...(byGrant || []).map((m) => m.user_id),
+  ]);
+
+  const groupId = crypto.randomUUID();
+  const rows = [...validIds].map((uid) => ({
+    workspace_id:     workspaceId,
+    user_id:          uid,
+    task_description: taskDescription,
+    duration_seconds: durationSeconds,
+    end_time:         new Date(endTime).toISOString(),
+    status:           'active',
+    group_id:         groupId,
+  }));
+
+  const { data, error } = await admin.from('sessions').insert(rows).select();
+  if (error) return { data: null, error };
+
+  const mine = data.find((row) => row.user_id === userId);
+  const otherUserIds = data.filter((row) => row.user_id !== userId).map((row) => row.user_id);
+  const { data: starter } = await admin.from('profiles').select('full_name, email, avatar_url').eq('id', userId).maybeSingle();
+  return { data: { mine, otherUserIds, starterName: starter?.full_name || starter?.email, starterAvatar: starter?.avatar_url }, error: null };
+}
+
+// Adds more people to an already-running session — only its owner may call
+// this. If the session was started solo (no group_id yet), one is created
+// now and retroactively applied to the owner's own row. New rows copy the
+// session's CURRENT state (end_time, paused_at, status) so an invitee who
+// joins mid-countdown sees the real time remaining, not a fresh timer.
+export async function inviteToSession(sessionId, participantIds = []) {
+  const { userId } = await clientForUser();
+  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+  if (!participantIds.length) return { data: { invited: [], groupId: null }, error: null };
+
+  const admin = createAdminClient();
+
+  const { data: existing } = await admin.from('sessions').select('*').eq('id', sessionId).maybeSingle();
+  if (!existing) return { data: null, error: { message: 'Session not found', status: 404 } };
+  if (existing.user_id !== userId) return { data: null, error: { message: 'Only the session owner can invite others', status: 403 } };
+  if (existing.status === 'completed') return { data: null, error: { message: 'Session already completed' } };
+
+  const { data: workspace } = await admin.from('workspaces').select('agency_id').eq('id', existing.workspace_id).maybeSingle();
+  if (!workspace) return { data: null, error: { message: 'Workspace not found' } };
+
+  const candidateIds = [...new Set(participantIds)].filter((id) => id && id !== userId);
+  const [{ data: byProfile }, { data: byGrant }] = await Promise.all([
+    admin.from('profiles').select('id').eq('agency_id', workspace.agency_id).in('id', candidateIds),
+    admin.from('agency_members').select('user_id').eq('agency_id', workspace.agency_id).in('user_id', candidateIds),
+  ]);
+  const validIds = new Set([...(byProfile || []).map((p) => p.id), ...(byGrant || []).map((m) => m.user_id)]);
+
+  let groupId = existing.group_id;
+  if (!groupId) {
+    groupId = crypto.randomUUID();
+    await admin.from('sessions').update({ group_id: groupId }).eq('id', sessionId);
+  } else {
+    // Already in this group — don't hand out a second row.
+    const { data: already } = await admin.from('sessions').select('user_id').eq('group_id', groupId);
+    (already || []).forEach((row) => validIds.delete(row.user_id));
+  }
+  if (!validIds.size) return { data: { invited: [], groupId }, error: null };
+
+  const rows = [...validIds].map((uid) => ({
+    workspace_id:     existing.workspace_id,
+    user_id:          uid,
+    task_description: existing.task_description,
+    duration_seconds: existing.duration_seconds,
+    end_time:         existing.end_time,
+    paused_at:        existing.paused_at,
+    status:           existing.status === 'paused' ? 'paused' : 'active',
+    group_id:         groupId,
+  }));
+
+  const { data: invited, error } = await admin.from('sessions').insert(rows).select();
+  if (error) return { data: null, error };
+
+  const { data: starter } = await admin.from('profiles').select('full_name, email, avatar_url').eq('id', userId).maybeSingle();
+  return {
+    data: {
+      invited,
+      groupId,
+      taskDescription: existing.task_description,
+      starterName: starter?.full_name || starter?.email,
+      starterAvatar: starter?.avatar_url,
+    },
+    error: null,
+  };
 }
 
 export async function updateSession(id, updates) {

@@ -16,6 +16,44 @@ import { downloadAcrCombinedReport } from '@/lib/utils/acrReport';
 
 const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Turns a report-modal date-period pick into the {dateFrom, dateTo} bounds
+// acrReport's date filter expects (inclusive start, exclusive end, UTC), a
+// bare `periodLabel` ("Q1 2026") for the report's opening sentence, and a
+// `label` ("Added in Q1 2026") for the filter-note chip. `year` comes from a
+// free-typed text input, so it's parsed (and defaulted) here rather than
+// trusted as a number.
+function computeReportDateRange(period, yearInput, month, quarter) {
+  if (!period) return { dateFrom: null, dateTo: null, label: null, periodLabel: null };
+  const year = parseInt(yearInput) || new Date().getFullYear();
+
+  if (period === 'month') {
+    const periodLabel = `${MONTH_NAMES[month - 1]} ${year}`;
+    return {
+      dateFrom: new Date(Date.UTC(year, month - 1, 1)).toISOString(),
+      dateTo: new Date(Date.UTC(year, month, 1)).toISOString(),
+      periodLabel, label: `Added in ${periodLabel}`,
+    };
+  }
+  if (period === 'quarter') {
+    const startMonth = (quarter - 1) * 3;
+    const periodLabel = `Q${quarter} ${year}`;
+    return {
+      dateFrom: new Date(Date.UTC(year, startMonth, 1)).toISOString(),
+      dateTo: new Date(Date.UTC(year, startMonth + 3, 1)).toISOString(),
+      periodLabel, label: `Added in ${periodLabel}`,
+    };
+  }
+  // period === 'year'
+  const periodLabel = `${year}`;
+  return {
+    dateFrom: new Date(Date.UTC(year, 0, 1)).toISOString(),
+    dateTo: new Date(Date.UTC(year + 1, 0, 1)).toISOString(),
+    periodLabel, label: `Added in ${periodLabel}`,
+  };
+}
+
 // Three fleshed-out sample businesses (demo mode only) so the registry isn't
 // empty on first look — a range of completeness and verification mix.
 function buildSampleEntries() {
@@ -946,6 +984,15 @@ export default function BusinessIntelPanel() {
   const [rptChallenge, setRptChallenge] = useState('');
   const [rptGrowthNeed, setRptGrowthNeed] = useState('');
   const [rptManagedStatus, setRptManagedStatus] = useState('');
+  // Date-added filter — scopes both rosters to a specific month, quarter, or
+  // year (e.g. "businesses added in Q1 2026"). '' = all time.
+  const [rptDatePeriod, setRptDatePeriod] = useState('');
+  // Kept as free text while typing — clamping on every keystroke (e.g. while
+  // the field is briefly empty mid-edit) snapped it back to the current year
+  // before a new one could be typed, making the year effectively unchangeable.
+  const [rptDateYear, setRptDateYear] = useState(String(new Date().getFullYear()));
+  const [rptDateMonth, setRptDateMonth] = useState(new Date().getMonth() + 1);
+  const [rptDateQuarter, setRptDateQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1);
   const agencyName = agencies?.find((a) => a.id === activeAgencyId)?.name || '';
 
   // Everyone who can appear as a registrant: each agency member, plus anyone whose
@@ -1178,6 +1225,8 @@ export default function BusinessIntelPanel() {
     { label: 'Growth need', value: rptGrowthNeed, onChange: setRptGrowthNeed, options: GROWTH_NEEDS.map((n) => ({ value: n.key, label: n.name })) },
   ];
 
+  const rptDateRange = computeReportDateRange(rptDatePeriod, rptDateYear, rptDateMonth, rptDateQuarter);
+
   const handleDownloadReport = async () => {
     setExportingReport(true);
     try {
@@ -1187,6 +1236,7 @@ export default function BusinessIntelPanel() {
 
       const filterNote = [
         ...(rptApplyFilters ? activeFilterChips : []),
+        rptDateRange.label,
         rptOperatingModel && `Operating model: ${rptOperatingModel}`,
         rptGrowthTrend && `Growth trend: ${rptGrowthTrend}`,
         rptInfraLevel && `Infrastructure: ${infraAreaLabel || 'any area'} — ${infraLevelLabel}`,
@@ -1207,8 +1257,11 @@ export default function BusinessIntelPanel() {
           challenge: rptChallenge,
           growthNeed: rptGrowthNeed,
           managedStatus: rptManagedStatus,
+          dateFrom: rptDateRange.dateFrom,
+          dateTo: rptDateRange.dateTo,
         },
         filterNote,
+        periodLabel: rptDateRange.periodLabel,
       });
       setReportModalOpen(false);
     } catch (err) {
@@ -1862,6 +1915,47 @@ export default function BusinessIntelPanel() {
                 </div>
               </label>
             )}
+
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--color-text-tertiary)', margin: '18px 0 8px' }}>
+              Date added
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: rptDatePeriod === 'month' ? '1fr 1fr 1fr' : rptDatePeriod === 'quarter' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Period</label>
+                <select className="biz-input" value={rptDatePeriod} onChange={(e) => setRptDatePeriod(e.target.value)}>
+                  <option value="">All time</option>
+                  <option value="month">Month</option>
+                  <option value="quarter">Quarter</option>
+                  <option value="year">Year</option>
+                </select>
+              </div>
+              {rptDatePeriod && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Year</label>
+                  <input
+                    type="number" className="biz-input" value={rptDateYear}
+                    onChange={(e) => setRptDateYear(e.target.value)}
+                    onBlur={() => setRptDateYear((v) => String(Math.max(2000, Math.min(2100, parseInt(v) || new Date().getFullYear()))))}
+                  />
+                </div>
+              )}
+              {rptDatePeriod === 'month' && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Month</label>
+                  <select className="biz-input" value={rptDateMonth} onChange={(e) => setRptDateMonth(parseInt(e.target.value))}>
+                    {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              {rptDatePeriod === 'quarter' && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Quarter</label>
+                  <select className="biz-input" value={rptDateQuarter} onChange={(e) => setRptDateQuarter(parseInt(e.target.value))}>
+                    {[1, 2, 3, 4].map((q) => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
 
             <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--color-text-tertiary)', margin: '18px 0 8px' }}>
               Data Registry filters

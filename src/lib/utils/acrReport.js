@@ -191,7 +191,7 @@ function insertPageBreak(idoc, el, spacerHeight, pageNum, totalPages) {
 // plain-English statements ("54 businesses are recorded to need I3
 // Launchpad…") — together these are what make it read as a summary report
 // rather than a raw data dump.
-export async function openPrintableReport({ title, subtitle, filterNote, summary, findings, sections, filename }) {
+export async function openPrintableReport({ title, subtitle, filterNote, periodLabel, summary, findings, sections, filename }) {
   const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
     import('jspdf'),
     import('html2canvas'),
@@ -269,6 +269,7 @@ export async function openPrintableReport({ title, subtitle, filterNote, summary
         </div>
         <div class="meta">Generated ${esc(generatedAt)}</div>
       </header>
+      ${periodLabel ? `<p class="period-intro">In <strong>${esc(periodLabel)}</strong>, these are the businesses added.</p>` : ''}
       ${summaryHtml}
       ${findingsHtml}
       ${sectionsHtml}
@@ -301,6 +302,8 @@ export async function openPrintableReport({ title, subtitle, filterNote, summary
       h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.01em; }
       .sub { font-size: 12.5px; color: #5B6577; margin: 0; }
       .filter-note { display: inline-block; margin-top: 7px; padding: 3px 11px; border-radius: 999px; background: rgba(48,108,236,0.10); color: #306CEC; font-size: 10.5px; font-weight: 700; }
+      .period-intro { font-size: 13px; color: #2A3348; margin: 18px 0 22px; line-height: 1.5; }
+      .period-intro strong { color: #15213A; }
       .meta { text-align: right; font-size: 11px; color: #5B6577; }
       h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
       h2 .count { font-size: 11px; font-weight: 700; color: #5B6577; background: #EEF1F7; border-radius: 999px; padding: 1px 9px; }
@@ -467,12 +470,15 @@ const INFRA_AREA_KEYS = ['operations', 'finance', 'marketing', 'sales', 'technol
 //     alone matches that level in ANY area)
 //   - challenge (Challenges), growthNeed (Growth needs — a GROWTH_NEEDS key)
 //   - managedStatus (Portfolio Business only — not a registry field)
+//   - dateFrom/dateTo (ISO strings, inclusive/exclusive) — bounds both rosters
+//     by created_at, e.g. "added in Q1 2026" or "added in 2025"
 export async function downloadAcrCombinedReport({
   agencyId, isDemo, agencyName,
   registryEntries: registryOverride,
   sections,
   filters,
   filterNote,
+  periodLabel,
 }) {
   const sec = { summary: true, findings: true, portfolio: true, registry: true, ...sections };
   const [businessesRaw, registryRaw] = await Promise.all([
@@ -480,14 +486,27 @@ export async function downloadAcrCombinedReport({
     sec.registry ? (registryOverride ?? fetchRegistryEntries({ agencyId, isDemo })) : Promise.resolve([]),
   ]);
 
-  const managedStatus = filters?.managedStatus; // '' | 'managed' | 'not-managed'
-  const businesses = managedStatus
-    ? businessesRaw.filter((b) => (managedStatus === 'managed' ? b.managed !== false : b.managed === false))
-    : businessesRaw;
+  const { operatingModel, growthTrend, infraArea, infraLevel, challenge, growthNeed, dateFrom, dateTo } = filters || {};
 
-  const { operatingModel, growthTrend, infraArea, infraLevel, challenge, growthNeed } = filters || {};
+  // dateFrom/dateTo bound when a business was ADDED (created_at) — inclusive
+  // start, exclusive end — so "Q1 2026" means Jan 1 through Mar 31 2026.
+  const inDateRange = (createdAt) => {
+    if (!dateFrom && !dateTo) return true;
+    const t = new Date(createdAt).getTime();
+    if (Number.isNaN(t)) return false;
+    if (dateFrom && t < new Date(dateFrom).getTime()) return false;
+    if (dateTo && t >= new Date(dateTo).getTime()) return false;
+    return true;
+  };
+
+  const managedStatus = filters?.managedStatus; // '' | 'managed' | 'not-managed'
+  const businesses = businessesRaw
+    .filter((b) => !managedStatus || (managedStatus === 'managed' ? b.managed !== false : b.managed === false))
+    .filter((b) => inDateRange(b.created_at));
+
   const registryEntries = registryRaw.filter((e) => {
     const d = e.data || {};
+    if (!inDateRange(e.created_at)) return false;
     if (operatingModel && (d.operations?.operatingModel || '') !== operatingModel) return false;
     if (growthTrend && (d.performance?.growthTrend || '') !== growthTrend) return false;
     if (infraLevel) {
@@ -589,6 +608,7 @@ export async function downloadAcrCombinedReport({
     title: 'ACR Business Report',
     subtitle: agencyName || 'ACR Agency',
     filterNote,
+    periodLabel,
     summary: sec.summary ? summary : [],
     findings,
     filename: `ACR-Business-Report-${dateStamp}.pdf`,
