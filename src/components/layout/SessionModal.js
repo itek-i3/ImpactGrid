@@ -78,7 +78,6 @@ function MySessionPanel({
   showCustom, setShowCustom,
   customMinutes, setCustomMinutes,
   logNote, setLogNote,
-  inviteCandidates, selectedParticipants, onToggleParticipant,
   onStart, onPause, onResume, onBeginLog, onSnooze, onComplete, onDiscard,
 }) {
   // ── No session: start form ──
@@ -119,22 +118,8 @@ function MySessionPanel({
             )}
           </div>
 
-          {inviteCandidates.length > 0 && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 6, fontWeight: 600 }}>
-                <UserPlus size={11} /> Invite teammates (optional) — a group session, each logs their own note at the end
-              </div>
-              <MemberPicker candidates={inviteCandidates} selected={selectedParticipants} onToggle={onToggleParticipant} />
-              {selectedParticipants.length > 0 && (
-                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>
-                  {selectedParticipants.length} teammate{selectedParticipants.length > 1 ? 's' : ''} will join this session
-                </div>
-              )}
-            </div>
-          )}
-
           <button onClick={onStart} style={primaryBtn}>
-            <Play size={14} /> {selectedParticipants.length > 0 ? 'Start Group Session' : 'Start Session'}
+            <Play size={14} /> Start Session
           </button>
         </div>
       </div>
@@ -264,7 +249,7 @@ function MySessionPanel({
 // ── Team Sessions list ───────────────────────────────────────────────────────
 function TeamSessionsList({
   teamSessions,
-  canInvite, inviteCandidates, selectedParticipants, onToggleParticipant,
+  canInvite, addingToRunningSession, inviteCandidates, selectedParticipants, onToggleParticipant,
   showInvitePicker, onToggleInvitePicker, onSendInvite, invitingInProgress,
 }) {
   const [now, setNow] = useState(Date.now());
@@ -300,7 +285,9 @@ function TeamSessionsList({
       {showInvitePicker && canInvite && (
         <div style={{ marginBottom: 14, padding: 11, borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}>
           <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 8 }}>
-            They&rsquo;ll get a notification and join with the time already remaining.
+            {addingToRunningSession
+              ? "They'll get a notification and join with the time already remaining."
+              : "They'll get a notification to join a new session with you."}
           </div>
           <MemberPicker candidates={inviteCandidates} selected={selectedParticipants} onToggle={onToggleParticipant} />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
@@ -424,11 +411,18 @@ export default function SessionModal({ isOpen, onClose }) {
   const intervalRef = useRef(null);
 
   const inviteCandidates = members.filter((m) => m.id !== myUserId);
-  // Who's left to add to MY OWN running session — the "Add team session"
-  // button next to Team Sessions only shows once there's a session to add
-  // them into and at least one teammate not already in it.
-  const notYetInGroup = session ? inviteCandidates.filter((c) => !session.groupMembers?.some((g) => g.id === c.id)) : [];
-  const canInviteToOwnSession = !!(session?.dbId && (session.status === 'active' || session.status === 'paused') && notYetInGroup.length > 0);
+  // "Add team session" next to the Team Sessions header is always available
+  // — not just once you already have a session running — so it's where
+  // people actually look for it. It routes to one of two things depending on
+  // state: add to the session you already have going, or start a new one
+  // with the people you pick. The one case it hides for is a session stuck
+  // in expired/logging — resolve that first via the Your Session panel.
+  const hasUnresolvedSession = session && session.status !== 'active' && session.status !== 'paused';
+  const notYetInGroup = session?.groupMembers
+    ? inviteCandidates.filter((c) => !session.groupMembers.some((g) => g.id === c.id))
+    : inviteCandidates;
+  const canShowAddTeamSession = !hasUnresolvedSession && notYetInGroup.length > 0;
+  const addingToRunningSession = !!(session?.dbId && (session.status === 'active' || session.status === 'paused'));
   const toggleParticipant = (m) => setSelectedParticipants((prev) =>
     prev.some((p) => p.id === m.id) ? prev.filter((p) => p.id !== m.id) : [...prev, m]);
 
@@ -438,7 +432,12 @@ export default function SessionModal({ isOpen, onClose }) {
     if (!selectedParticipants.length) return;
     setInvitingInProgress(true);
     try {
-      await inviteToSession(selectedParticipants);
+      if (addingToRunningSession) {
+        await inviteToSession(selectedParticipants);
+      } else {
+        const dur = showCustom ? Math.max(1, parseInt(customMinutes) || 25) * 60 : selectedPreset;
+        await startSession(dur, taskDesc.trim(), workspaceId, selectedParticipants);
+      }
       setSelectedParticipants([]);
       setShowInvitePicker(false);
     } finally {
@@ -487,10 +486,16 @@ export default function SessionModal({ isOpen, onClose }) {
   }, [isOpen, workspaceId, fetchTeamSessions, fetchHistory]);
 
   const handleStart = () => {
+    // No participants here deliberately — inviting while starting now goes
+    // exclusively through "Add team session" (handleSendInvite) below. This
+    // button used to double as the group-start action when the invite picker
+    // lived in this form; now that it's been moved out, passing
+    // selectedParticipants here would let a selection left over from opening
+    // (and abandoning) that other picker silently turn a plain solo start
+    // into a group session the user never asked for.
     const dur = showCustom ? Math.max(1, parseInt(customMinutes) || 25) * 60 : selectedPreset;
-    startSession(dur, taskDesc.trim(), workspaceId, selectedParticipants);
+    startSession(dur, taskDesc.trim(), workspaceId);
     setLogNote('');
-    setSelectedParticipants([]);
   };
 
   const handleComplete = (note) => {
@@ -517,9 +522,6 @@ export default function SessionModal({ isOpen, onClose }) {
           showCustom={showCustom}   setShowCustom={setShowCustom}
           customMinutes={customMinutes} setCustomMinutes={setCustomMinutes}
           logNote={logNote}         setLogNote={setLogNote}
-          inviteCandidates={inviteCandidates}
-          selectedParticipants={selectedParticipants}
-          onToggleParticipant={toggleParticipant}
           onStart={handleStart}
           onPause={pauseSession}
           onResume={resumeSession}
@@ -535,7 +537,8 @@ export default function SessionModal({ isOpen, onClose }) {
         {/* Team Sessions */}
         <TeamSessionsList
           teamSessions={teamSessions}
-          canInvite={canInviteToOwnSession}
+          canInvite={canShowAddTeamSession}
+          addingToRunningSession={addingToRunningSession}
           inviteCandidates={notYetInGroup}
           selectedParticipants={selectedParticipants}
           onToggleParticipant={toggleParticipant}
