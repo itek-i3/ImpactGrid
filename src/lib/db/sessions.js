@@ -118,7 +118,10 @@ export async function createGroupSession({
     task_description: taskDescription,
     duration_seconds: durationSeconds,
     end_time:         new Date(endTime).toISOString(),
-    status:           'active',
+    // The starter is in the session immediately; everyone else is only
+    // invited — their row flips to 'active' when they actually accept
+    // (see acceptInvite / updateSession), not the moment they're invited.
+    status:           uid === userId ? 'active' : 'invited',
     group_id:         groupId,
   }));
 
@@ -175,8 +178,10 @@ export async function inviteToSession(sessionId, participantIds = []) {
     task_description: existing.task_description,
     duration_seconds: existing.duration_seconds,
     end_time:         existing.end_time,
-    paused_at:        existing.paused_at,
-    status:           existing.status === 'paused' ? 'paused' : 'active',
+    // Invited, not active — they only actually join once they accept (see
+    // acceptInvite / updateSession), regardless of the inviter's own
+    // active/paused state right now.
+    status:           'invited',
     group_id:         groupId,
   }));
 

@@ -124,15 +124,18 @@ export const useSessionStore = create((set, get) => ({
       const { data } = await res.json();
       const rows = data || [];
       const mine = rows.find((s) => s.user_id === myUserId);
-      set({ teamSessions: rows.filter((s) => s.user_id !== myUserId) });
+      // An 'invited' row belonging to someone else is a pending invite
+      // between them and whoever invited them — not broadcast to the rest
+      // of the team until they've actually accepted it.
+      set({ teamSessions: rows.filter((s) => s.user_id !== myUserId && s.status !== 'invited') });
 
-      // Auto-join a group session someone else started and added me to — I
-      // have a row on the server but nothing local yet, so adopt it the same
-      // way starting one myself would: my own widget/modal, pause/resume,
-      // and end-of-session log prompt all just start working off this row.
-      // `invitePending` marks it as not-yet-acknowledged so SessionProvider
-      // shows the Accept/Decline prompt; it only gets set on first adoption,
-      // never again, so dismissing it (either way) sticks.
+      // Discover a session I have a row in but nothing local yet for — either
+      // a group someone started and added me to ('invited', gated on Accept
+      // below) or, same mechanism, a session I'm already 'active'/'paused' in
+      // that this device just hasn't picked up yet. Adopting an 'invited' row
+      // does NOT join it — status stays 'invited' until acceptInvite runs, so
+      // the widget/SW/countdown machinery (gated on status === 'active'
+      // below) stays off until they actually accept.
       if (mine && !get().session && !wasExplicitlyEnded(mine.id)) {
         const groupMembers = mine.group_id
           ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId).map((s) => s.profiles).filter(Boolean)
@@ -146,7 +149,6 @@ export const useSessionStore = create((set, get) => ({
           pausedAt: mine.paused_at ? new Date(mine.paused_at).getTime() : null,
           status: mine.status, snoozeCount: mine.snooze_count || 0, completionNote: mine.completion_note || '',
           groupId: mine.group_id || null, groupMembers,
-          invitePending: groupMembers.length > 0,
         };
         set({ session: adopted });
         saveSession(adopted);
@@ -312,16 +314,21 @@ export const useSessionStore = create((set, get) => ({
     if (session.dbId && !isDemo()) api.delete(`/os/api/sessions/${session.dbId}`).catch(() => {});
   },
 
-  // ── Acknowledge a group-session invite prompt (Accept) ────────────────
-  // The session is already running locally the moment it's adopted — this
-  // just dismisses the Accept/Decline card. Declining uses cancelSession,
-  // which already does the right thing (removes just this person's row).
-  acknowledgeInvite: () => {
+  // ── Accept a group-session invite ──────────────────────────────────────
+  // This is the real join: the row only flips from 'invited' to 'active'
+  // here, so nothing about this person counts as "in the session" — not the
+  // widget, not Team Sessions, not the countdown — until they actually
+  // accept. Declining uses cancelSession, which removes just this row.
+  acceptInvite: async () => {
     const { session } = get();
-    if (!session?.invitePending) return;
-    const next = { ...session, invitePending: false };
+    if (!session || session.status !== 'invited' || !session.dbId) return;
+    const next = { ...session, status: 'active' };
     set({ session: next });
     saveSession(next);
+    registerSW().then(() => swSend({ type: 'SESSION_START', endTime: next.endTime, task: next.taskDescription }));
+    if (!isDemo()) {
+      try { await api.patch(`/os/api/sessions/${session.dbId}`, { status: 'active' }); } catch {}
+    }
   },
 
   // ── History ──────────────────────────────────────────────────────────

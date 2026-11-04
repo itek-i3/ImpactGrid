@@ -74,7 +74,7 @@ function restoreFromStorage() {
 
 export default function SessionProvider() {
   const router = useRouter();
-  const { sessionModalOpen, closeSessionModal, rearmSW, session, fetchTeamSessions, acknowledgeInvite, cancelSession } = useSessionStore();
+  const { sessionModalOpen, closeSessionModal, rearmSW, session, fetchTeamSessions, acceptInvite, cancelSession } = useSessionStore();
   
   // Workspace and profile status from global store
   const userId = useWorkspaceStore((s) => s.userProfile?.id);
@@ -91,6 +91,10 @@ export default function SessionProvider() {
   const [members, setMembers] = useState([]);
   // Meeting reminders currently showing as an in-app banner.
   const [dueReminders, setDueReminders] = useState([]);
+  // Closing the invite card (X, or "Write message.") just hides it for this
+  // session.id — it's neither Accept nor Decline, so the invite itself stays
+  // 'invited' server-side and is still resolvable from the Sessions modal.
+  const [dismissedInviteId, setDismissedInviteId] = useState(null);
 
   // Watch preferences and load preferences when user ID is known
   useEffect(() => {
@@ -450,21 +454,22 @@ export default function SessionProvider() {
   // Who invited me — approximated as the first other member of the group,
   // which is exact for the common 2-person case. Rows don't record a
   // separate "started by" field, only who else shares the group_id.
-  const inviter = session?.invitePending ? (session.groupMembers?.[0] || null) : null;
+  const showInviteBanner = session?.status === 'invited' && session.id !== dismissedInviteId;
+  const inviter = showInviteBanner ? (session.groupMembers?.[0] || null) : null;
   const inviterName = inviter?.full_name || inviter?.email || 'A teammate';
   const inviteDmChannel = inviter?.id && agencyId && userId ? buildDmChannel(agencyId, userId, inviter.id) : null;
-  const declineInvite = () => cancelSession();
+  const dismissInviteBanner = () => setDismissedInviteId(session?.id || null);
 
   return (
     <>
       <SessionWidget />
       <SessionModal isOpen={sessionModalOpen} onClose={closeSessionModal} />
 
-      {(dueReminders.length > 0 || session?.invitePending) && (
+      {(dueReminders.length > 0 || showInviteBanner) && (
         <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 100000, display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 'calc(100vw - 32px)' }}>
-          {session?.invitePending && (
+          {showInviteBanner && (
             <div className="ig-reminder" style={{ width: 400, maxWidth: '100%', background: 'rgba(8,14,30,0.98)', backdropFilter: 'blur(20px)', border: '1px solid rgba(48,108,236,0.35)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: 16, color: '#E2EEFF', position: 'relative', overflow: 'hidden' }}>
-              <button onClick={acknowledgeInvite} title="Dismiss" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#6C82A3', cursor: 'pointer', padding: 2, display: 'flex', zIndex: 1 }}><X size={15} /></button>
+              <button onClick={dismissInviteBanner} title="Dismiss" style={{ position: 'absolute', top: 10, right: 10, background: 'none', border: 'none', color: '#6C82A3', cursor: 'pointer', padding: 2, display: 'flex', zIndex: 1 }}><X size={15} /></button>
               <div style={{ display: 'flex', gap: 10 }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -483,13 +488,13 @@ export default function SessionProvider() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                    <button onClick={acknowledgeInvite} style={{ flex: 1, height: 34, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Accept</button>
-                    <button onClick={declineInvite} style={{ flex: 1, height: 34, borderRadius: 9, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#E2EEFF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Decline</button>
+                    <button onClick={acceptInvite} style={{ flex: 1, height: 34, borderRadius: 9, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Accept</button>
+                    <button onClick={cancelSession} style={{ flex: 1, height: 34, borderRadius: 9, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: '#E2EEFF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Decline</button>
                   </div>
                   {inviteDmChannel && (
                     <a
                       href={`/os/chat?workspaceId=${workspaceId}&channel=${encodeURIComponent(inviteDmChannel)}`}
-                      onClick={acknowledgeInvite}
+                      onClick={dismissInviteBanner}
                       style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#6C82A3', textDecoration: 'none' }}
                     >
                       Write message.

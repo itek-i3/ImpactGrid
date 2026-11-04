@@ -79,7 +79,27 @@ function MySessionPanel({
   customMinutes, setCustomMinutes,
   logNote, setLogNote,
   onStart, onPause, onResume, onBeginLog, onSnooze, onComplete, onDiscard,
+  onAcceptInvite, onDeclineInvite,
 }) {
+  // ── Invited: not joined until accepted ──
+  if (session?.status === 'invited') {
+    const inviter = session.groupMembers?.[0];
+    const inviterName = inviter?.full_name || inviter?.email || 'A teammate';
+    return (
+      <div style={{ ...sectionBox, border: '1px solid rgba(48,108,236,0.3)' }}>
+        <div style={sectionLabel}>Your Session</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--color-text-primary)' }}>{inviterName}</strong> invited you to a focus session
+          {session.taskDescription && <> — &ldquo;{session.taskDescription}&rdquo;</>}.
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+          <button onClick={onAcceptInvite} style={{ ...primaryBtn, flex: 1, padding: '8px 0', fontSize: 12 }}>Accept</button>
+          <button onClick={onDeclineInvite} style={{ ...ghostBtn, flex: 1, padding: '8px 0', fontSize: 12 }}>Decline</button>
+        </div>
+      </div>
+    );
+  }
+
   // ── No session: start form ──
   if (!session) {
     return (
@@ -382,6 +402,7 @@ export default function SessionModal({ isOpen, onClose }) {
     history,
     startSession,
     inviteToSession,
+    acceptInvite,
     pauseSession,
     resumeSession,
     expireSession,
@@ -529,6 +550,8 @@ export default function SessionModal({ isOpen, onClose }) {
           onSnooze={snoozeSession}
           onComplete={handleComplete}
           onDiscard={handleDiscard}
+          onAcceptInvite={acceptInvite}
+          onDeclineInvite={cancelSession}
         />
 
         {/* Divider */}
