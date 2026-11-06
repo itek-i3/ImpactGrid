@@ -357,7 +357,7 @@ export async function updateSession(id, updates) {
 }
 
 export async function deleteSession(id) {
-  const { supabase } = await clientForUser();
+  const { supabase, userId } = await clientForUser();
   const { data, error } = await supabase.from('sessions').delete().eq('id', id).select('id');
   if (error) return { error };
   // Postgres/RLS reports a delete whose USING clause matched nothing as
@@ -367,7 +367,19 @@ export async function deleteSession(id) {
   // would look like it worked here while the row quietly survives
   // server-side, invisible to the device that "declined" it but still
   // showing up for the inviter and any other device.
-  if (!data?.length) return { error: { message: 'Session not found or already removed', status: 404 } };
+  if (!data?.length) {
+    // Temporary — diagnosing a report that decline doesn't always stick.
+    // Admin client so this read itself can't be blocked by the same RLS
+    // that may be the actual culprit; logs to Vercel's function logs since
+    // the usual reporter has no console access on a phone. Remove once
+    // confirmed fixed.
+    try {
+      const admin = createAdminClient();
+      const { data: row } = await admin.from('sessions').select('id, user_id, status, group_id').eq('id', id).maybeSingle();
+      console.error('[deleteSession] 0 rows affected', { requestedId: id, authedUserId: userId, rowFound: row || null });
+    } catch (_) {}
+    return { error: { message: 'Session not found or already removed', status: 404 } };
+  }
   return { error: null };
 }
 

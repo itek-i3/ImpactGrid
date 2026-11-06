@@ -518,7 +518,7 @@ function TeamSessionsList({
             onClick={onToggleInvitePicker}
             style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer' }}
           >
-            <UserPlus size={11} /> Add team session
+            <UserPlus size={11} /> Invite to session
           </button>
         )}
       </div>
