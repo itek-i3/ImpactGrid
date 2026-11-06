@@ -20,6 +20,11 @@ function wasExplicitlyEnded(id) {
   try { return localStorage.getItem(LS_ENDED_KEY) === id; } catch { return false; }
 }
 
+function clearSessionEnded(id) {
+  if (!id || typeof window === 'undefined') return;
+  try { if (localStorage.getItem(LS_ENDED_KEY) === id) localStorage.removeItem(LS_ENDED_KEY); } catch {}
+}
+
 function loadInitialSession() {
   if (typeof window === 'undefined') return null;
   try {
@@ -168,7 +173,8 @@ export const useSessionStore = create((set, get) => ({
           // Approved — pick up the group's current state and arm the real
           // session machinery (SW countdown, widget) for the first time.
           const groupMembers = mine.group_id
-            ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId).map((s) => s.profiles).filter(Boolean)
+            ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId)
+                .map((s) => (s.profiles ? { ...s.profiles, status: s.status } : null)).filter(Boolean)
             : [];
           const next = {
             ...localSession, status: 'active',
@@ -186,12 +192,36 @@ export const useSessionStore = create((set, get) => ({
           // request to join an already active/paused session).
           const starterProfile = rows.find((r) => r.user_id === mine.started_by)?.profiles;
           if (starterProfile) {
-            const next = { ...localSession, groupMembers: [starterProfile] };
+            const next = { ...localSession, groupMembers: [{ ...starterProfile, status: 'active' }] };
             set({ session: next });
             saveSession(next);
           }
         }
-      } else if (localSession?.dbId && !mine) {
+      }
+
+      // Keep my own groupMembers honest on every poll — refresh each
+      // member's ACTUAL server status instead of trusting the one-time
+      // optimistic snapshot taken when they were first invited/approved.
+      // This is what makes "invited" really mean "not joined yet": the
+      // moment someone accepts, declines, or their row otherwise changes,
+      // my own panel picks it up here rather than freezing at send-time.
+      const activeSession = get().session;
+      if (activeSession?.dbId && activeSession.groupId &&
+        ['active', 'paused', 'expired', 'logging'].includes(activeSession.status)) {
+        const groupMembers = rows
+          .filter((s) => s.group_id === activeSession.groupId && s.user_id !== myUserId)
+          .map((s) => (s.profiles ? { ...s.profiles, status: s.status } : null))
+          .filter(Boolean);
+        const prevKey = (activeSession.groupMembers || []).map((m) => `${m.id}:${m.status}`).sort().join(',');
+        const nextKey = groupMembers.map((m) => `${m.id}:${m.status}`).sort().join(',');
+        if (prevKey !== nextKey) {
+          const next = { ...activeSession, groupMembers };
+          set({ session: next });
+          saveSession(next);
+        }
+      }
+
+      if (localSession?.dbId && !mine && localSession.status !== 'requested') {
         // Self-heal: I have a local active/paused/expired/logging session,
         // but the server no longer has ANY row for me — it was deleted or
         // completed elsewhere. Without this, a vanished row leaves a phantom
@@ -216,7 +246,8 @@ export const useSessionStore = create((set, get) => ({
       // below) stays off until they actually accept.
       if (mine && !get().session && !wasExplicitlyEnded(mine.id)) {
         const groupMembers = mine.group_id
-          ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId).map((s) => s.profiles).filter(Boolean)
+          ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId)
+              .map((s) => (s.profiles ? { ...s.profiles, status: s.status } : null)).filter(Boolean)
           : [];
         const adopted = {
           id: mine.id, dbId: mine.id, workspaceId, userId: myUserId,
@@ -270,7 +301,11 @@ export const useSessionStore = create((set, get) => ({
       taskDescription: taskDescription || '',
       durationSeconds, startedAt: Date.now(), endTime,
       pausedAt: null, status: 'active', snoozeCount: 0, completionNote: '',
-      groupId, groupMembers: participants,
+      // Everyone else starts as 'invited', not joined — they only actually
+      // count as "with me" once their own row flips to 'active' via Accept
+      // (picked up by fetchTeamSessions's reconciliation above), matching
+      // createGroupSession's DB-side status for their rows.
+      groupId, groupMembers: participants.map((p) => ({ ...p, status: 'invited' })),
     };
     set({ session });
     saveSession(session);
@@ -290,10 +325,14 @@ export const useSessionStore = create((set, get) => ({
       const { data } = await res.json();
       const existing = get().session;
       if (!existing || existing.dbId !== session.dbId) return; // session changed under us (ended etc.) — drop the stale update
+      // Invited, not joined — same 'invited' tag startSession's group path
+      // uses, so the UI doesn't claim "With <name>" until they accept
+      // (fetchTeamSessions's reconciliation replaces this with their real
+      // status the moment it changes).
       const next = {
         ...existing,
         groupId: data?.groupId || existing.groupId,
-        groupMembers: [...(existing.groupMembers || []), ...participants],
+        groupMembers: [...(existing.groupMembers || []), ...participants.map((p) => ({ ...p, status: 'invited' }))],
       };
       set({ session: next });
       saveSession(next);
@@ -382,14 +421,36 @@ export const useSessionStore = create((set, get) => ({
   },
 
   // ── Cancel ───────────────────────────────────────────────────────────
-  cancelSession: () => {
+  // Also what "Decline" (an invite) and "Withdraw request" call — in both
+  // cases this is deleting MY OWN row, so it stays optimistic for the snappy
+  // feel, but a DELETE that actually fails (RLS edge case, a race, a dead
+  // id) now gets caught and rolled back instead of being silently trusted:
+  // without that, the row would survive server-side forever while this
+  // device had already forgotten it ever existed — invisible here, but
+  // still showing up for the inviter and on any other device.
+  cancelSession: async () => {
     const { session } = get();
     if (!session) return;
+    const dbId = session.dbId;
     set({ session: null });
     saveSession(null);
-    markSessionEnded(session.dbId);
+    markSessionEnded(dbId);
     swSend({ type: 'SESSION_CANCEL' });
-    if (session.dbId && !isDemo()) api.delete(`/os/api/sessions/${session.dbId}`).catch(() => {});
+    if (!dbId || isDemo()) return;
+    try {
+      const res = await api.delete(`/os/api/sessions/${dbId}`);
+      if (!res.ok) {
+        console.error('[session] decline/cancel failed, restoring', res.status);
+        clearSessionEnded(dbId);
+        set({ session });
+        saveSession(session);
+      }
+    } catch (err) {
+      console.error('[session] decline/cancel failed, restoring', err);
+      clearSessionEnded(dbId);
+      set({ session });
+      saveSession(session);
+    }
   },
 
   // ── Accept a group-session invite ──────────────────────────────────────
@@ -453,10 +514,12 @@ export const useSessionStore = create((set, get) => ({
         const { data } = await res.json();
         const existing = get().session;
         if (existing && request.request_target_id === existing.dbId) {
+          // Already approved server-side by this same call — really active,
+          // unlike an invite's groupMembers entry which starts 'invited'.
           const next = {
             ...existing,
             groupId: data?.group_id || existing.groupId,
-            groupMembers: [...(existing.groupMembers || []), request.profiles].filter(Boolean),
+            groupMembers: [...(existing.groupMembers || []), request.profiles ? { ...request.profiles, status: 'active' } : null].filter(Boolean),
           };
           set({ session: next });
           saveSession(next);

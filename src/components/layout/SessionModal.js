@@ -202,11 +202,29 @@ function MySessionPanel({
                 &ldquo;{session.taskDescription}&rdquo;
               </div>
             )}
-            {session.groupMembers?.length > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Users size={11} /> With {session.groupMembers.map((m) => m.full_name || m.email || 'teammate').join(', ')}
-              </div>
-            )}
+            {(() => {
+              const members = session.groupMembers || [];
+              // Only a member whose own row has actually flipped to a
+              // "joined" status counts as "with me" — an 'invited' row means
+              // they haven't accepted yet, so they're listed separately and
+              // never folded into "With ...".
+              const joined  = members.filter((m) => ['active', 'paused', 'expired', 'logging'].includes(m.status));
+              const pending = members.filter((m) => !joined.includes(m));
+              return (
+                <>
+                  {joined.length > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={11} /> With {joined.map((m) => m.full_name || m.email || 'teammate').join(', ')}
+                    </div>
+                  )}
+                  {pending.length > 0 && (
+                    <div style={{ fontSize: 11, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={11} /> Invited, waiting to accept: {pending.map((m) => m.full_name || m.email || 'teammate').join(', ')}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {session.snoozeCount > 0 && (
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Snoozed {session.snoozeCount}×</div>
             )}

@@ -358,8 +358,17 @@ export async function updateSession(id, updates) {
 
 export async function deleteSession(id) {
   const { supabase } = await clientForUser();
-  const { error } = await supabase.from('sessions').delete().eq('id', id);
-  return { error };
+  const { data, error } = await supabase.from('sessions').delete().eq('id', id).select('id');
+  if (error) return { error };
+  // Postgres/RLS reports a delete whose USING clause matched nothing as
+  // success with zero rows affected, not an error — so without this check,
+  // a decline/discard/withdraw that RLS actually blocked (stale id, a race
+  // with some other change, anything not matching user_id = auth.uid())
+  // would look like it worked here while the row quietly survives
+  // server-side, invisible to the device that "declined" it but still
+  // showing up for the inviter and any other device.
+  if (!data?.length) return { error: { message: 'Session not found or already removed', status: 404 } };
+  return { error: null };
 }
 
 export async function listMySessionHistory(workspaceId) {
