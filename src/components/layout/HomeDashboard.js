@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Pencil, Plus, X, Check, Rocket, Compass, Target,
   ListChecks, Square, CheckSquare, TrendingUp, TrendingDown, Sigma, BarChart3,
-  Users, Trophy, ArrowRight, MessageSquare,
+  Users, Trophy, ArrowRight, MessageSquare, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
@@ -47,6 +47,15 @@ export default function HomeDashboard() {
   const [financeRows, setFinanceRows] = useState([]);
   const [myMission, setMyMission] = useState(null);
   const [taskDraft, setTaskDraft] = useState('');
+  const [outcomeDraft, setOutcomeDraft] = useState('');
+  // The task being completed right now (the task object itself, not an index —
+  // see persistMyTasks below for why object identity is how updates are matched).
+  // null = modal closed.
+  const [completingTask, setCompletingTask] = useState(null);
+  const [completionType, setCompletionType] = useState(''); // 'achieved' | 'challenge'
+  const [completionNote, setCompletionNote] = useState('');
+  const [completionError, setCompletionError] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [members, setMembers] = useState([]);
   const [teamMissions, setTeamMissions] = useState([]);
   const [missionOpen, setMissionOpen] = useState(false);
@@ -90,8 +99,8 @@ export default function HomeDashboard() {
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
 
-  // My mission record (for "My Impact This Week") + realtime, so a task posted
-  // from the Daily Tasks chat channel appears here without a reload.
+  // My mission record (department/mission/priorities/outcomes/kpis — NOT
+  // tasks, which moved to user_daily_focus below) + realtime.
   useEffect(() => {
     if (isDemo || !agencyId || !userProfile?.id) return;
     let cancelled = false;
@@ -106,6 +115,26 @@ export default function HomeDashboard() {
       .subscribe();
     return () => { cancelled = true; sb.removeChannel(ch); };
   }, [agencyId, isDemo, userProfile?.id]);
+
+  // My Today's Focus tasks — ONE global list per user, not scoped to agencyId
+  // at all, so it's identical on every agency's Home page. Realtime filter is
+  // on user_id only, so a task bridged in from Daily Tasks chat (postable
+  // from any of the 9 agencies now) appears here live without a reload.
+  const [myFocus, setMyFocus] = useState(null);
+  useEffect(() => {
+    if (isDemo || !userProfile?.id) return;
+    let cancelled = false;
+    async function load() {
+      const { data } = await createClient().from('user_daily_focus').select('*').eq('user_id', userProfile.id).maybeSingle();
+      if (!cancelled) setMyFocus(data || null);
+    }
+    load();
+    const sb = createClient();
+    const ch = sb.channel(`myfocus:${userProfile.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_daily_focus', filter: `user_id=eq.${userProfile.id}` }, () => load())
+      .subscribe();
+    return () => { cancelled = true; sb.removeChannel(ch); };
+  }, [isDemo, userProfile?.id]);
 
   // Team Member Focus Board — every teammate's mission, right on the homepage.
   useEffect(() => {
@@ -134,6 +163,11 @@ export default function HomeDashboard() {
 
   const monthlyGoals = Array.isArray(strategy?.monthly_goals) ? strategy.monthly_goals.filter(Boolean) : [];
   const scoreMetrics = Array.isArray(strategy?.metrics) ? strategy.metrics.filter((m) => m?.label) : [];
+
+  // Today's local date (YYYY-MM-DD) — scopes "Today's Focus" to just today's
+  // tasks, same local-time convention as `ym` below rather than UTC, so the
+  // day boundary matches what the person actually sees on their clock.
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   // Current month's Revenue / Expenses / Profit — the Financial Dashboard.
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -168,26 +202,71 @@ export default function HomeDashboard() {
     });
   }, [financeRows]);
 
-  // My Impact This Week — Tasks Assigned (autosaving checklist) + Expected
-  // Outcomes (read-only here; edited on the Team tab, where the rest of the
-  // mission — priorities, KPIs, department — lives).
-  const myTasks = Array.isArray(myMission?.tasks) ? myMission.tasks : [];
-  const myOutcomes = Array.isArray(myMission?.outcomes) ? myMission.outcomes.filter(Boolean) : [];
+  // Today's Focus — a global (not per-agency, not date-windowed) checklist,
+  // stored in user_daily_focus (one JSONB array per USER, not per agency —
+  // see the realtime effect above). Each item carries its own `date`
+  // (metadata only — when it was first logged, not a display filter),
+  // `expectedOutcome`, and once acted on, a required
+  // `result: { type: 'achieved'|'challenge', note }`.
+  //
+  // Carry-forward: a task stays visible — today, tomorrow, however many days
+  // it takes — until it's marked Achieved. Logging a Challenge does NOT close
+  // it out; `done` stays false, so it keeps showing (with the note visible)
+  // and stays clickable to retry. `fullTasks` is the complete array — always
+  // what gets persisted, so other (already-achieved) entries are never
+  // dropped; `myTasks` is just the still-open subset shown on the card.
+  const fullTasks = Array.isArray(myFocus?.tasks) ? myFocus.tasks : [];
+  const myTasks = fullTasks.filter((t) => !t.done);
+  const fullName = userProfile?.full_name || userProfile?.email || 'Someone';
+
   // The full member_missions row for me with `patch` applied — every column is
   // sent so an upsert from here never blanks fields edited on the Team tab.
+  // No `tasks` key — that column no longer exists on member_missions; tasks
+  // live in user_daily_focus now (see persistMyTasks below).
   const myMissionRow = (patch) => ({
     agency_id: agencyId, user_id: userProfile.id,
     department: myMission?.department ?? null, mission: myMission?.mission ?? null,
     priorities: myMission?.priorities ?? [], outcomes: myMission?.outcomes ?? [],
     weekly_objectives: myMission?.weekly_objectives ?? [], kpis: myMission?.kpis ?? [],
-    tasks: myMission?.tasks ?? [], ...patch, updated_at: new Date().toISOString(),
+    ...patch, updated_at: new Date().toISOString(),
   });
+  // Global: writes to user_daily_focus (keyed by user_id alone), which every
+  // agency's Home page for this user reads — always takes the FULL array so
+  // other (already-achieved) entries are never dropped.
   const persistMyTasks = async (nextTasks) => {
-    setMyMission((m) => ({ ...(m || {}), tasks: nextTasks }));
-    if (isDemo || !agencyId || !userProfile?.id) return;
+    setMyFocus((f) => ({ ...(f || {}), tasks: nextTasks }));
+    if (isDemo || !userProfile?.id) return;
     try {
-      await createClient().from('member_missions').upsert(myMissionRow({ tasks: nextTasks }), { onConflict: 'agency_id,user_id' });
+      await createClient().from('user_daily_focus').upsert(
+        { user_id: userProfile.id, tasks: nextTasks, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      );
     } catch (err) { console.error('[home] task save failed', err); }
+  };
+
+  // Best-effort post to the Daily Tasks chat channel. skipTaskBridge tells the
+  // API not to re-parse this automated message into ANOTHER task — the task
+  // this message is about already exists, this is just reporting on it.
+  const postToDailyTasks = async (text) => {
+    if (isDemo || !workspace?.id) return;
+    try {
+      await fetch(`/os/api/workspaces/${workspace.id}/chat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, channel: 'daily_tasks', skipTaskBridge: true }),
+      });
+    } catch (err) { console.error('[home] daily tasks post failed', err); }
+  };
+  // Posted once via "Post to Daily Tasks" — name, then the task list, then
+  // the expected outcomes, exactly the 3-line shape asked for.
+  const buildFocusSummary = (tasks) => [
+    fullName,
+    `Tasks: ${tasks.map((t) => t.text).join('; ')}`,
+    `Expected outcomes: ${tasks.map((t) => t.expectedOutcome).join('; ')}`,
+  ].join('\n');
+  // Posted once per task, the moment it's completed.
+  const buildCompletionReport = (task, result) => {
+    const achieved = result.type === 'achieved';
+    return `${fullName} completed: "${task.text}"\n${achieved ? '✅ Achieved' : '⚠️ Challenge'}: ${result.note}`;
   };
 
   // Set / edit my own mission from the Focus Board. A mission is editable only
@@ -248,13 +327,52 @@ export default function HomeDashboard() {
     setMissionSaving(false);
     setMissionOpen(false);
   };
-  const toggleMyTask = (i) => persistMyTasks(myTasks.map((t, idx) => (idx === i ? { ...t, done: !t.done } : t)));
-  const removeMyTask = (i) => persistMyTasks(myTasks.filter((_, idx) => idx !== i));
+  // Un-marking a done task is immediate (no chat message, no modal) — only
+  // marking one DONE requires recording a result, see openCompletion below.
+  // Matched by object identity rather than index: `task` is a reference taken
+  // straight from myTasks, which is a filter() of fullTasks (filter never
+  // clones elements), so `t === task` finds the right item in the full array
+  // without needing to translate a "today-filtered" index back into one.
+  const uncompleteTask = (task) => persistMyTasks(fullTasks.map((t) => (t === task ? { ...t, done: false, result: null } : t)));
+  const removeMyTask = (task) => persistMyTasks(fullTasks.filter((t) => t !== task));
   const addMyTask = () => {
     const text = taskDraft.trim();
-    if (!text) return;
-    persistMyTasks([...myTasks, { text, done: false }]);
+    const expectedOutcome = outcomeDraft.trim();
+    if (!text || !expectedOutcome) return;
+    persistMyTasks([...fullTasks, { text, expectedOutcome, done: false, date: todayStr, result: null }]);
     setTaskDraft('');
+    setOutcomeDraft('');
+  };
+
+  // ── Completing a task: required Achieved/Challenge + note, then posts a
+  // completion report to Daily Tasks chat ──────────────────────────────────
+  const openCompletion = (task) => {
+    setCompletingTask(task);
+    setCompletionType('');
+    setCompletionNote('');
+    setCompletionError(false);
+  };
+  const submitCompletion = async () => {
+    if (!completionType || !completionNote.trim()) { setCompletionError(true); return; }
+    const result = { type: completionType, note: completionNote.trim() };
+    const task = completingTask;
+    // Only Achieved closes the task out. Challenge logs the note but leaves
+    // `done: false` — that's the whole carry-forward mechanism: `myTasks`
+    // filters on `!done`, so a challenged task keeps showing every day until
+    // it's eventually marked Achieved.
+    const done = result.type === 'achieved';
+    setPosting(true);
+    await persistMyTasks(fullTasks.map((t) => (t === task ? { ...t, done, result } : t)));
+    await postToDailyTasks(buildCompletionReport(task, result));
+    setPosting(false);
+    setCompletingTask(null);
+  };
+  const postFocusSummary = async () => {
+    if (!myTasks.length) return;
+    setPosting(true);
+    await postToDailyTasks(buildFocusSummary(myTasks));
+    setPosting(false);
+    toast.success('Posted to Daily Tasks', `${myTasks.length} task${myTasks.length > 1 ? 's' : ''} shared with the team.`);
   };
 
   const startEdit = () => {
@@ -413,7 +531,7 @@ export default function HomeDashboard() {
       {/* Second hero row — Tasks (left) and Messages (right) share this grid row so their tops align exactly; both stay their own natural (short) height instead of stretching to fill it */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr', gap: isMobile ? 20 : 32, marginBottom: 28, alignItems: 'start' }}>
         <div className="dash-card" style={{ ...card, minHeight: isMobile ? undefined : 280 }}>
-          {cardHeader(ListChecks, '#EC4899', 'My Tasks This Week',
+          {cardHeader(ListChecks, '#EC4899', "Today's Focus",
             <button onClick={() => setCurrentView('team')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-pink-text, #EC4899)', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
               Full mission <ArrowRight size={11} />
             </button>
@@ -424,33 +542,42 @@ export default function HomeDashboard() {
               <div style={{ height: 8, borderRadius: 999, background: 'var(--color-track, rgba(255,255,255,0.06))', overflow: 'hidden' }}><div style={{ width: `${myProgress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#DB2777,#EC4899)', transition: 'width .3s' }} /></div>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {myTasks.length === 0 && <div style={{ fontSize: 13, color: tSub, fontStyle: 'italic', marginBottom: 4 }}>No tasks yet.</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {myTasks.length === 0 && <div style={{ fontSize: 13, color: tSub, fontStyle: 'italic', marginBottom: 4 }}>No tasks for today yet.</div>}
             {myTasks.map((t, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => toggleMyTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? 'var(--color-success-text, #22C55E)' : tSub, display: 'flex', padding: 0, flexShrink: 0 }}>{t.done ? <CheckSquare size={16} /> : <Square size={16} />}</button>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.done ? tSub : tKey, textDecoration: t.done ? 'line-through' : 'none' }}>{t.text}</span>
-                <button onClick={() => removeMyTask(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tSub, display: 'flex', padding: 0, flexShrink: 0 }}><X size={13} /></button>
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <button onClick={() => (t.done ? uncompleteTask(t) : openCompletion(t))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? 'var(--color-success-text, #22C55E)' : tSub, display: 'flex', padding: 0, flexShrink: 0, marginTop: 1 }}>{t.done ? <CheckSquare size={16} /> : <Square size={16} />}</button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, color: t.done ? tSub : tKey, textDecoration: t.done ? 'line-through' : 'none', display: 'block' }}>{t.text}</span>
+                  {!t.result && t.expectedOutcome && (
+                    <span style={{ fontSize: 11.5, color: tSub, fontStyle: 'italic', display: 'block', marginTop: 2 }}>Expecting: {t.expectedOutcome}</span>
+                  )}
+                  {/* Keyed off `result` existing, not `done` — a Challenge logs a
+                      result but stays open (done:false) so it carries forward,
+                      and still needs its note visible as context each day. */}
+                  {t.result && (
+                    <span style={{ fontSize: 11.5, color: t.result.type === 'achieved' ? 'var(--color-success-text, #22C55E)' : 'var(--color-warning-text, #F5A623)', display: 'block', marginTop: 2 }}>
+                      {t.result.type === 'achieved' ? '✅ Achieved' : '⚠️ Challenge'}: {t.result.note}
+                    </span>
+                  )}
+                </div>
+                <button onClick={() => removeMyTask(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tSub, display: 'flex', padding: 0, flexShrink: 0, marginTop: 1 }}><X size={13} /></button>
               </div>
             ))}
-            <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-              <input value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addMyTask(); } }} placeholder="Add a task…"
-                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, color: tKey, fontFamily: 'inherit', outline: 'none' }} />
-              <button onClick={addMyTask} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 11px', borderRadius: 9, border: '1px dashed var(--color-border-subtle, rgba(48,108,236,0.3))', background: 'transparent', color: 'var(--color-pink-text, #EC4899)', cursor: 'pointer' }}><Plus size={13} /></button>
-            </div>
-          </div>
-          {myOutcomes.length > 0 && (
-            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--color-divider, rgba(255,255,255,0.06))' }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 9 }}>Expected outcome</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {myOutcomes.map((o, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 1 }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{o}</span>
-                  </div>
-                ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 3 }}>
+              <input value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} placeholder="Today's task…"
+                style={{ boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, color: tKey, fontFamily: 'inherit', outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={outcomeDraft} onChange={(e) => setOutcomeDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addMyTask(); } }} placeholder="Expected outcome…"
+                  style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border-subtle, rgba(48,108,236,0.16))', borderRadius: 9, padding: '7px 10px', fontSize: 12.5, color: tKey, fontFamily: 'inherit', outline: 'none' }} />
+                <button onClick={addMyTask} disabled={!taskDraft.trim() || !outcomeDraft.trim()} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 11px', borderRadius: 9, border: '1px dashed var(--color-border-subtle, rgba(48,108,236,0.3))', background: 'transparent', color: 'var(--color-pink-text, #EC4899)', cursor: 'pointer', opacity: (!taskDraft.trim() || !outcomeDraft.trim()) ? 0.5 : 1 }}><Plus size={13} /></button>
               </div>
             </div>
+          </div>
+          {myTasks.length > 0 && (
+            <button onClick={postFocusSummary} disabled={posting} style={{ marginTop: 14, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 0', borderRadius: 9, border: '1px solid rgba(236,72,153,0.35)', background: 'rgba(236,72,153,0.10)', color: 'var(--color-pink-text, #EC4899)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: posting ? 0.6 : 1 }}>
+              <MessageSquare size={13} /> Post to Daily Tasks
+            </button>
           )}
         </div>
 
@@ -707,6 +834,54 @@ export default function HomeDashboard() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
               <button onClick={() => setMissionOpen(false)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
               <button onClick={saveMyMission} disabled={missionSaving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: missionSaving ? 0.6 : 1 }}><Check size={15} /> {missionSaving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete-a-task modal — Achieved/Challenge + a required note, then
+          posts the result to Daily Tasks chat on submit */}
+      {completingTask && (
+        <div className="ig-scrim" onClick={() => setCompletingTask(null)} style={{ position: 'fixed', inset: 0, zIndex: 10050, backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: isMobile ? 12 : 24, overflowY: 'auto' }}>
+          <div className="ig-dialog" onClick={(e) => e.stopPropagation()} style={{ width: 'min(480px, 100%)', margin: '20px 0', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid rgba(48,108,236,0.18)' }}>
+              <span style={{ fontSize: 15, fontWeight: 800 }}>Log an update</span>
+              <button className="ig-dialog-close" onClick={() => setCompletingTask(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: tKey }}>{completingTask.text}</div>
+                {completingTask.expectedOutcome && (
+                  <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic', marginTop: 3 }}>Expecting: {completingTask.expectedOutcome}</div>
+                )}
+              </div>
+              <Field label="What happened?">
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => { setCompletionType('achieved'); if (completionError) setCompletionError(false); }}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: '1px solid', borderColor: completionType === 'achieved' ? 'var(--color-success-text, #22C55E)' : 'var(--color-border)', background: completionType === 'achieved' ? 'rgba(34,197,94,0.14)' : 'transparent', color: completionType === 'achieved' ? 'var(--color-success-text, #22C55E)' : tSub }}>
+                    <CheckCircle size={14} /> Achieved it
+                  </button>
+                  <button
+                    onClick={() => { setCompletionType('challenge'); if (completionError) setCompletionError(false); }}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 0', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, border: '1px solid', borderColor: completionType === 'challenge' ? 'var(--color-warning-text, #F5A623)' : 'var(--color-border)', background: completionType === 'challenge' ? 'rgba(245,166,35,0.14)' : 'transparent', color: completionType === 'challenge' ? 'var(--color-warning-text, #F5A623)' : tSub }}>
+                    <AlertTriangle size={14} /> Hit a challenge
+                  </button>
+                </div>
+              </Field>
+              <Field label={completionType === 'challenge' ? 'What got in the way?' : 'What did you achieve?'}>
+                <textarea
+                  className={`strat-in${completionError ? ' error' : ''}`} rows={3} autoFocus
+                  value={completionNote}
+                  onChange={(e) => { setCompletionNote(e.target.value); if (completionError) setCompletionError(false); }}
+                  placeholder={completionType === 'challenge' ? 'e.g. Waiting on a reply from the client' : 'e.g. Sent the proposal and got a verbal yes'}
+                />
+                {completionError && <div className="strat-error">Pick Achieved or Challenge, and add a note.</div>}
+              </Field>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 18px', borderTop: '1px solid rgba(48,108,236,0.18)' }}>
+              <button onClick={() => setCompletingTask(null)} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-control, #9DB8DD)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+              <button onClick={submitCompletion} disabled={posting} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#1E4FB8,#306CEC)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: posting ? 0.6 : 1 }}><Check size={15} /> {posting ? 'Saving…' : 'Save & post'}</button>
             </div>
           </div>
         </div>

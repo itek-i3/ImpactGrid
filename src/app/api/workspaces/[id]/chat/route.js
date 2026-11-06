@@ -14,6 +14,20 @@ async function pushRecipients(admin, workspaceId, channel, senderId) {
     const dm = parseDmChannel(channel);
     return (dm.participants || []).filter((id) => id && id !== senderId);
   }
+  if (channel === 'daily_tasks') {
+    // Global feed — notify every approved user across all 9 agencies, not
+    // just the posting workspace's one agency, matching the channel's new
+    // fully-unified visibility.
+    const [profs, mems] = await Promise.all([
+      admin.from('profiles').select('id').eq('approved', true),
+      admin.from('agency_members').select('user_id'),
+    ]);
+    const set = new Set();
+    (profs.data || []).forEach((p) => set.add(p.id));
+    (mems.data || []).forEach((m) => set.add(m.user_id));
+    set.delete(senderId);
+    return [...set];
+  }
   const { data: ws } = await admin.from('workspaces').select('agency_id').eq('id', workspaceId).single();
   if (!ws?.agency_id) return [];
   const [profs, mems] = await Promise.all([
@@ -63,11 +77,12 @@ export async function GET(request, { params }) {
     }
   }
 
-  const selectCols = `id, message, channel, created_at, edited, user_id, attachments, profiles:user_id (full_name, email, role)`;
+  const selectCols = `id, message, channel, created_at, edited, user_id, attachments, workspace_id, profiles:user_id (full_name, email, role)`;
 
   // DMs: filter only by channel (agency already encoded in channel name + validated above)
-  // Group channels: filter by workspace_id as usual
-  let query = channel.startsWith('dm:')
+  // daily_tasks: global feed now — no workspace_id filter, every agency's posts
+  // Other group channels: filter by workspace_id as usual
+  let query = (channel.startsWith('dm:') || channel === 'daily_tasks')
     ? supabase.from('chat_messages').select(selectCols).eq('channel', channel)
     : supabase.from('chat_messages').select(selectCols).eq('workspace_id', workspaceId).eq('channel', channel);
 
@@ -95,6 +110,21 @@ export async function GET(request, { params }) {
     (profs || []).forEach((p) => { senders[p.id] = p; });
   }
 
+  // daily_tasks mixes posts from all 9 agencies now — resolve each message's
+  // originating agency (workspace_id -> workspaces.agency_id -> agencies.name)
+  // so the unified feed can label who posted from where.
+  let agencyNameByWorkspace = {};
+  if (channel === 'daily_tasks') {
+    const wsIds = [...new Set((data || []).map((m) => m.workspace_id).filter(Boolean))];
+    if (wsIds.length) {
+      const { data: wsRows } = await admin
+        .from('workspaces')
+        .select('id, agency_id, agencies:agency_id (name)')
+        .in('id', wsIds);
+      (wsRows || []).forEach((w) => { agencyNameByWorkspace[w.id] = w.agencies?.name || null; });
+    }
+  }
+
   const formatted = (data || []).map((msg) => {
     const p = senders[msg.user_id] || msg.profiles || {};
     return {
@@ -108,6 +138,7 @@ export async function GET(request, { params }) {
       userName: p.full_name || p.email || 'Member',
       userEmail: p.email || '',
       userRole: p.role || 'member',
+      ...(channel === 'daily_tasks' ? { agencyName: agencyNameByWorkspace[msg.workspace_id] || null } : {}),
     };
   });
 
@@ -122,7 +153,7 @@ export async function POST(request, { params }) {
   if (authError || !user) return badRequest('Unauthorized');
 
   const body = await request.json().catch(() => ({}));
-  const { message, channel = 'random' } = body;
+  const { message, channel = 'random', skipTaskBridge } = body;
 
   // Sanitize attachments to { url, name, type, size } (max 10).
   const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
@@ -198,24 +229,26 @@ export async function POST(request, { params }) {
 
   if (error) return fromSupabaseError(error);
 
-  // "Daily Tasks" channel: every message becomes a task on the sender's own
-  // homepage checklist (member_missions.tasks) — best-effort, never blocks the send.
-  if (channel === 'daily_tasks' && text) {
+  // "Daily Tasks" channel: every message becomes a task on the sender's
+  // GLOBAL homepage checklist (user_daily_focus.tasks — shared across every
+  // agency's Home page for that user) — best-effort, never blocks the send.
+  // skipTaskBridge is set by HomeDashboard's own automated posts (the today's-focus
+  // summary and per-task completion reports) so they don't get re-parsed into a
+  // second, duplicate task — the task already exists; these messages are just
+  // reporting on it, not creating a new one.
+  if (channel === 'daily_tasks' && text && !skipTaskBridge) {
     try {
       const adminTasks = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
-      const { data: ws } = await adminTasks.from('workspaces').select('agency_id').eq('id', workspaceId).single();
-      if (ws?.agency_id) {
-        const { data: existing } = await adminTasks
-          .from('member_missions').select('*').eq('agency_id', ws.agency_id).eq('user_id', user.id).maybeSingle();
-        const nextTasks = [...(Array.isArray(existing?.tasks) ? existing.tasks : []), { text, done: false }];
-        await adminTasks.from('member_missions').upsert({
-          agency_id: ws.agency_id, user_id: user.id,
-          department: existing?.department ?? null, mission: existing?.mission ?? null,
-          priorities: existing?.priorities ?? [], outcomes: existing?.outcomes ?? [],
-          weekly_objectives: existing?.weekly_objectives ?? [], kpis: existing?.kpis ?? [],
-          tasks: nextTasks, updated_at: new Date().toISOString(),
-        }, { onConflict: 'agency_id,user_id' });
-      }
+      const { data: existing } = await adminTasks
+        .from('user_daily_focus').select('tasks').eq('user_id', user.id).maybeSingle();
+      const nextTasks = [
+        ...(Array.isArray(existing?.tasks) ? existing.tasks : []),
+        { text, done: false, date: new Date().toISOString().slice(0, 10), expectedOutcome: null, result: null },
+      ];
+      await adminTasks.from('user_daily_focus').upsert(
+        { user_id: user.id, tasks: nextTasks, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      );
     } catch (err) { console.error('[chat] daily task bridge failed', err); }
   }
 

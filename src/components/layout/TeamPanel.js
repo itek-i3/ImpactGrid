@@ -23,6 +23,10 @@ export default function TeamPanel() {
   const [editUser, setEditUser] = useState(null); // user_id being edited
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  // Today's Focus tasks — global per-user (user_daily_focus), not per-agency
+  // like the rest of this file's mission data. Mirrors HomeDashboard.js's
+  // own myFocus state so both surfaces read/write the exact same list.
+  const [myFocus, setMyFocus] = useState(null);
 
   useEffect(() => {
     if (isDemo || !workspace?.id) return;
@@ -44,6 +48,16 @@ export default function TeamPanel() {
     })();
     return () => { cancelled = true; };
   }, [agencyId, isDemo]);
+
+  useEffect(() => {
+    if (isDemo || !me) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await createClient().from('user_daily_focus').select('*').eq('user_id', me).maybeSingle();
+      if (!cancelled) setMyFocus(data || null);
+    })();
+    return () => { cancelled = true; };
+  }, [me, isDemo]);
 
   // A mission is editable only by the member it belongs to — managers and
   // superadmins included. Enforced by the member_missions_write policy too
@@ -67,7 +81,7 @@ export default function TeamPanel() {
     const existing = missions[uid] || {};
     const row = { agency_id: agencyId, user_id: uid, department: existing.department ?? null, mission: existing.mission ?? null,
       priorities: arr(existing.priorities), outcomes: arr(existing.outcomes), weekly_objectives: arr(existing.weekly_objectives),
-      kpis: arr(existing.kpis), tasks: arr(existing.tasks), ...patch };
+      kpis: arr(existing.kpis), ...patch };
     setMissions((mm) => ({ ...mm, [uid]: { ...row } }));
     if (isDemo || !agencyId) return;
     try { await createClient().from('member_missions').upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'agency_id,user_id' }); }
@@ -88,10 +102,16 @@ export default function TeamPanel() {
     setEditUser(null);
   };
 
-  // My Mission tasks (inline, autosave)
+  // My Mission tasks (inline, autosave) — global per-user (user_daily_focus),
+  // same list HomeDashboard.js's Today's Focus card reads/writes.
   const myRow = missions[me] || {};
-  const myTasks = arr(myRow.tasks);
-  const setMyTasks = (next) => persist(me, { tasks: next });
+  const myTasks = arr(myFocus?.tasks);
+  const setMyTasks = async (next) => {
+    setMyFocus((f) => ({ ...(f || {}), tasks: next }));
+    if (isDemo || !me) return;
+    try { await createClient().from('user_daily_focus').upsert({ user_id: me, tasks: next, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }); }
+    catch (err) { console.error('[focus] task save failed', err); }
+  };
 
   const myProgress = useMemo(() => {
     if (myTasks.length) return Math.round((myTasks.filter((t) => t.done).length / myTasks.length) * 100);

@@ -327,9 +327,9 @@ function ChatContent() {
   }, [workspaceId, activeChannel, isDemo]);
 
   const getDemoMessages = useCallback(() => ([
-    { id: '1', message: 'Welcome to the team chat! Use this channel to share your daily updates.', createdAt: new Date(Date.now() - 7200000).toISOString(), userId: 'admin-1', userName: 'System Administrator', userRole: 'superadmin' },
-    { id: '2', message: 'Hi team! Just completed the event budget table. Please review in the Welcome doc.', createdAt: new Date(Date.now() - 3600000).toISOString(), userId: 'manager-1', userName: 'John Doe', userRole: 'manager' },
-    { id: '3', message: 'Looks great John! Working on the client contacts database now.', createdAt: new Date(Date.now() - 600000).toISOString(), userId: 'member-1', userName: 'Alice Smith', userRole: 'member' },
+    { id: '1', message: 'Welcome to the team chat! Use this channel to share your daily updates.', createdAt: new Date(Date.now() - 7200000).toISOString(), userId: 'admin-1', userName: 'System Administrator', userRole: 'superadmin', agencyName: 'TOIG' },
+    { id: '2', message: 'Hi team! Just completed the event budget table. Please review in the Welcome doc.', createdAt: new Date(Date.now() - 3600000).toISOString(), userId: 'manager-1', userName: 'John Doe', userRole: 'manager', agencyName: 'ACR' },
+    { id: '3', message: 'Looks great John! Working on the client contacts database now.', createdAt: new Date(Date.now() - 600000).toISOString(), userId: 'member-1', userName: 'Alice Smith', userRole: 'member', agencyName: 'i3+' },
   ]), []);
 
   useEffect(() => {
@@ -368,8 +368,15 @@ function ChatContent() {
     if (isDemo) return () => { cancelled = true; };
 
     const sb = createClient();
-    const ch = sb.channel(`chat:${workspaceId}:${activeChannel}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `workspace_id=eq.${workspaceId}` }, async (payload) => {
+    // daily_tasks is a global feed now — subscribe by channel, not workspace,
+    // so inserts/updates from OTHER agencies' workspaces still arrive live.
+    // Every other channel keeps the exact workspace-scoped filter it had before.
+    const isDailyTasksFeed = activeChannel === 'daily_tasks';
+    const ch = sb.channel(isDailyTasksFeed ? 'chat:global:daily_tasks' : `chat:${workspaceId}:${activeChannel}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'chat_messages',
+        filter: isDailyTasksFeed ? 'channel=eq.daily_tasks' : `workspace_id=eq.${workspaceId}`,
+      }, async (payload) => {
         // Deletes: drop the message locally (id is present even in the old row)
         if (payload.eventType === 'DELETE') {
           const delId = payload.old?.id;
@@ -1174,10 +1181,26 @@ function ChatContent() {
                           </div>
                         )}
 
-                        {/* Sender name for group chats (not DMs, not own) */}
-                        {!isOwn && !msg.isContinuation && !isDm && (
-                          <div style={{ fontSize: 11.5, fontWeight: 700, color: roleTextOf(rc), marginLeft: 14, marginBottom: 2, marginTop: msg.showDate ? 0 : 6 }}>
-                            {msg.userName || 'Unknown'}
+                        {/* Sender name (+ agency label on daily_tasks) for group chats, not
+                            DMs. daily_tasks also labels the viewer's OWN messages — unlike
+                            every other channel — because the feed now mixes all 9 agencies'
+                            posts: without this, a teammate in another agency scrolling back
+                            through the shared thread can't tell at a glance which agency a
+                            given message (including yours) came from. */}
+                        {(!isOwn || activeChannel === 'daily_tasks') && !msg.isContinuation && !isDm && (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            justifyContent: isOwn ? 'flex-end' : 'flex-start',
+                            fontSize: 11.5, fontWeight: 700, color: roleTextOf(rc),
+                            marginLeft: isOwn ? 0 : 14, marginRight: isOwn ? 14 : 0,
+                            marginBottom: 2, marginTop: msg.showDate ? 0 : 6,
+                          }}>
+                            <span>{isOwn ? 'You' : (msg.userName || 'Unknown')}</span>
+                            {activeChannel === 'daily_tasks' && msg.agencyName && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ch-dim)', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '2px 7px' }}>
+                                {msg.agencyName}
+                              </span>
+                            )}
                           </div>
                         )}
 
