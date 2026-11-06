@@ -43,8 +43,8 @@ export default function SessionWidget() {
     return () => clearInterval(intervalRef.current);
   }, [session?.status, session?.endTime, session?.pausedAt, expireSession]);
 
-  // 'invited' isn't joined yet — no widget until they accept.
-  if (!session || session.status === 'completed' || session.status === 'invited') return null;
+  // 'invited'/'requested' aren't joined yet — no widget until resolved.
+  if (!session || session.status === 'completed' || session.status === 'invited' || session.status === 'requested') return null;
 
   const isActive  = session.status === 'active';
   const isPaused  = session.status === 'paused';

@@ -173,6 +173,28 @@ export default function SessionProvider() {
     return () => clearInterval(t);
   }, [workspaceId, fetchTeamSessions]);
 
+  // ── 1c. Team Sessions: instant refresh on change (join requests, invites,
+  // accepts, pause/resume, etc.) ───────────────────────────────────────────
+  // The 20s poll above is a fallback — same role chat's own polling fallback
+  // already serves for when Realtime isn't configured. Mirrors the DM
+  // postgres_changes subscription in section 3 below, just on `sessions`
+  // instead of `chat_messages`. Debounced briefly because a group action
+  // (starting/inviting several people at once) inserts/updates several rows
+  // in the same instant, which would otherwise fire one refetch per row.
+  useEffect(() => {
+    if (!workspaceId || isDemo) return;
+    const sb = createClient();
+    let debounceId = null;
+    const refresh = () => {
+      clearTimeout(debounceId);
+      debounceId = setTimeout(() => fetchTeamSessions(workspaceId), 250);
+    };
+    const ch = sb.channel(`sessions:${workspaceId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `workspace_id=eq.${workspaceId}` }, refresh)
+      .subscribe();
+    return () => { clearTimeout(debounceId); sb.removeChannel(ch); };
+  }, [workspaceId, isDemo, fetchTeamSessions]);
+
   // ── 2. Load Workspace Members (to resolve display names) ────────────────────
   useEffect(() => {
     if (!workspaceId || isDemo) return;

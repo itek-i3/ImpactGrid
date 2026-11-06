@@ -79,8 +79,26 @@ function MySessionPanel({
   customMinutes, setCustomMinutes,
   logNote, setLogNote,
   onStart, onPause, onResume, onBeginLog, onSnooze, onComplete, onDiscard,
-  onAcceptInvite, onDeclineInvite,
+  onAcceptInvite, onDeclineInvite, onWithdrawRequest,
 }) {
+  // ── Requested: waiting on the starter to approve ──
+  if (session?.status === 'requested') {
+    const starter = session.groupMembers?.[0];
+    const starterName = starter?.full_name || starter?.email || 'the session starter';
+    return (
+      <div style={{ ...sectionBox, border: '1px solid rgba(245,158,11,0.3)' }}>
+        <div style={sectionLabel}>Your Session</div>
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8, lineHeight: 1.5 }}>
+          Waiting for <strong style={{ color: 'var(--color-text-primary)' }}>{starterName}</strong> to approve your request to join
+          {session.taskDescription && <> — &ldquo;{session.taskDescription}&rdquo;</>}.
+        </div>
+        <button onClick={onWithdrawRequest} style={{ ...ghostBtn, width: '100%', padding: '8px 0', fontSize: 12, marginTop: 12 }}>
+          <X size={12} /> Withdraw request
+        </button>
+      </div>
+    );
+  }
+
   // ── Invited: not joined until accepted ──
   if (session?.status === 'invited') {
     const inviter = session.groupMembers?.[0];
@@ -266,11 +284,194 @@ function MySessionPanel({
   return null;
 }
 
+// ── Pending join requests on a session I started ────────────────────────────
+function PendingJoinRequests({ requests, onRespond }) {
+  if (!requests?.length) return null;
+  return (
+    <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+        {requests.length} request{requests.length > 1 ? 's' : ''} to join your session
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {requests.map((r) => {
+          const name = r.profiles?.full_name || r.profiles?.email || 'Someone';
+          return (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {r.profiles?.avatar_url ? (
+                <img src={r.profiles.avatar_url} alt={name} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+              ) : (
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(48,108,236,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 9, fontWeight: 700, color: '#7EB3FF' }}>
+                  {initials(r.profiles?.full_name, r.profiles?.email)}
+                </div>
+              )}
+              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+              <button onClick={() => onRespond(r, true)} title="Approve" style={{ width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(74,222,128,0.18)', color: '#4ade80', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <Check size={13} />
+              </button>
+              <button onClick={() => onRespond(r, false)} title="Decline" style={{ width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(239,68,68,0.14)', color: '#f87171', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Team Sessions list ───────────────────────────────────────────────────────
+const STATUS_COLOR = { active: '#4ade80', paused: '#f59e0b', requested: '#a78bfa', expired: '#f87171', logging: '#f87171' };
+const STATUS_LABEL = { active: 'Live', paused: 'Paused', requested: 'Requested', expired: "Time's up", logging: "Time's up" };
+
+// Buckets team rows into standalone "solo" cards and one entry per
+// group_id — rows sharing a group_id render as one clustered card with a
+// full roster instead of each getting its own disconnected card.
+function clusterTeamSessions(rows) {
+  const byGroup = new Map();
+  const solo = [];
+  for (const r of rows) {
+    if (r.group_id) {
+      if (!byGroup.has(r.group_id)) byGroup.set(r.group_id, []);
+      byGroup.get(r.group_id).push(r);
+    } else {
+      solo.push(r);
+    }
+  }
+  return [
+    ...solo.map((row) => ({ type: 'solo', row })),
+    ...[...byGroup.entries()].map(([groupId, members]) => ({ type: 'group', groupId, members })),
+  ];
+}
+
+function SoloSessionCard({ row: s, now, canRequestJoin, onRequestJoin }) {
+  const profile   = s.profiles || {};
+  const name      = profile.full_name || profile.email || 'Team member';
+  const remaining = (new Date(s.end_time).getTime() - now) / 1000;
+  const isPaused  = s.status === 'paused';
+  const isExpired = s.status === 'expired' || s.status === 'logging';
+  const dotColor  = STATUS_COLOR[s.status] || '#4ade80';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '10px 12px',
+      background: 'var(--color-bg-secondary)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 10,
+    }}>
+      {/* Avatar */}
+      {profile.avatar_url ? (
+        <img src={profile.avatar_url} alt={name} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+      ) : (
+        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(48,108,236,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, fontWeight: 700, color: '#7EB3FF' }}>
+          {initials(profile.full_name, profile.email)}
+        </div>
+      )}
+
+      {/* Name + task */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {name}
+        </div>
+        {s.task_description && (
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+            {s.task_description}
+          </div>
+        )}
+      </div>
+
+      {/* Status + time */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span className={!isPaused && !isExpired ? 'animate-pulse' : ''} style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: dotColor, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            {STATUS_LABEL[s.status] || 'Live'}
+          </span>
+        </div>
+        {!isExpired && (
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            {fmt(remaining)}
+          </span>
+        )}
+      </div>
+
+      {canRequestJoin && (
+        <button onClick={onRequestJoin} style={{ marginLeft: 2, flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 7, padding: '6px 8px', cursor: 'pointer' }}>
+          Request to join
+        </button>
+      )}
+    </div>
+  );
+}
+
+function GroupSessionCard({ members, now, canRequestJoin, onRequestJoin }) {
+  const task = members.find((m) => m.task_description)?.task_description;
+  // Collapsed header shows the "best" status present across the group.
+  const priority = ['active', 'paused', 'requested', 'expired', 'logging'];
+  const headline = priority.find((p) => members.some((m) => m.status === p)) || 'active';
+
+  return (
+    <div style={{ padding: '10px 12px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Stacked avatars */}
+        <div style={{ display: 'flex', flexShrink: 0 }}>
+          {members.slice(0, 4).map((m, i) => {
+            const p = m.profiles || {};
+            const name = p.full_name || p.email || 'Team member';
+            return p.avatar_url ? (
+              <img key={m.id} src={p.avatar_url} alt={name} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-bg-secondary)', marginLeft: i === 0 ? 0 : -10 }} />
+            ) : (
+              <div key={m.id} style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(48,108,236,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#7EB3FF', border: '2px solid var(--color-bg-secondary)', marginLeft: i === 0 ? 0 : -10 }}>
+                {initials(p.full_name, p.email)}
+              </div>
+            );
+          })}
+          {members.length > 4 && (
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--color-bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', border: '2px solid var(--color-bg-secondary)', marginLeft: -10 }}>
+              +{members.length - 4}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{members.length} in a group session</div>
+          {task && <div style={{ fontSize: 11, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{task}</div>}
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLOR[headline], textTransform: 'uppercase', letterSpacing: '.05em', flexShrink: 0 }}>{STATUS_LABEL[headline]}</span>
+      </div>
+
+      {/* Roster — one line per member, their own status */}
+      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {members.map((m) => {
+          const p = m.profiles || {};
+          const name = p.full_name || p.email || 'Team member';
+          const remaining = (new Date(m.end_time).getTime() - now) / 1000;
+          const showTime = m.status === 'active' || m.status === 'paused';
+          return (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: STATUS_COLOR[m.status], flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: STATUS_COLOR[m.status] }}>
+                {showTime ? fmt(remaining) : STATUS_LABEL[m.status]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {canRequestJoin && (
+        <button onClick={onRequestJoin} style={{ marginTop: 8, width: '100%', fontSize: 11, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.12)', border: '1px solid rgba(48,108,236,0.3)', borderRadius: 7, padding: '6px 0', cursor: 'pointer' }}>
+          Request to join
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TeamSessionsList({
   teamSessions,
   canInvite, addingToRunningSession, inviteCandidates, selectedParticipants, onToggleParticipant,
   showInvitePicker, onToggleInvitePicker, onSendInvite, invitingInProgress,
+  viewerHasSession, onRequestJoin,
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -278,7 +479,9 @@ function TeamSessionsList({
     return () => clearInterval(t);
   }, []);
 
-  const active = (teamSessions || []).filter((s) => s.status !== 'completed');
+  const rows = (teamSessions || []).filter((s) => s.status !== 'completed');
+  const liveCount = rows.filter((s) => s.status !== 'requested').length;
+  const clusters = clusterTeamSessions(rows);
 
   return (
     <div>
@@ -287,9 +490,9 @@ function TeamSessionsList({
         <span style={sectionLabel}>
           Team Sessions
         </span>
-        {active.length > 0 && (
+        {liveCount > 0 && (
           <span style={{ fontSize: 10, fontWeight: 700, color: '#4ade80', background: 'rgba(74,222,128,0.12)', borderRadius: 99, padding: '1px 7px' }}>
-            {active.length} online
+            {liveCount} online
           </span>
         )}
         {canInvite && (
@@ -323,71 +526,28 @@ function TeamSessionsList({
         </div>
       )}
 
-      {active.length === 0 ? (
+      {clusters.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
           No team members are in a session right now
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {active.map((s) => {
-            const profile    = s.profiles || {};
-            const name       = profile.full_name || profile.email || 'Team member';
-            const remaining  = (new Date(s.end_time).getTime() - now) / 1000;
-            const isPaused   = s.status === 'paused';
-            const isExpired  = s.status === 'expired' || s.status === 'logging';
-            const dotColor   = isExpired ? '#f87171' : isPaused ? '#f59e0b' : '#4ade80';
-
-            return (
-              <div key={s.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 12px',
-                background: 'var(--color-bg-secondary)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 10,
-              }}>
-                {/* Avatar */}
-                {profile.avatar_url ? (
-                  <img src={profile.avatar_url} alt={name} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                ) : (
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(48,108,236,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, fontWeight: 700, color: '#7EB3FF' }}>
-                    {initials(profile.full_name, profile.email)}
-                  </div>
-                )}
-
-                {/* Name + task */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {name}
-                  </div>
-                  {s.task_description && (
-                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-                      {s.task_description}
-                    </div>
-                  )}
-                  {s.group_id && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3, fontSize: 9.5, fontWeight: 700, color: '#7EB3FF', background: 'rgba(48,108,236,0.14)', borderRadius: 99, padding: '1px 7px' }}>
-                      <Users size={9} /> Group
-                    </div>
-                  )}
-                </div>
-
-                {/* Status + time */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span className={!isPaused && !isExpired ? 'animate-pulse' : ''} style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: dotColor, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                      {isExpired ? "Time's up" : isPaused ? 'Paused' : 'Live'}
-                    </span>
-                  </div>
-                  {!isExpired && (
-                    <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(remaining)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {clusters.map((c) => c.type === 'solo' ? (
+            <SoloSessionCard
+              key={c.row.id} row={c.row} now={now}
+              canRequestJoin={!viewerHasSession && ['active', 'paused'].includes(c.row.status)}
+              onRequestJoin={() => onRequestJoin(c.row.id)}
+            />
+          ) : (
+            <GroupSessionCard
+              key={c.groupId} members={c.members} now={now}
+              canRequestJoin={!viewerHasSession && c.members.some((m) => ['active', 'paused'].includes(m.status))}
+              onRequestJoin={() => {
+                const target = c.members.find((m) => ['active', 'paused'].includes(m.status));
+                if (target) onRequestJoin(target.id);
+              }}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -399,10 +559,13 @@ export default function SessionModal({ isOpen, onClose }) {
   const {
     session,
     teamSessions,
+    pendingRequests,
     history,
     startSession,
     inviteToSession,
     acceptInvite,
+    requestToJoinSession,
+    respondToJoinRequest,
     pauseSession,
     resumeSession,
     expireSession,
@@ -552,6 +715,13 @@ export default function SessionModal({ isOpen, onClose }) {
           onDiscard={handleDiscard}
           onAcceptInvite={acceptInvite}
           onDeclineInvite={cancelSession}
+          onWithdrawRequest={cancelSession}
+        />
+
+        {/* Requests pending on a session I started */}
+        <PendingJoinRequests
+          requests={pendingRequests}
+          onRespond={(request, accept) => respondToJoinRequest(request, accept, workspaceId)}
         />
 
         {/* Divider */}
@@ -569,6 +739,8 @@ export default function SessionModal({ isOpen, onClose }) {
           onToggleInvitePicker={toggleInvitePicker}
           onSendInvite={handleSendInvite}
           invitingInProgress={invitingInProgress}
+          viewerHasSession={!!session}
+          onRequestJoin={(id) => requestToJoinSession(id)}
         />
 
         {/* History */}

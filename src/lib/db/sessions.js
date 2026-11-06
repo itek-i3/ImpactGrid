@@ -24,12 +24,28 @@ function reconcileTeamSession(s, now) {
   return s;
 }
 
+// Promotes a still-solo session row to a group by minting a group_id for
+// it — shared by inviteToSession's invite path and respondToJoinRequest's
+// approve path, since either one can be the first thing that turns
+// someone's solo session into a group.
+async function ensureGroupId(admin, row) {
+  if (row.group_id) return row.group_id;
+  const groupId = crypto.randomUUID();
+  await admin.from('sessions').update({ group_id: groupId, started_by: row.started_by || row.user_id }).eq('id', row.id);
+  // Any other still-pending join requests filed against this same
+  // (until-now solo) row get the same group_id too, purely so they render
+  // inside the group's roster from now on — their status stays 'requested'
+  // until separately approved.
+  await admin.from('sessions').update({ group_id: groupId }).eq('request_target_id', row.id).eq('status', 'requested');
+  return groupId;
+}
+
 export async function listSessionsForWorkspace(workspaceId) {
   const admin = createAdminClient();
 
   const { data: rows, error } = await admin
     .from('sessions')
-    .select('id, workspace_id, user_id, task_description, duration_seconds, started_at, end_time, paused_at, status, snooze_count, completion_note, completed_at, created_at, updated_at, group_id')
+    .select('id, workspace_id, user_id, task_description, duration_seconds, started_at, end_time, paused_at, status, snooze_count, completion_note, completed_at, created_at, updated_at, group_id, started_by, request_target_id')
     .eq('workspace_id', workspaceId)
     .neq('status', 'completed')
     .order('started_at', { ascending: false });
@@ -70,6 +86,7 @@ export async function createSession({
       duration_seconds: durationSeconds,
       end_time:         new Date(endTime).toISOString(),
       status:           'active',
+      started_by:       userId,
     })
     .select()
     .single();
@@ -123,6 +140,7 @@ export async function createGroupSession({
     // (see acceptInvite / updateSession), not the moment they're invited.
     status:           uid === userId ? 'active' : 'invited',
     group_id:         groupId,
+    started_by:       userId,
   }));
 
   const { data, error } = await admin.from('sessions').insert(rows).select();
@@ -163,8 +181,7 @@ export async function inviteToSession(sessionId, participantIds = []) {
 
   let groupId = existing.group_id;
   if (!groupId) {
-    groupId = crypto.randomUUID();
-    await admin.from('sessions').update({ group_id: groupId }).eq('id', sessionId);
+    groupId = await ensureGroupId(admin, existing);
   } else {
     // Already in this group — don't hand out a second row.
     const { data: already } = await admin.from('sessions').select('user_id').eq('group_id', groupId);
@@ -183,6 +200,7 @@ export async function inviteToSession(sessionId, participantIds = []) {
     // active/paused state right now.
     status:           'invited',
     group_id:         groupId,
+    started_by:       existing.started_by || existing.user_id,
   }));
 
   const { data: invited, error } = await admin.from('sessions').insert(rows).select();
@@ -199,6 +217,122 @@ export async function inviteToSession(sessionId, participantIds = []) {
     },
     error: null,
   };
+}
+
+// A teammate asks to join a session they see running rather than waiting to
+// be invited to one — the reverse of inviteToSession. Still just a
+// self-insert (RLS lets anyone insert their OWN row), so no admin client is
+// needed here; the row starts as 'requested' and only the session's
+// original starter can move it to 'active' (see respondToJoinRequest),
+// exactly mirroring how an invited row only becomes 'active' once accepted.
+export async function requestToJoinSession(targetSessionId) {
+  const { supabase, userId } = await clientForUser();
+  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+
+  const { data: target } = await supabase.from('sessions').select('*').eq('id', targetSessionId).maybeSingle();
+  if (!target) return { data: null, error: { message: 'Session not found', status: 404 } };
+  if (target.user_id === userId) return { data: null, error: { message: "You can't request to join your own session", status: 400 } };
+  if (!['active', 'paused'].includes(target.status)) {
+    return { data: null, error: { message: 'That session is no longer open to join', status: 400 } };
+  }
+
+  // Already have a row for this exact session, for the group it belongs
+  // to, or a pending request already filed against it.
+  const { data: mineRows } = await supabase
+    .from('sessions')
+    .select('id, group_id, request_target_id')
+    .eq('user_id', userId)
+    .eq('workspace_id', target.workspace_id)
+    .neq('status', 'completed');
+  const alreadyIn = (mineRows || []).some((r) =>
+    r.id === target.id ||
+    (target.group_id && r.group_id === target.group_id) ||
+    r.request_target_id === target.id
+  );
+  if (alreadyIn) return { data: null, error: { message: 'You already have a row in this session', status: 400 } };
+
+  const startedBy = target.started_by || target.user_id;
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({
+      workspace_id:      target.workspace_id,
+      user_id:           userId,
+      task_description:  target.task_description,
+      duration_seconds:  target.duration_seconds,
+      end_time:          target.end_time,
+      status:            'requested',
+      group_id:          target.group_id || null,
+      started_by:        startedBy,
+      request_target_id: target.id,
+    })
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  const { data: me } = await supabase.from('profiles').select('full_name, email, avatar_url').eq('id', userId).maybeSingle();
+  return {
+    data: {
+      mine: data,
+      starterId: startedBy,
+      requesterName: me?.full_name || me?.email,
+      requesterAvatar: me?.avatar_url,
+      taskDescription: target.task_description,
+    },
+    error: null,
+  };
+}
+
+// Approves or declines a pending join request. Only the ORIGINAL starter of
+// the session/group being requested may call this — not just any other
+// already-active member — so unlike inviteToSession's "is this my own row"
+// check, this compares against started_by.
+export async function respondToJoinRequest(requestRowId, accept) {
+  const { userId } = await clientForUser();
+  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+
+  const admin = createAdminClient();
+  const { data: requestRow } = await admin.from('sessions').select('*').eq('id', requestRowId).maybeSingle();
+  if (!requestRow) return { data: null, error: { message: 'Request not found', status: 404 } };
+  if (requestRow.status !== 'requested') return { data: null, error: { message: 'That request has already been resolved', status: 400 } };
+
+  const starterId = requestRow.started_by || requestRow.user_id;
+  if (starterId !== userId) return { data: null, error: { message: 'Only the session starter can respond to join requests', status: 403 } };
+
+  if (!accept) {
+    // Mirrors declining an invite (DELETE) — except the STARTER is removing
+    // someone else's row here, so it needs the admin client; a requester
+    // withdrawing their own pending row still goes through the existing
+    // DELETE /api/sessions/[id] route (deleteSession, RLS-scoped) unchanged.
+    const { error } = await admin.from('sessions').delete().eq('id', requestRowId);
+    return { data: error ? null : { requesterId: requestRow.user_id, accepted: false }, error };
+  }
+
+  const { data: target } = await admin.from('sessions').select('*').eq('id', requestRow.request_target_id).maybeSingle();
+  if (!target) return { data: null, error: { message: 'The original session no longer exists', status: 400 } };
+
+  // Promotes a still-solo target to a group on first approval — the exact
+  // same helper inviteToSession uses for its own solo -> group case.
+  const groupId = await ensureGroupId(admin, target);
+
+  // Refresh from the target's CURRENT state in case it moved on (snoozed,
+  // paused, task edited) while the request sat pending — the same rule
+  // invited rows already follow when they're created.
+  const { data, error } = await admin
+    .from('sessions')
+    .update({
+      status:           'active',
+      group_id:         groupId,
+      started_by:       target.started_by || target.user_id,
+      task_description: target.task_description,
+      duration_seconds: target.duration_seconds,
+      end_time:         target.end_time,
+    })
+    .eq('id', requestRowId)
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  return { data: { requesterId: requestRow.user_id, accepted: true, groupId, session: data }, error: null };
 }
 
 export async function updateSession(id, updates) {

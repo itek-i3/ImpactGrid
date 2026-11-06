@@ -88,6 +88,7 @@ async function requestNotificationPermission() {
 export const useSessionStore = create((set, get) => ({
   session:          null, // always null on server; restored from localStorage after hydration
   teamSessions:     [],
+  pendingRequests:  [], // other people's 'requested' rows against a session I started
   history:          [],
   sessionModalOpen: false,
 
@@ -124,10 +125,87 @@ export const useSessionStore = create((set, get) => ({
       const { data } = await res.json();
       const rows = data || [];
       const mine = rows.find((s) => s.user_id === myUserId);
-      // An 'invited' row belonging to someone else is a pending invite
-      // between them and whoever invited them — not broadcast to the rest
-      // of the team until they've actually accepted it.
-      set({ teamSessions: rows.filter((s) => s.user_id !== myUserId && s.status !== 'invited') });
+      const others = rows.filter((s) => s.user_id !== myUserId);
+
+      // A group is "visible" once it has at least one row the team can
+      // already see (active/paused/expired/logging). A lone 'requested' row
+      // against a still-solo session is never broadcast on its own — same
+      // treatment 'invited' rows already get — but once a group IS visible,
+      // its full roster, pending joiners included, is visible too.
+      const visibleGroupIds = new Set(
+        others
+          .filter((s) => s.status === 'active' || s.status === 'paused' || s.status === 'expired' || s.status === 'logging')
+          .map((s) => s.group_id)
+          .filter(Boolean)
+      );
+      // My own group (if I'm in one) is already shown in full, correctly
+      // rostered, under "Your Session" — listing it again here would both
+      // duplicate it and undercount it, since MY OWN row is already missing
+      // from `others` by this point, making an N-person group look like N-1.
+      const myGroupId = get().session?.groupId || null;
+      const teamSessions = others.filter((s) =>
+        s.status !== 'invited' &&
+        (s.status !== 'requested' || visibleGroupIds.has(s.group_id)) &&
+        (!myGroupId || s.group_id !== myGroupId)
+      );
+      // Requests pending on a session *I* started — mine to approve/decline.
+      const pendingRequests = others.filter((s) => s.status === 'requested' && s.started_by === myUserId);
+      set({ teamSessions, pendingRequests });
+
+      // A 'requested' row is the one status this client never drives itself
+      // — only the starter acting elsewhere moves it on — so this poll is
+      // the only thing that will ever notice it got approved or declined.
+      const localSession = get().session;
+      if (localSession?.status === 'requested' && localSession.dbId) {
+        if (!mine || mine.id !== localSession.dbId) {
+          // Declined — the row was deleted server-side.
+          if (!wasExplicitlyEnded(localSession.dbId)) {
+            markSessionEnded(localSession.dbId);
+            set({ session: null });
+            saveSession(null);
+          }
+        } else if (mine.status === 'active') {
+          // Approved — pick up the group's current state and arm the real
+          // session machinery (SW countdown, widget) for the first time.
+          const groupMembers = mine.group_id
+            ? rows.filter((s) => s.group_id === mine.group_id && s.user_id !== myUserId).map((s) => s.profiles).filter(Boolean)
+            : [];
+          const next = {
+            ...localSession, status: 'active',
+            taskDescription: mine.task_description || '',
+            durationSeconds: mine.duration_seconds,
+            endTime: new Date(mine.end_time).getTime(),
+            groupId: mine.group_id || null, groupMembers,
+          };
+          set({ session: next });
+          saveSession(next);
+          registerSW().then(() => swSend({ type: 'SESSION_START', endTime: next.endTime, task: next.taskDescription }));
+        } else if (!localSession.groupMembers?.[0]) {
+          // Still pending — fill in the starter's name once their row is
+          // visible in this same snapshot (guaranteed, since you can only
+          // request to join an already active/paused session).
+          const starterProfile = rows.find((r) => r.user_id === mine.started_by)?.profiles;
+          if (starterProfile) {
+            const next = { ...localSession, groupMembers: [starterProfile] };
+            set({ session: next });
+            saveSession(next);
+          }
+        }
+      } else if (localSession?.dbId && !mine) {
+        // Self-heal: I have a local active/paused/expired/logging session,
+        // but the server no longer has ANY row for me — it was deleted or
+        // completed elsewhere. Without this, a vanished row leaves a phantom
+        // countdown running forever: nothing else ever clears it, and the
+        // next unrelated poll (teamSessions/pendingRequests changing) just
+        // re-persists the same stale session to localStorage via the global
+        // autosave subscriber below, since that subscriber always saves
+        // whatever `session` currently is, not whether it's still valid.
+        if (!wasExplicitlyEnded(localSession.dbId)) {
+          markSessionEnded(localSession.dbId);
+          set({ session: null });
+          saveSession(null);
+        }
+      }
 
       // Discover a session I have a row in but nothing local yet for — either
       // a group someone started and added me to ('invited', gated on Accept
@@ -329,6 +407,63 @@ export const useSessionStore = create((set, get) => ({
     if (!isDemo()) {
       try { await api.patch(`/os/api/sessions/${session.dbId}`, { status: 'active' }); } catch {}
     }
+  },
+
+  // ── Request to join a session I can see but wasn't invited to ──────────
+  // Mirrors startSession but lands in 'requested' instead of 'active' — only
+  // the session's starter approving (respondToJoinRequest, below) actually
+  // joins me in. `targetSessionId` is any row belonging to the session/group
+  // I want to join — its own solo id, or any member's row id if it's
+  // already a group.
+  requestToJoinSession: async (targetSessionId) => {
+    if (!targetSessionId || isDemo() || get().session) return;
+    try {
+      const res = await api.post(`/os/api/sessions/${targetSessionId}/join-request`, {});
+      if (!res.ok) return;
+      const { data } = await res.json();
+      const session = {
+        id: data.id, dbId: data.id, workspaceId: data.workspace_id, userId: data.user_id,
+        taskDescription: data.task_description || '',
+        durationSeconds: data.duration_seconds,
+        startedAt: new Date(data.started_at).getTime(),
+        endTime: new Date(data.end_time).getTime(),
+        pausedAt: null, status: 'requested', snoozeCount: 0, completionNote: '',
+        groupId: data.group_id || null, groupMembers: [],
+      };
+      set({ session });
+      saveSession(session);
+    } catch {}
+  },
+
+  // ── Approve/decline a join request on a session I started ──────────────
+  // `request` is the full pendingRequests row (not just its id) so that, on
+  // approval, we can tell whether it targeted MY OWN currently-active
+  // session and merge the new member into local `groupMembers` immediately
+  // — the same optimistic pattern inviteToSession already uses — instead of
+  // leaving "With ..." stale forever (nothing else ever refreshes an
+  // already-active local session's groupMembers). Withdrawing MY OWN
+  // pending request is a different action — reuse cancelSession (DELETE),
+  // same as declining an invite.
+  respondToJoinRequest: async (request, accept, workspaceId) => {
+    if (!request?.id || isDemo()) return;
+    set({ pendingRequests: get().pendingRequests.filter((r) => r.id !== request.id) });
+    try {
+      const res = await api.patch(`/os/api/sessions/${request.id}/join-request`, { accept });
+      if (res.ok && accept) {
+        const { data } = await res.json();
+        const existing = get().session;
+        if (existing && request.request_target_id === existing.dbId) {
+          const next = {
+            ...existing,
+            groupId: data?.group_id || existing.groupId,
+            groupMembers: [...(existing.groupMembers || []), request.profiles].filter(Boolean),
+          };
+          set({ session: next });
+          saveSession(next);
+        }
+      }
+    } catch {}
+    if (workspaceId) get().fetchTeamSessions(workspaceId);
   },
 
   // ── History ──────────────────────────────────────────────────────────
