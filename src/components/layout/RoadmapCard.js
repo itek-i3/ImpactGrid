@@ -57,14 +57,20 @@ const normalizeObjective = (o) => ({
 });
 
 export default function RoadmapCard() {
-  const { userProfile, workspace, activeAgencyId, isDemo } = useWorkspaceStore();
+  const { userProfile, workspace, agencies, activeAgencyId, isDemo } = useWorkspaceStore();
   const isMobile = useIsMobile();
   const toast = useToast();
 
   const [now] = useState(() => new Date());
   const targetYear = now.getFullYear() + 1;
   const agencyId = workspace?.agency_id || activeAgencyId || null;
-  const canEdit = isDemo || ['manager', 'superadmin'].includes(userProfile?.role);
+  // A global manager/superadmin can always edit; otherwise fall back to the
+  // caller's role on this one agency (agency_members.role), which is how an
+  // agency-scoped manager — e.g. an ImpactFund manager who isn't a manager
+  // anywhere else — gets the same rights for just their own agency's
+  // roadmap. Mirrors is_agency_manager() on the database side.
+  const agencyRole = agencies?.find((a) => a.id === agencyId)?.role;
+  const canEdit = isDemo || ['manager', 'superadmin'].includes(userProfile?.role) || agencyRole === 'manager';
 
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState(true);

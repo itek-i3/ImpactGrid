@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Users, Boxes, Wallet, HeartHandshake, Trophy, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, Users, Boxes, Wallet, TrendingUp, Gift, Trophy, ArrowRight } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { DotPattern } from '@/components/magicui/dot-pattern';
 import { NumberTicker } from '@/components/magicui/number-ticker';
+import RoadmapCard from '@/components/layout/RoadmapCard';
 import {
   money, num, canEditFund, totalOf, raisedByType, raisedByAccount, topContributors, isPaidMember, loadDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTORS_SEED, DEMO_PROJECTS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_SETTINGS_SEED,
@@ -70,6 +71,8 @@ export default function FundDashboardPanel() {
     return () => { cancelled = true; sb.removeChannel(ch); };
   }, [agencyId, isDemo, contributionsKey, contributorsKey, projectsKey, membersKey, settingsKey]);
 
+  const investorCount = useMemo(() => contributors.filter((c) => c.type === 'investor').length, [contributors]);
+  const donorCount = useMemo(() => contributors.filter((c) => c.type === 'donor').length, [contributors]);
   const totalRaised = useMemo(() => totalOf(contributions), [contributions]);
   const raised = useMemo(() => raisedByType(contributions), [contributions]);
   const byAccount = useMemo(() => raisedByAccount(contributions), [contributions]);
@@ -107,12 +110,20 @@ export default function FundDashboardPanel() {
           <div style={{ fontSize: 13, color: tSub, maxWidth: 560, lineHeight: 1.5, marginBottom: 20 }}>
             Every shilling in is tracked back to who gave it and, where it applies, which project it&rsquo;s backing.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 14 }}>
             <StatTile label="Projects" value={projects.length} Icon={Boxes} tint="#14B8A6" />
-            <StatTile label="Investors & donors" value={contributors.length} Icon={HeartHandshake} tint="#9333EA" />
+            <StatTile label="Investors" value={investorCount} Icon={TrendingUp} tint="#9333EA" />
+            <StatTile label="Donors" value={donorCount} Icon={Gift} tint="#EC4899" />
             <StatTile label="Members" value={paidMemberCount} Icon={Users} tint="#F5A623" />
           </div>
         </div>
+      </div>
+
+      {/* Forward roadmap — full width, same as HomeDashboard's placement,
+          so ImpactFund gets the same year-ahead planning even though it
+          never shows the generic Home dashboard. */}
+      <div style={{ marginBottom: 24 }}>
+        <RoadmapCard />
       </div>
 
       {/* Money trail — two breakdowns, never one lump sum. The total is
