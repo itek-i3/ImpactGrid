@@ -477,6 +477,27 @@ export default function Sidebar() {
               </>
             )}
 
+            {agencies?.find(a => a.id === activeAgencyId)?.slug === 'i3x-africa' && (
+              <>
+                {/* ── Partnerships (i3x Africa) ── */}
+                <div className={styles.sidebarSectionLabel}>
+                  <span className={styles.sidebarSectionTitle}>Partnerships</span>
+                </div>
+                <nav style={{ padding: '0 8px 2px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {['manager', 'superadmin'].includes(userProfile?.role) && (
+                    <button
+                      className="ig-nav"
+                      onClick={() => { setCurrentView('partners'); if (pathname !== '/') router.push('/'); closeMobileSidebar(); }}
+                      style={currentView === 'partners' ? { background: 'rgba(48,108,236,0.15)', color: '#7EB3FF' } : {}}
+                    >
+                      <HeartHandshake size={15} />
+                      <span>Partners & Sponsors</span>
+                    </button>
+                  )}
+                </nav>
+              </>
+            )}
+
             {isImpactFund && (
               <>
                 {/* ── ImpactFund ── */}

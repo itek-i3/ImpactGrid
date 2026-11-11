@@ -21,6 +21,7 @@ import AcquiredBusinessesPanel from '@/components/layout/AcquiredBusinessesPanel
 import BusinessIntelPanel from '@/components/layout/BusinessIntelPanel';
 import ValuationPanel from '@/components/layout/ValuationPanel';
 import InvestorsPanel from '@/components/layout/InvestorsPanel';
+import PartnersPanel from '@/components/layout/PartnersPanel';
 import TeamPanel from '@/components/layout/TeamPanel';
 import ScoreboardPanel from '@/components/layout/ScoreboardPanel';
 import WeeklyReviewPanel from '@/components/layout/WeeklyReviewPanel';
@@ -219,6 +220,8 @@ function WorkspaceContent() {
             <ValuationPanel />
           ) : effectiveView === 'investors' ? (
             <InvestorsPanel />
+          ) : effectiveView === 'partners' ? (
+            <PartnersPanel />
           ) : effectiveView === 'team' ? (
             <TeamPanel />
           ) : effectiveView === 'scoreboard' ? (
