@@ -329,7 +329,7 @@ const STEPS = [
 // Business name / industry / location are counted as part of Identity (they
 // display in Section 1, in the order the brief lists them) even though they
 // are stored as their own top-level registry columns, not inside `data`.
-const IDENTITY_FIELD_COUNT = 15;
+const IDENTITY_FIELD_COUNT = 17;
 const OPERATIONS_FIELD_COUNT = 7;
 const PERFORMANCE_FIELD_COUNT = 7;
 
@@ -341,7 +341,7 @@ const PERFORMANCE_REQUIRED = ['revenueRange', 'customerVolume', 'revenueStreams'
 const PROFILE_TOTAL_FIELDS = IDENTITY_FIELD_COUNT + OPERATIONS_FIELD_COUNT + PERFORMANCE_FIELD_COUNT + INFRA_AREAS.length + 1 + 1;
 
 const emptyProfile = () => ({
-  identity: { ownerName: '', ownerGender: '', ownerPhone: '', ownerEmail: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
+  identity: { ownerName: '', ownerGender: '', ownerPhone: '', ownerEmail: '', hasCofounder: '', cofounderGender: '', country: '', city: '', yearEstablished: '', registrationStatus: '', businessPhone: '', businessEmail: '', hasWebsite: '', website: '' },
   operations: { productsServices: '', employeeCount: '', locationCount: '', operatingModel: '', suppliers: '', customerSegments: '', currentSystems: '' },
   performance: { revenueRange: '', customerVolume: '', revenueStreams: '', operatingExpenses: '', growthTrend: '', financialChallenges: '', financialChallengesSolution: '' },
   infrastructure: Object.fromEntries(INFRA_AREAS.map((a) => [a.key, { level: '', note: '' }])),
@@ -619,6 +619,8 @@ function BusinessReport({ profile, completeness, updatedLabel, registrarUrl }) {
     ['Owner gender', id.ownerGender, 'identity.ownerGender'],
     ['Owner phone', id.ownerPhone, 'identity.ownerPhone'],
     ['Owner email', id.ownerEmail, 'identity.ownerEmail'],
+    ['Co-founder', id.hasCofounder, 'identity.hasCofounder'],
+    ['Co-founder gender', id.hasCofounder === 'Yes' ? id.cofounderGender : '', 'identity.cofounderGender'],
     ['Country', id.country, 'identity.country'],
     ['City', id.city, 'identity.city'],
     ['Area / Neighbourhood', profile.location, 'identity.location'],
@@ -1492,6 +1494,14 @@ export default function BusinessIntelPanel() {
           <Field half label="Owner gender" type="select" options={GENDERS} value={profile.identity.ownerGender} onChange={(v) => setField('identity', 'ownerGender', v)} verification={profile.verification['identity.ownerGender']} onVerify={(v) => setVerify('identity.ownerGender', v)} />
           <Field half label="Owner phone" value={profile.identity.ownerPhone} onChange={(v) => setField('identity', 'ownerPhone', v)} verification={profile.verification['identity.ownerPhone']} onVerify={(v) => setVerify('identity.ownerPhone', v)} placeholder="e.g. 07xx xxx xxx" />
           <Field half label="Owner email" value={profile.identity.ownerEmail} onChange={(v) => setField('identity', 'ownerEmail', v)} verification={profile.verification['identity.ownerEmail']} onVerify={(v) => setVerify('identity.ownerEmail', v)} placeholder="owner@example.com" />
+          <Field
+            half label="Has a co-founder?" type="select" options={['Yes', 'No']} value={profile.identity.hasCofounder}
+            onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, hasCofounder: v, cofounderGender: v === 'Yes' ? p.identity.cofounderGender : '' } }))}
+            verification={profile.verification['identity.hasCofounder']} onVerify={(v) => setVerify('identity.hasCofounder', v)}
+          />
+          {profile.identity.hasCofounder === 'Yes' && (
+            <Field half label="Co-founder gender" type="select" options={GENDERS} value={profile.identity.cofounderGender} onChange={(v) => setField('identity', 'cofounderGender', v)} verification={profile.verification['identity.cofounderGender']} onVerify={(v) => setVerify('identity.cofounderGender', v)} />
+          )}
           <Field
             half label="Country" type="select" options={COUNTRIES} value={profile.identity.country}
             onChange={(v) => setProfile((p) => ({ ...p, identity: { ...p.identity, country: v, city: citiesFor(v).includes(p.identity.city) ? p.identity.city : '' } }))}
