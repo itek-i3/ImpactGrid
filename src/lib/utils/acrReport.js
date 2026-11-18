@@ -531,6 +531,18 @@ export async function downloadAcrCombinedReport({
   const growingCount = trends.filter((t) => t === 'Growing').length;
   const growingPct = trends.length ? Math.round((growingCount / trends.length) * 100) : null;
 
+  // Which self-reported revenue band shows up most often across the Data
+  // Registry — mirrors BusinessIntelPanel's "Most common revenue band" insight
+  // card so the downloaded report reads as the same product.
+  const revenueCounts = new Map();
+  registryEntries.forEach((e) => {
+    const band = e.data?.performance?.revenueRange;
+    if (band) revenueCounts.set(band, (revenueCounts.get(band) || 0) + 1);
+  });
+  let topRevenue = null, topRevenueCount = 0;
+  revenueCounts.forEach((count, band) => { if (count > topRevenueCount) { topRevenue = band; topRevenueCount = count; } });
+  const revenueTotal = [...revenueCounts.values()].reduce((a, b) => a + b, 0);
+
   const summary = [];
   if (sec.portfolio || sec.registry) {
     summary.push({ label: 'Total Businesses Tracked', value: String(businesses.length + registryEntries.length), accent: 'slate' });
@@ -541,6 +553,7 @@ export async function downloadAcrCombinedReport({
   }
   if (sec.registry) {
     summary.push({ label: 'Data Registry', value: String(registryEntries.length), note: topIndustry ? `Leading industry: ${topIndustry.key}` : 'No entries yet', accent: 'teal' });
+    summary.push({ label: 'Most Common Revenue Band', value: topRevenue || '—', note: revenueTotal ? `${topRevenueCount} of ${revenueTotal} with revenue recorded` : 'No data recorded yet', accent: 'teal' });
     summary.push({ label: 'On a Growth Trajectory', value: growingPct != null ? `${growingPct}%` : '—', note: trends.length ? `${growingCount} of ${trends.length} registry businesses` : 'No data recorded yet', accent: 'teal' });
     summary.push({ label: 'Female-Owned', value: femalePct != null ? `${femalePct}%` : '—', note: genders.length ? `${femaleCount} of ${genders.length} with gender recorded` : 'No data recorded yet', accent: 'teal' });
   }
