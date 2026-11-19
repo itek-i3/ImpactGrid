@@ -12,7 +12,7 @@ import { MagicCard } from '@/components/magicui/magic-card';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  PROJECT_STATUSES, PROJECT_STATUS_BY_KEY, money, num, canEditFund, canDeleteFundProject, projectMemberRows, projectBaselineRows,
+  PROJECT_STATUSES, PROJECT_STATUS_BY_KEY, money, num, hasAmount, canEditFund, canDeleteFundProject, projectMemberRows, projectBaselineRows,
   byProjectMember, projectBaselineOf, projectBaselinePaidThisMonth, memberByLoginEmail,
   loadDemo, saveDemo, DEMO_PROJECTS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_MEMBERS_SEED, DEMO_CONTRIBUTORS_SEED, DEMO_PROJECT_PLEDGES_SEED,
 } from '@/lib/fund/shared';
@@ -61,6 +61,16 @@ export default function FundProjectsPanel() {
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
   const [editingMyPledge, setEditingMyPledge] = useState(false);
   const [myPledgeInput, setMyPledgeInput] = useState('');
+
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [edTitle, setEdTitle] = useState('');
+  const [edSummary, setEdSummary] = useState('');
+  const [edTarget, setEdTarget] = useState('');
+
+  const [editContribId, setEditContribId] = useState(null);
+  const [ecAmount, setEcAmount] = useState('');
+  const [ecDate, setEcDate] = useState('');
+  const [ecNote, setEcNote] = useState('');
 
   const [fundOpen, setFundOpen] = useState(null); // project
   const [fSourceType, setFSourceType] = useState('member');
@@ -158,7 +168,7 @@ export default function FundProjectsPanel() {
   const detailRaised = detail ? (raisedByProjectId[detail.id] || 0) : 0;
   const detailPct = detail?.target_amount ? Math.min(100, Math.round((detailRaised / detail.target_amount) * 100)) : null;
   const totalPledgedFor = (projectId) => pledges.filter((pl) => pl.project_id === projectId).reduce((s, pl) => s + num(pl.amount), 0);
-  const openDetail = (id) => { setDetailId(id); setDetailTab('goals'); setEditingBaseline(false); setConfirmDeleteProject(false); setEditingMyPledge(false); };
+  const openDetail = (id) => { setDetailId(id); setDetailTab('goals'); setEditingBaseline(false); setConfirmDeleteProject(false); setEditingMyPledge(false); setEditingDetails(false); setEditContribId(null); };
 
   const resetAdd = () => { setPTitle(''); setPSummary(''); setPStatus('active'); setPTarget(''); setPBaseline(''); setPledgeAmounts({}); };
 
@@ -283,6 +293,41 @@ export default function FundProjectsPanel() {
     toast.success(next ? 'Baseline set' : 'Baseline removed', next ? `${money(next)}/month, owed by every member` : undefined);
   };
 
+  const openEditDetails = () => {
+    if (!detail) return;
+    setEdTitle(detail.title); setEdSummary(detail.summary || ''); setEdTarget(detail.target_amount != null ? String(num(detail.target_amount)) : '');
+    setEditingDetails(true);
+  };
+
+  const saveDetails = async () => {
+    if (!detail || !edTitle.trim()) return;
+    setEditingDetails(false);
+    await patchProject(detail.id, { title: edTitle.trim(), summary: edSummary.trim() || null, target_amount: edTarget.trim() ? num(edTarget) : null });
+    toast.success('Project updated');
+  };
+
+  const patchContribution = async (id, patch) => {
+    if (isDemo) {
+      const next = contributions.map((c) => (c.id === id ? { ...c, ...patch } : c));
+      setContributions(next); saveDemo(contributionsKey, next);
+      return;
+    }
+    const { error } = await createClient().from('fund_contributions').update(patch).eq('id', id);
+    if (error) toast.error('Could not save', error.message);
+  };
+
+  const openContribEdit = (c) => {
+    setEcAmount(String(c.amount)); setEcDate(new Date(c.created_at).toISOString().slice(0, 10)); setEcNote(c.description || '');
+    setEditContribId(c.id);
+  };
+
+  const saveContribEdit = async () => {
+    const amount = num(ecAmount);
+    if (!hasAmount(ecAmount) || !editContribId) return;
+    await patchContribution(editContribId, { amount, description: ecNote.trim() || null, created_at: new Date(ecDate).toISOString() });
+    setEditContribId(null);
+  };
+
   // Everything about a deleted project goes with it — every backer's
   // contribution to it (baseline or extra) is removed, not just unlinked,
   // and any goals set for it (fund_project_pledges) cascade-delete too.
@@ -315,7 +360,7 @@ export default function FundProjectsPanel() {
 
   const saveFund = async () => {
     const amount = num(fAmount);
-    if (!amount || !fSourceId || !fundOpen) return;
+    if (!hasAmount(fAmount) || !fSourceId || !fundOpen) return;
     const row = {
       member_id: fSourceType === 'member' ? fSourceId : null,
       contributor_id: fSourceType === 'contributor' ? fSourceId : null,
@@ -644,7 +689,26 @@ export default function FundProjectsPanel() {
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, flexShrink: 0 }} onClick={() => setConfirmDeleteProject(false)}>Cancel</button>
               </div>
             )}
-            {detail.summary && <div style={{ fontSize: 13, color: tSub, lineHeight: 1.55 }}>{detail.summary}</div>}
+            {/* Title / summary / target — editable so a typo doesn't mean
+                delete-and-recreate. */}
+            {editingDetails ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Field label="Title"><input className="fund-input" autoFocus value={edTitle} onChange={(e) => setEdTitle(e.target.value)} /></Field>
+                <Field label="Summary"><textarea className="fund-input" rows={2} value={edSummary} onChange={(e) => setEdSummary(e.target.value)} /></Field>
+                <Field label="Target amount (KES, optional)"><input className="fund-input" type="number" value={edTarget} onChange={(e) => setEdTarget(e.target.value)} placeholder="180000" /></Field>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button className="fund-btn" onClick={() => setEditingDetails(false)}>Cancel</button>
+                  <button className="fund-btn primary" onClick={saveDetails} disabled={!edTitle.trim()}>Save</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                {detail.summary && <div style={{ fontSize: 13, color: tSub, lineHeight: 1.55, flex: 1 }}>{detail.summary}</div>}
+                {canEdit && (
+                  <button className="fund-btn" style={{ height: 26, fontSize: 10.5, flexShrink: 0, marginLeft: detail.summary ? 0 : 'auto' }} onClick={openEditDetails}><Pencil size={10} /> Edit</button>
+                )}
+              </div>
+            )}
 
             {/* Baseline rule — a required monthly due, owed by every member */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -786,12 +850,31 @@ export default function FundProjectsPanel() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
                     {detailExtraContributions.map((c) => (
                       <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)' }}>
-                        {c.member_id ? <Users size={13} style={{ color: '#5B9BFF', flexShrink: 0 }} /> : <HeartHandshake size={13} style={{ color: '#9333EA', flexShrink: 0 }} />}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{nameOf(c)}</div>
-                          <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}{c.description ? ` · ${c.description}` : ''}</div>
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(c.amount)}</div>
+                        {editContribId === c.id ? (
+                          <>
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <input className="fund-input" style={{ height: 30 }} type="number" inputMode="decimal" autoFocus value={ecAmount} onChange={(e) => setEcAmount(e.target.value)} placeholder="Amount" />
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <input className="fund-input" style={{ height: 30, flex: 1 }} type="date" value={ecDate} onChange={(e) => setEcDate(e.target.value)} />
+                                <input className="fund-input" style={{ height: 30, flex: 1 }} value={ecNote} onChange={(e) => setEcNote(e.target.value)} placeholder="Note" />
+                              </div>
+                            </div>
+                            <button onClick={saveContribEdit} disabled={!hasAmount(ecAmount)} title="Save" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(34,197,94,0.16)', color: '#22C55E', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} /></button>
+                            <button onClick={() => setEditContribId(null)} title="Cancel" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={13} /></button>
+                          </>
+                        ) : (
+                          <>
+                            {c.member_id ? <Users size={13} style={{ color: '#5B9BFF', flexShrink: 0 }} /> : <HeartHandshake size={13} style={{ color: '#9333EA', flexShrink: 0 }} />}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{nameOf(c)}</div>
+                              <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}{c.description ? ` · ${c.description}` : ''}</div>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(c.amount)}</div>
+                            {canEdit && (
+                              <button onClick={() => openContribEdit(c)} title="Edit this contribution" style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={10} /></button>
+                            )}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -846,7 +929,7 @@ export default function FundProjectsPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setFundOpen(null)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveFund} disabled={!num(fAmount) || !fSourceId}>Save</button>
+            <button className="fund-btn primary" onClick={saveFund} disabled={!hasAmount(fAmount) || !fSourceId}>Save</button>
           </div>
         </div>
       </Modal>

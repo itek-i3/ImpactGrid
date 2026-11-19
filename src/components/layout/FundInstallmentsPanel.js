@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import Modal from '@/components/ui/Modal';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  money, num, canEditFund, monthKeyOf, monthlyPaidThisMonth, projectBaselineRows, loadDemo, saveDemo,
+  money, num, hasAmount, canEditFund, monthKeyOf, monthlyPaidThisMonth, projectBaselineRows, loadDemo, saveDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_SETTINGS_SEED, DEMO_PROJECTS_SEED,
 } from '@/lib/fund/shared';
 
@@ -53,6 +53,10 @@ export default function FundInstallmentsPanel() {
   const [baselineFilter, setBaselineFilter] = useState('all'); // 'all' | a project id
   const [editingBaselineId, setEditingBaselineId] = useState(null); // project id
   const [baselineAmountInput, setBaselineAmountInput] = useState('');
+
+  const [editContribId, setEditContribId] = useState(null);
+  const [ecAmount, setEcAmount] = useState('');
+  const [ecDate, setEcDate] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -136,7 +140,7 @@ export default function FundInstallmentsPanel() {
 
   const saveLog = async () => {
     const amount = num(fAmount);
-    if (!amount || !logOpen) return;
+    if (!hasAmount(fAmount) || !logOpen) return;
     setSaving(true);
     const row = { member_id: logOpen.id, category: 'monthly', amount, project_id: null, description: null, created_by: myId, created_at: new Date(fDate).toISOString() };
     if (isDemo) {
@@ -191,7 +195,7 @@ export default function FundInstallmentsPanel() {
 
   const saveBaselineLog = async () => {
     const amount = num(bAmount);
-    if (!amount || !baselineLogFor) return;
+    if (!hasAmount(bAmount) || !baselineLogFor) return;
     setSaving(true);
     const { project, member } = baselineLogFor;
     const row = { member_id: member.id, category: 'project_baseline', project_id: project.id, amount, description: null, created_by: myId, created_at: new Date(bDate).toISOString() };
@@ -207,6 +211,26 @@ export default function FundInstallmentsPanel() {
     if (error) { toast.error('Could not save', error.message); return; }
     setBaselineLogFor(null);
     toast.success('Baseline logged', `${money(amount)} — ${project.title}`);
+  };
+
+  const openContribEdit = (c) => {
+    setEcAmount(String(c.amount)); setEcDate(new Date(c.created_at).toISOString().slice(0, 10));
+    setEditContribId(c.id);
+  };
+
+  const saveContribEdit = async () => {
+    const amount = num(ecAmount);
+    if (!hasAmount(ecAmount) || !editContribId) return;
+    const patch = { amount, created_at: new Date(ecDate).toISOString() };
+    if (isDemo) {
+      const next = contributions.map((c) => (c.id === editContribId ? { ...c, ...patch } : c));
+      setContributions(next); saveDemo(contributionsKey, next);
+      setEditContribId(null);
+      return;
+    }
+    const { error } = await createClient().from('fund_contributions').update(patch).eq('id', editContribId);
+    if (error) { toast.error('Could not save', error.message); return; }
+    setEditContribId(null);
   };
 
   const tKey = 'var(--color-text-primary, #E2EEFF)';
@@ -379,7 +403,7 @@ export default function FundInstallmentsPanel() {
       </div>
 
       {/* History modal */}
-      <Modal isOpen={!!historyId} onClose={() => setHistoryId(null)} title={historyMember ? `${historyMember.name}'s instalments` : 'Instalments'} maxWidth="420px">
+      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditContribId(null); }} title={historyMember ? `${historyMember.name}'s instalments` : 'Instalments'} maxWidth="420px">
         {historyMember && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -395,10 +419,24 @@ export default function FundInstallmentsPanel() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
                 {historyList.map((c) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, color: tSub }}>{fmtDate(c.created_at)}</div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                    {editContribId === c.id ? (
+                      <>
+                        <input className="fund-input" style={{ height: 30, flex: 1 }} type="number" inputMode="decimal" autoFocus value={ecAmount} onChange={(e) => setEcAmount(e.target.value)} placeholder="Amount" />
+                        <input className="fund-input" style={{ height: 30, flex: 1 }} type="date" value={ecDate} onChange={(e) => setEcDate(e.target.value)} />
+                        <button onClick={saveContribEdit} disabled={!hasAmount(ecAmount)} title="Save" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(34,197,94,0.16)', color: '#22C55E', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} /></button>
+                        <button onClick={() => setEditContribId(null)} title="Cancel" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={13} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: tSub }}>{fmtDate(c.created_at)}</div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                        {canEdit && (
+                          <button onClick={() => openContribEdit(c)} title="Edit this instalment" style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={10} /></button>
+                        )}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -420,7 +458,7 @@ export default function FundInstallmentsPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setLogOpen(null)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !num(fAmount)}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !hasAmount(fAmount)}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </Modal>
@@ -444,7 +482,7 @@ export default function FundInstallmentsPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setBaselineLogFor(null)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveBaselineLog} disabled={saving || !num(bAmount)}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="fund-btn primary" onClick={saveBaselineLog} disabled={saving || !hasAmount(bAmount)}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </Modal>

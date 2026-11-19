@@ -153,7 +153,7 @@ export default function FundDashboardPanel() {
           <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 9 }}>By account — member handbook §5</div>
           <MoneyBar segments={[
             { label: 'Reserve', value: byAccount.reserve, tint: '#F5A623' },
-            { label: 'Loans & Operations', value: byAccount.loansOps, tint: '#22C55E' },
+            { label: 'Loan', value: byAccount.loansOps, tint: '#22C55E' },
             { label: 'Project accounts', value: byAccount.projects, tint: '#9333EA' },
             { label: 'Fund Account', value: byAccount.fund, tint: '#5B9BFF' },
           ]} />

@@ -9,7 +9,7 @@ import { DotPattern } from '@/components/magicui/dot-pattern';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
   money, num, byMember, membershipPaid, isPaidMember, CATEGORY_LABEL, memberByLoginEmail, monthKeyOf, monthlyPaidThisMonth,
-  loanBalance, loanTotalOwed, loanDueDate, isLoanOverdue, loanEligibility, creditScoreOf, memberBaselineStatus, loadDemo,
+  loanBalance, loanTotalRepayable, loanDueDate, isLoanOverdue, loanEligibility, creditScoreOf, memberBaselineStatus, loadDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_PROJECTS_SEED, DEMO_SETTINGS_SEED, DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED,
 } from '@/lib/fund/shared';
 
@@ -99,7 +99,7 @@ export default function FundMyProfilePanel() {
     });
     const titleOf = (id) => projects.find((pr) => pr.id === id)?.title || 'A project';
     const memberLoans = loans.filter((l) => l.member_id === me.id).map((l) => ({
-      ...l, balance: loanBalance(l, repayments), totalRepayable: loanTotalOwed(l), dueAt: loanDueDate(l), overdue: isLoanOverdue(l, repayments),
+      ...l, balance: loanBalance(l, repayments), totalRepayable: loanTotalRepayable(l), dueAt: loanDueDate(l), overdue: isLoanOverdue(l, repayments),
     }));
     const activeLoan = memberLoans.find((l) => l.balance > 0) || null;
     const pastLoans = memberLoans.filter((l) => l.balance <= 0);
@@ -363,7 +363,7 @@ export default function FundMyProfilePanel() {
                 </div>
                 {eligibility.eligible ? (
                   <div style={{ fontSize: 12.5, color: tKey, lineHeight: 1.5 }}>
-                    You could borrow up to <strong>{money(eligibility.available)}</strong> ({money(eligibility.savings)} in savings × {num(settings?.loan_multiplier) || 3}). Talk to your Treasurer to request it.
+                    There&rsquo;s no fixed amount — how much you can borrow is your Treasurer&rsquo;s call, guided by your credit score above{eligibility.cap != null ? ` (capped at ${money(eligibility.cap)} per member)` : ''}. Talk to them to request it.
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

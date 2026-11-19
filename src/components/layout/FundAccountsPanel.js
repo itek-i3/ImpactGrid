@@ -9,15 +9,15 @@ import { useToast } from '@/components/ui/Toast';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
   money, num, canEditFund, loadDemo, saveDemo, byProject,
-  reserveBalance, loansOpsBalance, opsReserveBalance, loanCapitalBalance, fundAccountBalance,
+  reserveBalance, loansOpsBalance, fundAccountBalance,
   DEMO_CONTRIBUTIONS_SEED, DEMO_SETTINGS_SEED, DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED, DEMO_PROJECTS_SEED,
 } from '@/lib/fund/shared';
 
 // The member handbook's §5: money meant for one purpose is never used for
 // another, so the fund keeps four separate ledgers. None of these balances
-// is stored — each is derived live from fund_contributions (and, for Loans
-// & Operations, fund_loans/fund_loan_repayments too) the same way every
-// other total in ImpactFund is.
+// is stored — each is derived live from fund_contributions (and, for Loan,
+// fund_loans/fund_loan_repayments too) the same way every other total in
+// ImpactFund is.
 const ACCOUNTS_INFO = [
   {
     key: 'reserve', label: 'Reserve', tint: '#F5A623', Icon: ShieldAlert,
@@ -26,16 +26,16 @@ const ACCOUNTS_INFO = [
     neverFor: 'Projects or loans',
   },
   {
-    key: 'loansOps', label: 'Loans & Operations', tint: '#22C55E', Icon: HandCoins,
-    filledBy: 'The full monthly contribution, plus loan repayments',
-    usedFor: 'Member loans and the fund’s running costs',
+    key: 'loansOps', label: 'Loan', tint: '#22C55E', Icon: HandCoins,
+    filledBy: '30% of the monthly contribution, plus loan repayments',
+    usedFor: 'Member loans — all of it lendable',
     neverFor: 'Projects',
   },
   {
     key: 'fund', label: 'Fund Account', tint: '#5B9BFF', Icon: Wallet,
-    filledBy: 'Unearmarked investor & donor money only',
+    filledBy: 'Unearmarked investor & donor money, plus 70% of the monthly contribution',
     usedFor: 'Bigger projects the fund invests in directly',
-    neverFor: 'Loans, running costs, or the monthly contribution',
+    neverFor: 'Loans or the monthly contribution’s other 30%',
   },
 ];
 
@@ -59,7 +59,6 @@ export default function FundAccountsPanel() {
   const [loading, setLoading] = useState(true);
 
   const [editingSettings, setEditingSettings] = useState(false);
-  const [opsReserveInput, setOpsReserveInput] = useState('');
   const [setupInput, setSetupInput] = useState('');
 
   useEffect(() => {
@@ -105,9 +104,7 @@ export default function FundAccountsPanel() {
 
   const balances = useMemo(() => ({
     reserve: reserveBalance(contributions, settings),
-    loansOps: loansOpsBalance(contributions, loans, repayments, settings),
-    loanCapital: loanCapitalBalance(contributions, loans, repayments, settings),
-    opsReserve: opsReserveBalance(contributions, settings),
+    loansOps: loansOpsBalance(contributions, loans, repayments),
     fund: fundAccountBalance(contributions),
   }), [contributions, loans, repayments, settings]);
 
@@ -118,13 +115,12 @@ export default function FundAccountsPanel() {
   const projectTotal = projectRows.reduce((s, p) => s + p.balance, 0);
 
   const openEditSettings = () => {
-    setOpsReserveInput(String(num(settings?.loans_ops_reserve_pct ?? 0)));
     setSetupInput(String(num(settings?.setup_costs)));
     setEditingSettings(true);
   };
 
   const saveSettings = async () => {
-    const next = { ...settings, loans_ops_reserve_pct: Math.min(100, Math.max(0, num(opsReserveInput))), setup_costs: Math.max(0, num(setupInput)) };
+    const next = { ...settings, setup_costs: Math.max(0, num(setupInput)) };
     setEditingSettings(false);
     setSettings(next);
     if (isDemo) { saveDemo(settingsKey, next); return; }
@@ -159,14 +155,13 @@ export default function FundAccountsPanel() {
       <div style={{ ...card, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
         {editingSettings ? (
           <>
-            <RuleField label="Held for operations" value={opsReserveInput} onChange={setOpsReserveInput} suffix="% of Loans & Ops" />
             <RuleField label="Setup costs" value={setupInput} onChange={setSetupInput} suffix="KES" />
             <button className="fund-btn" style={{ height: 32 }} onClick={saveSettings}><Check size={13} /></button>
             <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingSettings(false)}><X size={13} /></button>
           </>
         ) : (
           <>
-            <RuleStat label="Operations reserve" value={`${num(settings?.loans_ops_reserve_pct ?? 0)}% of Loans & Ops held back`} />
+            <RuleStat label="Monthly contribution split" value="70% Fund Account · 30% Loan" />
             <RuleStat label="Setup costs" value={money(settings?.setup_costs)} />
             {canEdit && (
               <button className="fund-btn" style={{ height: 28, fontSize: 11, marginLeft: 'auto' }} onClick={openEditSettings}><Pencil size={11} /> Edit rules</button>
@@ -187,21 +182,9 @@ export default function FundAccountsPanel() {
                 </div>
                 <div style={{ fontSize: 13.5, fontWeight: 800, color: tKey }}>{a.label}</div>
               </div>
-              <div style={{ fontSize: 21, fontWeight: 800, color: balance < 0 ? '#EF4444' : tKey, fontVariantNumeric: 'tabular-nums', marginBottom: a.key === 'loansOps' ? 10 : 14 }}>
+              <div style={{ fontSize: 21, fontWeight: 800, color: balance < 0 ? '#EF4444' : tKey, fontVariantNumeric: 'tabular-nums', marginBottom: 14 }}>
                 KSh <NumberTicker value={Math.round(Math.abs(balance))} />{balance < 0 && <span style={{ fontSize: 12, fontWeight: 700 }}> short</span>}
               </div>
-              {a.key === 'loansOps' && (
-                <div style={{ display: 'flex', gap: 14, marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--color-divider, rgba(255,255,255,0.06))' }}>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Available to lend</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums' }}>{money(balances.loanCapital)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 800, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Held for operations</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums' }}>{money(balances.opsReserve)}</div>
-                  </div>
-                </div>
-              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                 <InfoRow label="Filled by" text={a.filledBy} />
                 <InfoRow label="Used for" text={a.usedFor} />

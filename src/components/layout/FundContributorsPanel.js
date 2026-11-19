@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { TrendingUp, Gift, Plus, Wallet, Eye, Link2, Trash2 } from 'lucide-react';
+import { TrendingUp, Gift, Plus, Wallet, Eye, Link2, Trash2, Pencil, Check, X } from 'lucide-react';
 import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -10,7 +10,7 @@ import Modal from '@/components/ui/Modal';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import {
-  CONTRIBUTOR_TYPE_BY_KEY, money, num, canEditFund,
+  CONTRIBUTOR_TYPE_BY_KEY, money, num, hasAmount, canEditFund,
   loadDemo, saveDemo, DEMO_CONTRIBUTORS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_PROJECTS_SEED,
 } from '@/lib/fund/shared';
 
@@ -59,12 +59,25 @@ export default function FundContributorsPanel({ type }) {
   const [aContact, setAContact] = useState('');
   const [aReturn, setAReturn] = useState('');
   const [aAmount, setAAmount] = useState('');
+  const [aProjectId, setAProjectId] = useState('');
   const [aDate, setADate] = useState(() => new Date().toISOString().slice(0, 10));
   const [aNote, setANote] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [logOpen, setLogOpen] = useState(null); // contributor
   const [mAmount, setMAmount] = useState('');
+  const [mProjectId, setMProjectId] = useState('');
+
+  const [editOpen, setEditOpen] = useState(null); // contributor being edited
+  const [eName, setEName] = useState('');
+  const [eContact, setEContact] = useState('');
+  const [eReturn, setEReturn] = useState('');
+
+  const [editContribId, setEditContribId] = useState(null);
+  const [ecAmount, setEcAmount] = useState('');
+  const [ecDate, setEcDate] = useState('');
+  const [ecNote, setEcNote] = useState('');
+  const [ecProjectId, setEcProjectId] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +156,7 @@ export default function FundContributorsPanel({ type }) {
   const historyList = contributions.filter((c) => c.contributor_id === historyId);
 
   const resetAdd = () => {
-    setAName(''); setAContact(''); setAReturn(''); setAAmount(''); setANote('');
+    setAName(''); setAContact(''); setAReturn(''); setAAmount(''); setAProjectId(''); setANote('');
     setADate(new Date().toISOString().slice(0, 10));
   };
 
@@ -152,14 +165,14 @@ export default function FundContributorsPanel({ type }) {
   // the investor list is provisioned automatically, never by hand.
   const addContributor = async () => {
     const amount = num(aAmount);
-    if (!aName.trim() || !amount) return;
+    if (!aName.trim() || !hasAmount(aAmount)) return;
     setSaving(true);
     const contributorRow = {
       type, name: aName.trim(), contact: aContact.trim() || null,
       expected_return: type === 'investor' ? (aReturn.trim() || null) : null,
       created_by: myId,
     };
-    const contribBase = { category: typeInfo.category, amount, project_id: null, description: aNote.trim() || null, created_at: new Date(aDate).toISOString() };
+    const contribBase = { category: typeInfo.category, amount, project_id: aProjectId || null, description: aNote.trim() || null, created_at: new Date(aDate).toISOString() };
     if (isDemo) {
       const newId = `demo-${Date.now()}`;
       const nextContributors = [{ ...contributorRow, id: newId }, ...contributors];
@@ -180,13 +193,13 @@ export default function FundContributorsPanel({ type }) {
     toast.success('Added', `${contributorRow.name} is now on the money trail.`);
   };
 
-  const openLog = (contributor) => { setMAmount(''); setLogOpen(contributor); };
+  const openLog = (contributor) => { setMAmount(''); setMProjectId(''); setLogOpen(contributor); };
 
   const saveLog = async () => {
     const amount = num(mAmount);
-    if (!amount || !logOpen) return;
+    if (!hasAmount(mAmount) || !logOpen) return;
     setSaving(true);
-    const row = { contributor_id: logOpen.id, category: typeInfo.category, amount, project_id: null, description: null, created_by: myId, created_at: new Date().toISOString() };
+    const row = { contributor_id: logOpen.id, category: typeInfo.category, amount, project_id: mProjectId || null, description: null, created_by: myId, created_at: new Date().toISOString() };
     if (isDemo) {
       const next = [{ ...row, id: `demo-${Date.now()}` }, ...contributions];
       setContributions(next); saveDemo(contributionsKey, next);
@@ -199,6 +212,61 @@ export default function FundContributorsPanel({ type }) {
     if (error) { toast.error('Could not save', error.message); return; }
     setLogOpen(null);
     toast.success('Contribution logged', money(amount));
+  };
+
+  const openEdit = (c) => {
+    setEName(c.name); setEContact(c.contact || ''); setEReturn(c.expected_return || '');
+    setEditOpen(c);
+  };
+
+  // Name stays read-only for an ACR-sourced investor (it's the link to ACR's
+  // own pipeline record) — contact and expected return are always local-only
+  // fields, editable either way.
+  const saveEdit = async () => {
+    if (!eName.trim() || !editOpen) return;
+    setSaving(true);
+    const patch = {
+      ...(editOpen.potential_investor_id ? {} : { name: eName.trim() }),
+      contact: eContact.trim() || null,
+      expected_return: type === 'investor' ? (eReturn.trim() || null) : null,
+    };
+    if (isDemo) {
+      const next = contributors.map((c) => (c.id === editOpen.id ? { ...c, ...patch } : c));
+      setContributors(next); saveDemo(contributorsKey, next);
+      setSaving(false); setEditOpen(null);
+      toast.success('Saved');
+      return;
+    }
+    const { error } = await createClient().from('fund_contributors').update(patch).eq('id', editOpen.id);
+    setSaving(false);
+    if (error) { toast.error('Could not save', error.message); return; }
+    setEditOpen(null);
+    toast.success('Saved');
+  };
+
+  const openContribEdit = (c) => {
+    setEcAmount(String(c.amount)); setEcDate(new Date(c.created_at).toISOString().slice(0, 10)); setEcNote(c.description || '');
+    setEcProjectId(c.project_id || '');
+    setEditContribId(c.id);
+  };
+
+  const saveContribEdit = async () => {
+    const amount = num(ecAmount);
+    if (!hasAmount(ecAmount) || !editContribId) return;
+    setSaving(true);
+    const patch = { amount, description: ecNote.trim() || null, created_at: new Date(ecDate).toISOString(), project_id: ecProjectId || null };
+    if (isDemo) {
+      const next = contributions.map((c) => (c.id === editContribId ? { ...c, ...patch } : c));
+      setContributions(next); saveDemo(contributionsKey, next);
+      setSaving(false); setEditContribId(null);
+      toast.success('Saved');
+      return;
+    }
+    const { error } = await createClient().from('fund_contributions').update(patch).eq('id', editContribId);
+    setSaving(false);
+    if (error) { toast.error('Could not save', error.message); return; }
+    setEditContribId(null);
+    toast.success('Saved');
   };
 
   // Everything about a deleted contributor goes with them — their logged
@@ -294,6 +362,15 @@ export default function FundContributorsPanel({ type }) {
               </button>
               {canEdit && (
                 <button
+                  onClick={(e) => { e.stopPropagation(); openEdit(c); }}
+                  title={`Edit this ${typeInfo.label.toLowerCase()}`}
+                  style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {canEdit && (
+                <button
                   onClick={(e) => { e.stopPropagation(); openLog(c); }}
                   title={`Log a payment from this ${typeInfo.label.toLowerCase()}`}
                   style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: `${typeInfo.tint}22`, color: typeInfo.tint, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -367,13 +444,42 @@ export default function FundContributorsPanel({ type }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
                 {historyList.map((c) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>
-                        {c.project_id ? (projectName(c.project_id) || 'A project') : 'General fund'}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}{c.description ? ` · ${c.description}` : ''}</div>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                    {editContribId === c.id ? (
+                      <>
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <input className="fund-input" style={{ height: 30 }} type="number" inputMode="decimal" autoFocus value={ecAmount} onChange={(e) => setEcAmount(e.target.value)} placeholder="Amount" />
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <input className="fund-input" style={{ height: 30, flex: 1 }} type="date" value={ecDate} onChange={(e) => setEcDate(e.target.value)} />
+                            <input className="fund-input" style={{ height: 30, flex: 1 }} value={ecNote} onChange={(e) => setEcNote(e.target.value)} placeholder="Note" />
+                          </div>
+                          <select className="fund-input" style={{ height: 30 }} value={ecProjectId} onChange={(e) => setEcProjectId(e.target.value)}>
+                            <option value="">General fund — not earmarked</option>
+                            {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                          </select>
+                        </div>
+                        <button onClick={saveContribEdit} disabled={saving || !hasAmount(ecAmount)} title="Save" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(34,197,94,0.16)', color: '#22C55E', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Check size={14} />
+                        </button>
+                        <button onClick={() => setEditContribId(null)} title="Cancel" style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>
+                            {c.project_id ? (projectName(c.project_id) || 'A project') : 'General fund'}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}{c.description ? ` · ${c.description}` : ''}</div>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                        {canEdit && (
+                          <button onClick={() => openContribEdit(c)} title="Edit this contribution" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -410,26 +516,70 @@ export default function FundContributorsPanel({ type }) {
             </label>
           </div>
           <label style={{ display: 'block' }}>
+            <span className="fund-label">Project (optional)</span>
+            <select className="fund-input" value={aProjectId} onChange={(e) => setAProjectId(e.target.value)}>
+              <option value="">General fund — not earmarked</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'block' }}>
             <span className="fund-label">Note (optional)</span>
             <textarea className="fund-input" rows={2} value={aNote} onChange={(e) => setANote(e.target.value)} placeholder="e.g. Wire reference" />
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setAddOpen(false)}>Cancel</button>
-            <button className="fund-btn primary" onClick={addContributor} disabled={saving || !aName.trim() || !num(aAmount)}>{saving ? 'Saving…' : 'Add'}</button>
+            <button className="fund-btn primary" onClick={addContributor} disabled={saving || !aName.trim() || !hasAmount(aAmount)}>{saving ? 'Saving…' : 'Add'}</button>
           </div>
         </div>
       </Modal>
 
-      {/* Log a payment — just the amount */}
+      {/* Edit a contributor's own details */}
+      <Modal isOpen={!!editOpen} onClose={() => setEditOpen(null)} title={`Edit ${typeInfo.label.toLowerCase()}`} maxWidth="420px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <label style={{ display: 'block' }}>
+            <span className="fund-label">Name</span>
+            {editOpen?.potential_investor_id ? (
+              <div style={{ fontSize: 13, color: tSub, display: 'flex', alignItems: 'center', gap: 6, padding: '9px 0' }}>
+                <Link2 size={12} /> {eName} <span style={{ fontSize: 10.5, fontStyle: 'italic' }}>— synced from ACR, name isn&rsquo;t editable here</span>
+              </div>
+            ) : (
+              <input className="fund-input" value={eName} onChange={(e) => setEName(e.target.value)} placeholder="Person or organisation" />
+            )}
+          </label>
+          <label style={{ display: 'block' }}>
+            <span className="fund-label">Contact</span>
+            <input className="fund-input" value={eContact} onChange={(e) => setEContact(e.target.value)} placeholder="Phone or email" />
+          </label>
+          {type === 'investor' && (
+            <label style={{ display: 'block' }}>
+              <span className="fund-label">Expected return (optional)</span>
+              <input className="fund-input" value={eReturn} onChange={(e) => setEReturn(e.target.value)} placeholder="e.g. 12% annually" />
+            </label>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            <button className="fund-btn" onClick={() => setEditOpen(null)}>Cancel</button>
+            <button className="fund-btn primary" onClick={saveEdit} disabled={saving || !eName.trim()}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Log a payment */}
       <Modal isOpen={!!logOpen} onClose={() => setLogOpen(null)} title={`Log a payment — ${logOpen?.name || ''}`} maxWidth="340px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={{ display: 'block' }}>
             <span className="fund-label">Amount (KES)</span>
             <input className="fund-input" type="number" inputMode="decimal" autoFocus value={mAmount} onChange={(e) => setMAmount(e.target.value)} placeholder="50000" />
           </label>
+          <label style={{ display: 'block' }}>
+            <span className="fund-label">Project (optional)</span>
+            <select className="fund-input" value={mProjectId} onChange={(e) => setMProjectId(e.target.value)}>
+              <option value="">General fund — not earmarked</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setLogOpen(null)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !num(mAmount)}>Save</button>
+            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !hasAmount(mAmount)}>Save</button>
           </div>
         </div>
       </Modal>

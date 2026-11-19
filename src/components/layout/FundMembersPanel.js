@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import Modal from '@/components/ui/Modal';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  CATEGORY_LABEL, money, num, canEditFund, byMember,
+  CATEGORY_LABEL, money, num, hasAmount, canEditFund, byMember,
   membershipPaid, isPaidMember, loadDemo, saveDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_PROJECTS_SEED, DEMO_SETTINGS_SEED,
   DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED, DEMO_PROJECT_PLEDGES_SEED,
@@ -60,6 +60,13 @@ export default function FundMembersPanel() {
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactInput, setContactInput] = useState('');
+
+  const [editContribId, setEditContribId] = useState(null);
+  const [ecAmount, setEcAmount] = useState('');
+  const [ecDate, setEcDate] = useState('');
 
   // This agency's accounts and their role here — fetched only for a manager,
   // only in real mode (demo has no real accounts to promote). Used purely to
@@ -178,7 +185,7 @@ export default function FundMembersPanel() {
   // always the membership fee — that's the whole point of becoming a prospect.
   const addProspect = async () => {
     const amount = num(aAmount);
-    if (!aName.trim() || !amount) return;
+    if (!aName.trim() || !hasAmount(aAmount)) return;
     setSaving(true);
     const memberRow = { name: aName.trim(), contact: aMpesa.trim() || null, login_email: aEmail.trim() || null, created_by: myId };
     const mpesaNote = aMpesa.trim() ? `M-Pesa ${aMpesa.trim()}` : '';
@@ -212,7 +219,7 @@ export default function FundMembersPanel() {
   // regular monthly contribution. Either way it's just "they sent money."
   const saveLog = async () => {
     const amount = num(fAmount);
-    if (!amount || !fMemberId) return;
+    if (!hasAmount(fAmount) || !fMemberId) return;
     setSaving(true);
     const target = rows.find((r) => r.id === fMemberId);
     const category = target?.isMember ? 'monthly' : 'membership';
@@ -286,6 +293,35 @@ export default function FundMembersPanel() {
     await patchMember(historyId, { name: next });
   };
 
+  const saveContact = async () => {
+    if (!historyId) return;
+    const next = contactInput.trim() || null;
+    setEditingContact(false);
+    await patchMember(historyId, { contact: next });
+  };
+
+  const patchContribution = async (id, patch) => {
+    if (isDemo) {
+      const next = contributions.map((c) => (c.id === id ? { ...c, ...patch } : c));
+      setContributions(next); saveDemo(contributionsKey, next);
+      return;
+    }
+    const { error } = await createClient().from('fund_contributions').update(patch).eq('id', id);
+    if (error) toast.error('Could not save', error.message);
+  };
+
+  const openContribEdit = (c) => {
+    setEcAmount(String(c.amount)); setEcDate(new Date(c.created_at).toISOString().slice(0, 10));
+    setEditContribId(c.id);
+  };
+
+  const saveContribEdit = async () => {
+    const amount = num(ecAmount);
+    if (!hasAmount(ecAmount) || !editContribId) return;
+    await patchContribution(editContribId, { amount, created_at: new Date(ecDate).toISOString() });
+    setEditContribId(null);
+  };
+
   const tKey = 'var(--color-text-primary, #E2EEFF)';
   const tSub = 'var(--color-text-tertiary, #6C82A3)';
   const card = {
@@ -352,7 +388,7 @@ export default function FundMembersPanel() {
       {/* History modal — read-only: M-Pesa number, membership total, and the
           monthly chama/loan instalments. Entering a new payment happens via
           the "+" button on the row, not here. */}
-      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditingLogin(false); setEditingName(false); }} title={historyMember ? historyMember.name : 'Contributions'} maxWidth="460px">
+      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditingLogin(false); setEditingName(false); setEditingContact(false); setEditContribId(null); }} title={historyMember ? historyMember.name : 'Contributions'} maxWidth="460px">
         {historyMember && (() => {
           const monthlyList = historyList.filter((c) => c.category === 'monthly');
           const otherList = historyList.filter((c) => c.category !== 'monthly' && c.category !== 'membership');
@@ -407,6 +443,27 @@ export default function FundMembersPanel() {
                     <>
                       <span style={{ fontSize: 12.5, color: tKey, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{historyMember.name}</span>
                       <button className="fund-btn" style={{ height: 28, fontSize: 11 }} onClick={() => { setNameInput(historyMember.name || ''); setEditingName(true); }}><Pencil size={11} /> Edit</button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* M-Pesa / contact — editable for the same typo-correction reason as the name */}
+              {canEdit && (
+                <div style={{ ...innerCard, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Contact</span>
+                  {editingContact ? (
+                    <>
+                      <input className="fund-input" style={{ flex: 1, minWidth: 140, height: 32 }} autoFocus value={contactInput} onChange={(e) => setContactInput(e.target.value)} placeholder="07xx xxx xxx" />
+                      <button className="fund-btn" style={{ height: 32 }} onClick={saveContact}><Check size={13} /></button>
+                      <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingContact(false)}><X size={13} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 12.5, color: historyMember.contact ? tKey : tSub, fontStyle: historyMember.contact ? 'normal' : 'italic', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {historyMember.contact || 'No contact on file'}
+                      </span>
+                      <button className="fund-btn" style={{ height: 28, fontSize: 11 }} onClick={() => { setContactInput(historyMember.contact || ''); setEditingContact(true); }}><Pencil size={11} /> Edit</button>
                     </>
                   )}
                 </div>
@@ -516,14 +573,30 @@ export default function FundMembersPanel() {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {otherList.map((c, i) => (
                       <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 2px', borderTop: i > 0 ? '1px solid var(--color-divider, rgba(255,255,255,0.06))' : 'none' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>
-                            {CATEGORY_LABEL[c.category] || c.category}
-                            {c.project_id && <span style={{ color: tSub, fontWeight: 500 }}> · {projectName(c.project_id) || 'a project'}</span>}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}</div>
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                        {editContribId === c.id ? (
+                          <>
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 6 }}>
+                              <input className="fund-input" style={{ height: 30, flex: 1 }} type="number" inputMode="decimal" autoFocus value={ecAmount} onChange={(e) => setEcAmount(e.target.value)} placeholder="Amount" />
+                              <input className="fund-input" style={{ height: 30, flex: 1 }} type="date" value={ecDate} onChange={(e) => setEcDate(e.target.value)} />
+                            </div>
+                            <button onClick={saveContribEdit} disabled={!hasAmount(ecAmount)} title="Save" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(34,197,94,0.16)', color: '#22C55E', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} /></button>
+                            <button onClick={() => setEditContribId(null)} title="Cancel" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={13} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>
+                                {CATEGORY_LABEL[c.category] || c.category}
+                                {c.project_id && <span style={{ color: tSub, fontWeight: 500 }}> · {projectName(c.project_id) || 'a project'}</span>}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: tSub }}>{fmtDate(c.created_at)}</div>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>+{money(c.amount)}</div>
+                            {canEdit && (
+                              <button onClick={() => openContribEdit(c)} title="Edit this entry" style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={10} /></button>
+                            )}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -567,7 +640,7 @@ export default function FundMembersPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setAddOpen(false)}>Cancel</button>
-            <button className="fund-btn primary" onClick={addProspect} disabled={saving || !aName.trim() || !num(aAmount)}>{saving ? 'Saving…' : 'Add'}</button>
+            <button className="fund-btn primary" onClick={addProspect} disabled={saving || !aName.trim() || !hasAmount(aAmount)}>{saving ? 'Saving…' : 'Add'}</button>
           </div>
         </div>
       </Modal>
@@ -581,7 +654,7 @@ export default function FundMembersPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setLogOpen(false)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !num(fAmount) || !fMemberId}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="fund-btn primary" onClick={saveLog} disabled={saving || !hasAmount(fAmount) || !fMemberId}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </Modal>

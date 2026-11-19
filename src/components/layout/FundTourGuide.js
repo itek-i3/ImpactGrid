@@ -12,14 +12,14 @@ import { isImpactFundAgency, isFundPlainMember } from '@/lib/fund/shared';
 // plain member sees four tabs and a manager sees nine.
 const MANAGER_STEPS = [
   { view: 'fundDashboard', title: 'Dashboard', body: 'The fund at a glance — total raised, how many projects and members, and who’s topping the leaderboard.' },
-  { view: 'fundAccounts', title: 'Accounts', body: 'The four ledgers money lives in — Reserve, Loans & Operations, Fund Account, and each project’s own account. Money for one purpose never crosses into another.' },
+  { view: 'fundAccounts', title: 'Accounts', body: 'The four ledgers money lives in — Reserve, Loan, Fund Account, and each project’s own account. The monthly contribution splits 70/30 between Fund Account and Loan; money for one purpose never crosses into another.' },
   { view: 'fundMembers', title: 'Members', body: 'Add members, track who’s paid their membership fee in full, and see everyone’s running total.' },
   { view: 'fundInvestors', title: 'Investors', body: 'People putting money in expecting a return. Add them, log what they send, and optionally link them to the matching record in ACR’s own investor pipeline.' },
   { view: 'fundDonors', title: 'Donors', body: 'People giving outright, no return expected — tracked the same way as investors, kept on their own page.' },
   { view: 'fundProfile', title: 'Profile', body: 'Look up any one member’s full dossier — fee status, instalments, loans — all in one place.' },
   { view: 'fundProjects', title: 'Projects', body: 'What the fund is raising for. Set a monthly baseline per project, track member goals, and log who’s backing what.' },
   { view: 'fundInstallments', title: 'Installments', body: 'The chama’s monthly contribution and every project’s baseline due, member by member — log payments and set the rules here.' },
-  { view: 'fundLoans', title: 'Loans', body: 'Who’s eligible to borrow and how much, issue loans, log repayments, and set the lending rules — multiplier, qualifying period, caps, late penalties.' },
+  { view: 'fundLoans', title: 'Loans', body: 'Who’s eligible to borrow, issue loans, and log repayments. How much someone can get is your call, guided by their credit score — repay late and it drops, repay on time or early and it climbs. Every loan is due back in one month, no late fee.' },
 ];
 
 const MEMBER_STEPS = [

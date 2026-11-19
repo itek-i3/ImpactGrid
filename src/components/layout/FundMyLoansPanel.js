@@ -8,7 +8,7 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
   money, num, memberByLoginEmail,
-  loanBalance, loanTotalOwed, loanDueDate, isLoanOverdue, loanEligibility, creditScoreOf, loadDemo,
+  loanBalance, loanTotalRepayable, loanDueDate, isLoanOverdue, loanEligibility, creditScoreOf, loadDemo,
   DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_PROJECTS_SEED, DEMO_SETTINGS_SEED, DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED,
 } from '@/lib/fund/shared';
 
@@ -93,7 +93,7 @@ export default function FundMyLoansPanel() {
       .map((l) => ({
         ...l,
         balance: loanBalance(l, repayments),
-        totalRepayable: loanTotalOwed(l),
+        totalRepayable: loanTotalRepayable(l),
         dueAt: loanDueDate(l),
         overdue: isLoanOverdue(l, repayments),
         repayments: repayments.filter((r) => r.loan_id === l.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
@@ -199,7 +199,7 @@ export default function FundMyLoansPanel() {
             </div>
             {eligibility.eligible ? (
               <div style={{ fontSize: 13, color: tKey, lineHeight: 1.6 }}>
-                You could borrow up to <strong style={{ fontSize: 17 }}>{money(eligibility.available)}</strong> — {money(eligibility.savings)} in savings × {num(settings?.loan_multiplier) || 3}. Talk to your Treasurer to request it.
+                There&rsquo;s no fixed amount — how much you can borrow is your Treasurer&rsquo;s call, guided by your credit score above{eligibility.cap != null ? ` (capped at ${money(eligibility.cap)} per member)` : ''}. Talk to them to request it.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -246,7 +246,7 @@ function LoanCard({ loan, card, tKey, tSub, repaid }) {
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-divider, rgba(255,255,255,0.06))', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums' }}>{money(loan.principal)} principal</div>
-          <div style={{ fontSize: 10.5, color: tSub }}>{loan.interest_rate}% flat interest · {loan.term_months} month term · issued {new Date(loan.issued_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+          <div style={{ fontSize: 10.5, color: tSub }}>{loan.interest_rate}% flat interest · issued {new Date(loan.issued_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
         </div>
         {repaid ? (
           <span style={{ fontSize: 11, fontWeight: 800, color: '#22C55E', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={12} /> Fully repaid</span>
@@ -261,9 +261,6 @@ function LoanCard({ loan, card, tKey, tSub, repaid }) {
           <span>Total repayable: <strong style={{ color: tKey }}>{money(loan.totalRepayable)}</strong></span>
           <span style={{ color: loan.overdue && !repaid ? '#EF4444' : tSub }}>{repaid ? 'Due was' : loan.overdue ? 'Overdue since' : 'Due'} {new Date(loan.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
         </div>
-        {num(loan.penalty_amount) > 0 && (
-          <div style={{ fontSize: 11.5, color: '#EF4444', marginBottom: 10 }}>Includes {money(loan.penalty_amount)} late penalty</div>
-        )}
         {loan.note && <div style={{ fontSize: 11.5, color: tSub, fontStyle: 'italic', marginBottom: 10 }}>{loan.note}</div>}
         <div style={{ fontSize: 10.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Repayments</div>
         {loan.repayments.length === 0 ? (

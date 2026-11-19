@@ -9,6 +9,11 @@
 
 export const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 export const num = (v) => (v === '' || v == null || isNaN(Number(v)) ? 0 : Number(v));
+// `num('')` and `num('0')` both come back 0, so a bare `!num(v)` check can't
+// tell "nothing typed" from "they typed zero" — this does, for amount fields
+// where a logged/edited entry of exactly 0 is a legitimate value (e.g.
+// correcting a mistaken entry) and should stay enterable, not just blank.
+export const hasAmount = (v) => v !== '' && v != null && !isNaN(Number(v));
 
 // A person's fund role is read per-agency, off the `agencies` list each
 // entry already carries its own `role` for (superadmin for every agency;
@@ -205,49 +210,46 @@ export const memberSavings = (contributions, memberId) => (contributions || [])
 
 // Interest is a single flat % charged for the whole term (how Kenyan chamas
 // usually quote a loan), not compounded monthly — so the total owed is fixed
-// the day the loan is issued and never recalculated.
+// the day the loan is issued and never recalculated. There's no late-penalty
+// add-on anymore (the chama doesn't charge one) and no per-loan term either
+// — every loan is repayable in full one month after it's issued — so this
+// figure is the whole amount owed, full stop.
 export const loanTotalRepayable = (loan) => num(loan?.principal) * (1 + num(loan?.interest_rate) / 100);
-export const loanMonthlyInstallment = (loan) => loanTotalRepayable(loan) / (num(loan?.term_months) || 1);
-
-// What's actually owed right now — the contractual principal+interest,
-// plus any late penalty a manager has applied. loanTotalRepayable stays
-// the contract figure alone, since that's what the Issue modal previews
-// before any penalty can exist.
-export const loanTotalOwed = (loan) => loanTotalRepayable(loan) + num(loan?.penalty_amount);
 
 export const loanRepaidAmount = (repayments, loanId) => (repayments || [])
   .filter((r) => r.loan_id === loanId)
   .reduce((s, r) => s + num(r.amount), 0);
 
 // Never a stored balance, same philosophy as the contribution totals above —
-// always totalOwed minus whatever fund_loan_repayments adds up to.
-export const loanBalance = (loan, repayments) => Math.max(0, loanTotalOwed(loan) - loanRepaidAmount(repayments, loan.id));
+// always totalRepayable minus whatever fund_loan_repayments adds up to.
+export const loanBalance = (loan, repayments) => Math.max(0, loanTotalRepayable(loan) - loanRepaidAmount(repayments, loan.id));
 
+// Fixed at one month for every loan — not a per-chama or per-loan setting.
 export const loanDueDate = (loan) => {
   const d = new Date(loan.issued_at);
-  d.setMonth(d.getMonth() + (num(loan.term_months) || 0));
+  d.setMonth(d.getMonth() + 1);
   return d.toISOString();
 };
 
 export const isLoanOverdue = (loan, repayments) => loanBalance(loan, repayments) > 0 && new Date(loanDueDate(loan)).getTime() < Date.now();
 
-// What a member could borrow and why — or why not. Settings carries the
-// chama's own rules: how many multiples of savings it'll lend (and an
-// optional hard cap on top of that), the flat rate/term it charges by
-// default, and how long someone has to have been a member before they can
-// borrow at all — member handbook §9. `?? 3` rather than `|| 3`: an
-// explicit 0 (a manager deliberately freezing new lending) is a real
-// setting, not a missing one, and must not be silently replaced.
+// What a member could borrow and why — or why not. There's no formula-based
+// ceiling here (no "savings × a multiplier") — how much a member can
+// actually get is the manager's call, guided by their credit score below
+// (which is itself driven mainly by instalment consistency and past loan
+// behaviour). The only hard numbers left are gates, not a limit: the
+// membership fee has to be fully paid, a minimum tenure can be required,
+// and a member can't take a second loan while one's still outstanding.
+// `loan_max_per_member`, if a manager sets one, is still an optional flat
+// ceiling on top of all that — independent of credit score.
 export const loanEligibility = (member, contributions, loans, repayments, settings) => {
   const savings = memberSavings(contributions, member.id);
   const paidMember = isPaidMember(contributions, member.id, settings?.membership_fee);
   const outstanding = (loans || [])
     .filter((l) => l.member_id === member.id)
     .reduce((s, l) => s + loanBalance(l, repayments), 0);
-  const multiplier = num(settings?.loan_multiplier ?? 3);
-  const savingsLimit = savings * multiplier;
   const maxPerMember = num(settings?.loan_max_per_member);
-  const limit = Math.round(maxPerMember > 0 ? Math.min(savingsLimit, maxPerMember) : savingsLimit);
+  const cap = maxPerMember > 0 ? maxPerMember : null;
 
   const qualifyingMonths = num(settings?.loan_qualifying_months);
   const monthsAsMember = member.created_at ? Math.max(0, (Date.now() - new Date(member.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30)) : 0;
@@ -257,34 +259,23 @@ export const loanEligibility = (member, contributions, loans, repayments, settin
   if (!paidMember) reasons.push('Hasn’t finished paying the membership fee');
   if (!qualified) reasons.push(`Hasn’t been a member long enough yet — needs ${qualifyingMonths} month${qualifyingMonths !== 1 ? 's' : ''}, has ${Math.floor(monthsAsMember)}`);
   if (outstanding > 0) reasons.push('Has an unpaid loan outstanding');
-  if (savings <= 0) reasons.push('No savings on record yet');
 
-  return { eligible: reasons.length === 0, reasons, savings, limit, outstanding, available: Math.max(0, limit - outstanding) };
+  return { eligible: reasons.length === 0, reasons, savings, outstanding, cap, available: cap != null ? Math.max(0, cap - outstanding) : null };
 };
 
 // Member handbook §9 — "members set... a maximum share of the account
-// that can be out on loan at any time, so there is always money for
-// operations." Measured against the pool's all-time size (every shilling
-// that's ever flowed into Loans & Operations, via monthly contributions or
-// repayments), not its current already-net-of-loans balance, so lending it
-// all out doesn't shrink the denominator and make the cap easier to hit.
+// that can be out on loan at any time." Measured against the Loan account's
+// all-time size (the 30% slice of every monthly instalment that lands
+// there, via MONTHLY_TO_LOAN_PCT, plus repayments), not its current
+// already-net-of-loans balance, so lending it all out doesn't shrink the
+// denominator and make the cap easier to hit.
 export const loanPoolUtilisation = (contributions, loans, repayments, settings) => {
-  const poolSize = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0)
+  const poolSize = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0) * MONTHLY_TO_LOAN_PCT
     + (repayments || []).reduce((s, r) => s + num(r.amount), 0);
   const outstanding = (loans || []).reduce((s, l) => s + loanBalance(l, repayments), 0);
   const maxPct = Math.min(100, Math.max(0, num(settings?.loan_max_pool_pct ?? 100)));
   const pct = poolSize > 0 ? Math.round((outstanding / poolSize) * 100) : 0;
   return { poolSize, outstanding, maxPct, pct, atCap: poolSize > 0 && outstanding / poolSize >= maxPct / 100 };
-};
-
-// The one-off late charge a manager can apply to an overdue loan — a flat
-// % of what's currently owed, same "flat, not compounding" philosophy as
-// the loan's own interest. Returns 0 (nothing to apply) once the chama
-// hasn't set a penalty rate, or the loan isn't actually overdue.
-export const loanLatePenaltyAmount = (loan, repayments, settings) => {
-  const pct = num(settings?.loan_late_penalty_pct);
-  if (pct <= 0 || !isLoanOverdue(loan, repayments)) return 0;
-  return Math.round(loanBalance(loan, repayments) * (pct / 100));
 };
 
 // ── Credit score — a transparent score derived from the same ledgers used
@@ -351,8 +342,13 @@ export const creditScoreOf = (member, contributions, loans, repayments, settings
   }
   factors.push({ key: 'instalments', label: 'Instalment consistency', points: instalmentPts, max: 250, detail: instalmentDetail });
 
-  // Loan track record (-150 to +150) — no history is neutral; a loan repaid
-  // by its due date earns the most, one currently overdue costs the most.
+  // Loan track record (-150 to +150) — this is also what sets how much a
+  // member can borrow next time (there's no separate "savings × a
+  // multiplier" cap — see loanEligibility above). No history is neutral.
+  // Paying a loan off early or right on its one-month due date raises the
+  // score; paying it late lowers it, same as a bank would read it, not just
+  // "a smaller gain" — and a loan still outstanding past its due date costs
+  // the most of all.
   const memberLoans = (loans || []).filter((l) => l.member_id === member.id);
   let loanPts, loanDetail;
   if (memberLoans.length === 0) {
@@ -364,13 +360,20 @@ export const creditScoreOf = (member, contributions, loans, repayments, settings
       if (balance > 0) return isLoanOverdue(l, repayments) ? -150 : 40;
       const lastPaidAt = (repayments || []).filter((r) => r.loan_id === l.id).reduce((max, r) => Math.max(max, new Date(r.created_at).getTime()), 0);
       const onTime = !lastPaidAt || lastPaidAt <= new Date(loanDueDate(l)).getTime();
-      return onTime ? 150 : 60;
+      return onTime ? 150 : -100;
     });
     loanPts = Math.round(scored.reduce((s, v) => s + v, 0) / scored.length);
     const overdueCount = memberLoans.filter((l) => isLoanOverdue(l, repayments)).length;
+    const lateRepaidCount = memberLoans.filter((l) => {
+      if (loanBalance(l, repayments) > 0) return false;
+      const lastPaidAt = (repayments || []).filter((r) => r.loan_id === l.id).reduce((max, r) => Math.max(max, new Date(r.created_at).getTime()), 0);
+      return lastPaidAt > new Date(loanDueDate(l)).getTime();
+    }).length;
     loanDetail = overdueCount > 0
       ? `${overdueCount} loan${overdueCount !== 1 ? 's' : ''} overdue right now`
-      : `${memberLoans.length} loan${memberLoans.length !== 1 ? 's' : ''} on record, in good standing`;
+      : lateRepaidCount > 0
+        ? `${lateRepaidCount} past loan${lateRepaidCount !== 1 ? 's' : ''} repaid late`
+        : `${memberLoans.length} loan${memberLoans.length !== 1 ? 's' : ''} on record, in good standing`;
   }
   factors.push({ key: 'loans', label: 'Loan repayment track record', points: loanPts, max: 150, detail: loanDetail });
 
@@ -384,65 +387,56 @@ export const creditScoreOf = (member, contributions, loans, repayments, settings
 // straight from fund_contributions / fund_loans / fund_loan_repayments —
 // nothing here is a stored number either.
 //
-//   Reserve             membership contributions only, minus one-off setup costs — emergencies only, never a project
-//   Loans & Operations   the full monthly contribution, plus loan repayments, minus loans issued — see the loan-capital/ops-reserve split below
-//   Fund Account         unearmarked investor/donor money only — the monthly contribution no longer feeds this account
-//   Project Account       (one per project) — that project's baseline + extra contributions; see byProject()
+//   Reserve        membership contributions only, minus one-off setup costs — emergencies only, never a project
+//   Loan           30% of the monthly contribution (MONTHLY_TO_LOAN_PCT), plus loan repayments, minus loans issued — fully lendable, nothing held back
+//   Fund Account   unearmarked investor/donor money, plus the other 70% of the monthly contribution
+//   Project Account (one per project) — that project's baseline + extra contributions; see byProject()
 
 export const reserveBalance = (contributions, settings) => {
   const paid = (contributions || []).filter((c) => c.category === 'membership').reduce((s, c) => s + num(c.amount), 0);
   return Math.max(0, paid - num(settings?.setup_costs));
 };
 
-// Advisory only — nothing elsewhere enforces this split, it's just how
-// much of the Loans & Operations pool a manager wants to flag as "held for
-// running costs" vs. "actually available to lend". Defaults to 0 (nothing
-// held back) until a manager sets it.
-const opsReservePct = (settings) => Math.min(100, Math.max(0, num(settings?.loans_ops_reserve_pct ?? 0))) / 100;
+// The monthly instalment no longer funds Loans & Operations in full: it
+// splits straight off, 70% into the Fund Account and 30% into the Loan
+// account. There's no "held back for running costs" carve-out on top of
+// that anymore — every shilling landing in the Loan account is lendable
+// the moment it's in.
+export const MONTHLY_TO_LOAN_PCT = 0.3;
 
-export const loansOpsBalance = (contributions, loans, repayments, settings) => {
+export const loansOpsBalance = (contributions, loans, repayments) => {
   const fromMonthly = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
   const repaid = (repayments || []).reduce((s, r) => s + num(r.amount), 0);
   const issued = (loans || []).reduce((s, l) => s + num(l.principal), 0);
-  return fromMonthly + repaid - issued;
+  return fromMonthly * MONTHLY_TO_LOAN_PCT + repaid - issued;
 };
 
-// A slice of each month's instalment, set aside for running costs — never
-// touched by loan issuance or repayment.
-export const opsReserveBalance = (contributions, settings) => {
-  const fromMonthly = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
-  return fromMonthly * opsReservePct(settings);
-};
-
-// What's actually available to lend out — the rest of each month's
-// instalment, plus loan repayments, minus loans issued.
-export const loanCapitalBalance = (contributions, loans, repayments, settings) => {
-  const fromMonthly = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
-  const repaid = (repayments || []).reduce((s, r) => s + num(r.amount), 0);
-  const issued = (loans || []).reduce((s, l) => s + num(l.principal), 0);
-  return fromMonthly * (1 - opsReservePct(settings)) + repaid - issued;
-};
-
-// Unearmarked investor/donor money only — the chama's own monthly
-// contribution funds Loans & Operations in full and never lands here.
+// Unearmarked investor/donor money, plus the 70% slice of every monthly
+// instalment that doesn't go to the Loan account (MONTHLY_TO_LOAN_PCT).
 // Project/baseline contributions are excluded by category, not just by
 // project_id: if their project is later deleted, project_id goes null but
 // the category doesn't, so they still can't leak in here. Investor/donor
 // money still needs the project_id check too, since that money is either
 // earmarked to a project or not — category alone doesn't tell you which.
-export const fundAccountBalance = (contributions) => (contributions || [])
-  .filter((c) => !c.project_id && !['membership', 'monthly', 'project', 'project_baseline'].includes(c.category))
-  .reduce((s, c) => s + num(c.amount), 0);
+export const fundAccountBalance = (contributions) => {
+  const unearmarked = (contributions || [])
+    .filter((c) => !c.project_id && !['membership', 'monthly', 'project', 'project_baseline'].includes(c.category))
+    .reduce((s, c) => s + num(c.amount), 0);
+  const fromMonthly = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
+  return unearmarked + fromMonthly * (1 - MONTHLY_TO_LOAN_PCT);
+};
 
 // What's been raised, split across the fund's four real accounts (member
 // handbook §5) instead of one lump "total raised" figure — gross money in,
 // not a current balance, so this never nets out loans issued or setup
 // costs the way reserveBalance/loansOpsBalance do. The four filters are
 // exhaustive and mutually exclusive over every contribution, so the parts
-// always add back up to totalOf(contributions) exactly.
+// always add back up to totalOf(contributions) exactly — each monthly
+// instalment counts once, split 30/70 between loansOps and fund.
 export const raisedByAccount = (contributions) => {
   const reserve = (contributions || []).filter((c) => c.category === 'membership').reduce((s, c) => s + num(c.amount), 0);
-  const loansOps = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
+  const fromMonthly = (contributions || []).filter((c) => c.category === 'monthly').reduce((s, c) => s + num(c.amount), 0);
+  const loansOps = fromMonthly * MONTHLY_TO_LOAN_PCT;
   const projects = (contributions || []).filter((c) => c.project_id || c.category === 'project' || c.category === 'project_baseline').reduce((s, c) => s + num(c.amount), 0);
   const fund = fundAccountBalance(contributions);
   return { reserve, loansOps, projects, fund };
@@ -495,16 +489,14 @@ export const memberBaselineStatus = (projects, contributions, memberId) => (proj
 // demo mode, so switching tabs tells one consistent story.
 const day = (n) => new Date(Date.now() - 86400000 * n).toISOString();
 
-// The chama's real rules: 5,000 once to join (Reserve), 1,000/month that
-// funds loans & operations in full (none of it diverted to the Fund
-// Account — loans_ops_reserve_pct only decides how much of that pool is
-// flagged for running costs vs. actually lendable), then whatever a
-// member owes a project's baseline plus whatever extra they choose to
-// put in on top.
+// The chama's real rules: 5,000 once to join (Reserve), 1,000/month split
+// 70/30 between the Fund Account and the Loan account (MONTHLY_TO_LOAN_PCT),
+// then whatever a member owes a project's baseline plus whatever extra
+// they choose to put in on top.
 export const DEMO_SETTINGS_SEED = {
-  membership_fee: 5000, loan_multiplier: 3, loan_interest_rate: 10, loan_term_months: 6,
-  monthly_contribution_amount: 1000, loans_ops_reserve_pct: 20, setup_costs: 0,
-  loan_qualifying_months: 2, loan_max_per_member: 50000, loan_max_pool_pct: 80, loan_late_penalty_pct: 5,
+  membership_fee: 5000, loan_interest_rate: 10,
+  monthly_contribution_amount: 1000, setup_costs: 0,
+  loan_qualifying_months: 2, loan_max_per_member: 50000, loan_max_pool_pct: 80,
 };
 
 // Wanjiku is deliberately short of the fee (3,000 of 5,000) so the
@@ -564,13 +556,15 @@ export const DEMO_CONTRIBUTIONS_SEED = [
   { id: 'd22', member_id: 'mem-2', category: 'project_baseline', project_id: 'demo-project-1', amount: 2000, description: 'September baseline', created_at: day(40) },
 ];
 
-// You: an older loan, fully repaid — shows the repaid state and history.
-// Omondi: an active loan with one repayment logged — shows up as "has an
-// unpaid loan" on the eligibility list, and overdue tracking if left unpaid
-// past its term. Wanjiku has none — she isn't eligible yet (fee not paid).
+// You: an older loan, repaid in full but with the final payment after the
+// one-month due date — shows a late repayment actually lowering the credit
+// score, not just earning a smaller gain. Omondi: an active loan, well past
+// its one-month due date with only one repayment logged — shows up as "has
+// an unpaid loan" on the eligibility list, and as overdue. Wanjiku has
+// none — she isn't eligible yet (fee not paid).
 export const DEMO_LOANS_SEED = [
-  { id: 'ln1', member_id: 'mem-you', principal: 15000, interest_rate: 10, term_months: 3, note: 'Stock top-up', issued_at: day(200) },
-  { id: 'ln2', member_id: 'mem-3', principal: 20000, interest_rate: 10, term_months: 6, note: 'School fees bridge', issued_at: day(60) },
+  { id: 'ln1', member_id: 'mem-you', principal: 15000, interest_rate: 10, note: 'Stock top-up', issued_at: day(200) },
+  { id: 'ln2', member_id: 'mem-3', principal: 20000, interest_rate: 10, note: 'School fees bridge', issued_at: day(60) },
 ];
 
 export const DEMO_LOAN_REPAYMENTS_SEED = [

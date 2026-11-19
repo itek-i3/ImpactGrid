@@ -9,10 +9,10 @@ import { useToast } from '@/components/ui/Toast';
 import Modal from '@/components/ui/Modal';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import {
-  money, num, canEditFund, loadDemo, saveDemo,
-  loanEligibility, loanTotalRepayable, loanTotalOwed, loanMonthlyInstallment, loanBalance, loanDueDate, isLoanOverdue,
-  loanPoolUtilisation, loanLatePenaltyAmount,
-  DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_SETTINGS_SEED, DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED,
+  money, num, hasAmount, canEditFund, loadDemo, saveDemo,
+  loanEligibility, loanTotalRepayable, loanBalance, loanDueDate, isLoanOverdue,
+  loanPoolUtilisation, creditScoreOf,
+  DEMO_MEMBERS_SEED, DEMO_CONTRIBUTIONS_SEED, DEMO_PROJECTS_SEED, DEMO_SETTINGS_SEED, DEMO_LOANS_SEED, DEMO_LOAN_REPAYMENTS_SEED,
 } from '@/lib/fund/shared';
 
 const fmtDate = (v) => v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
@@ -31,30 +31,28 @@ export default function FundLoansPanel() {
   const myId = isDemo ? 'demo-you' : userProfile?.id;
   const membersKey = `demo-fund-members-${agencyId || 'x'}`;
   const contributionsKey = `demo-fund-contributions-${agencyId || 'x'}`;
+  const projectsKey = `demo-fund-projects-${agencyId || 'x'}`;
   const settingsKey = `demo-fund-settings-${agencyId || 'x'}`;
   const loansKey = `demo-fund-loans-${agencyId || 'x'}`;
   const repaymentsKey = `demo-fund-loan-repayments-${agencyId || 'x'}`;
 
   const [members, setMembers] = useState([]);
   const [contributions, setContributions] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loans, setLoans] = useState([]);
   const [repayments, setRepayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [editingSettings, setEditingSettings] = useState(false);
-  const [multInput, setMultInput] = useState('');
   const [rateInput, setRateInput] = useState('');
-  const [termInput, setTermInput] = useState('');
   const [qualInput, setQualInput] = useState('');
   const [maxPerInput, setMaxPerInput] = useState('');
   const [poolPctInput, setPoolPctInput] = useState('');
-  const [penaltyPctInput, setPenaltyPctInput] = useState('');
 
   const [issueFor, setIssueFor] = useState(null); // member
   const [iPrincipal, setIPrincipal] = useState('');
   const [iRate, setIRate] = useState('');
-  const [iTerm, setITerm] = useState('');
   const [iDate, setIDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [iNote, setINote] = useState('');
 
@@ -62,10 +60,17 @@ export default function FundLoansPanel() {
   const [rAmount, setRAmount] = useState('');
   const [rDate, setRDate] = useState(() => new Date().toISOString().slice(0, 10));
 
-  const [penaltyFor, setPenaltyFor] = useState(null); // loan
-
   const [historyId, setHistoryId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  const [editingLoan, setEditingLoan] = useState(false);
+  const [elPrincipal, setElPrincipal] = useState('');
+  const [elRate, setElRate] = useState('');
+  const [elNote, setElNote] = useState('');
+
+  const [editRepayId, setEditRepayId] = useState(null);
+  const [erAmount, setErAmount] = useState('');
+  const [erDate, setErDate] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +78,7 @@ export default function FundLoansPanel() {
       if (isDemo) {
         setMembers(loadDemo(membersKey, DEMO_MEMBERS_SEED));
         setContributions(loadDemo(contributionsKey, DEMO_CONTRIBUTIONS_SEED));
+        setProjects(loadDemo(projectsKey, DEMO_PROJECTS_SEED));
         setSettings(loadDemo(settingsKey, DEMO_SETTINGS_SEED));
         setLoans(loadDemo(loansKey, DEMO_LOANS_SEED));
         setRepayments(loadDemo(repaymentsKey, DEMO_LOAN_REPAYMENTS_SEED));
@@ -81,15 +87,16 @@ export default function FundLoansPanel() {
       }
       if (!agencyId) { setLoading(false); return; }
       const sb = createClient();
-      const [{ data: m }, { data: contribs }, { data: s }, { data: l }, { data: r }] = await Promise.all([
+      const [{ data: m }, { data: contribs }, { data: p }, { data: s }, { data: l }, { data: r }] = await Promise.all([
         sb.from('fund_members').select('*').eq('agency_id', agencyId).order('created_at', { ascending: false }),
         sb.from('fund_contributions').select('*').eq('agency_id', agencyId),
+        sb.from('fund_projects').select('id, baseline_monthly_amount, created_at').eq('agency_id', agencyId),
         sb.from('fund_settings').select('*').eq('agency_id', agencyId).maybeSingle(),
         sb.from('fund_loans').select('*').eq('agency_id', agencyId).order('created_at', { ascending: false }),
         sb.from('fund_loan_repayments').select('*').eq('agency_id', agencyId),
       ]);
       if (cancelled) return;
-      setMembers(m || []); setContributions(contribs || []);
+      setMembers(m || []); setContributions(contribs || []); setProjects(p || []);
       setSettings(s || DEMO_SETTINGS_SEED);
       setLoans(l || []); setRepayments(r || []);
       setLoading(false);
@@ -100,28 +107,35 @@ export default function FundLoansPanel() {
     const ch = sb.channel(`fund-loans:${agencyId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_members', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_contributions', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_projects', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_settings', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_loans', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_loan_repayments', filter: `agency_id=eq.${agencyId}` }, () => !cancelled && load())
       .subscribe();
     return () => { cancelled = true; sb.removeChannel(ch); };
-  }, [agencyId, isDemo, membersKey, contributionsKey, settingsKey, loansKey, repaymentsKey]);
+  }, [agencyId, isDemo, membersKey, contributionsKey, projectsKey, settingsKey, loansKey, repaymentsKey]);
 
   const nameOf = (id) => members.find((m) => m.id === id)?.name || 'A member';
 
+  // How much each eligible member could actually get is the manager's own
+  // call — there's no formula limit anymore — so every row carries its
+  // credit score (mainly driven by instalment consistency and past loan
+  // behaviour) for the manager to weigh that against, sorted best score first.
   const rows = useMemo(
-    () => members.map((m) => ({ ...m, ...loanEligibility(m, contributions, loans, repayments, settings) })),
-    [members, contributions, loans, repayments, settings]
+    () => members.map((m) => ({
+      ...m,
+      ...loanEligibility(m, contributions, loans, repayments, settings),
+      credit: creditScoreOf(m, contributions, loans, repayments, settings, projects),
+    })),
+    [members, contributions, loans, repayments, settings, projects]
   );
-  const eligibleRows = rows.filter((r) => r.eligible).sort((a, b) => b.available - a.available);
+  const eligibleRows = rows.filter((r) => r.eligible).sort((a, b) => b.credit.score - a.credit.score);
   const ineligibleRows = rows.filter((r) => !r.eligible);
 
   const loanRows = useMemo(() => loans.map((l) => ({
     ...l,
     balance: loanBalance(l, repayments),
     totalRepayable: loanTotalRepayable(l),
-    totalOwed: loanTotalOwed(l),
-    monthlyInstallment: loanMonthlyInstallment(l),
     dueAt: loanDueDate(l),
     overdue: isLoanOverdue(l, repayments),
   })), [loans, repayments]);
@@ -137,26 +151,20 @@ export default function FundLoansPanel() {
   const historyRepayments = historyLoan ? repayments.filter((r) => r.loan_id === historyLoan.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) : [];
 
   const openEditSettings = () => {
-    setMultInput(String(num(settings?.loan_multiplier ?? 3)));
     setRateInput(String(num(settings?.loan_interest_rate) || 10));
-    setTermInput(String(num(settings?.loan_term_months) || 6));
     setQualInput(String(num(settings?.loan_qualifying_months)));
     setMaxPerInput(settings?.loan_max_per_member ? String(num(settings.loan_max_per_member)) : '');
     setPoolPctInput(String(num(settings?.loan_max_pool_pct ?? 100)));
-    setPenaltyPctInput(String(num(settings?.loan_late_penalty_pct)));
     setEditingSettings(true);
   };
 
   const saveSettings = async () => {
     const next = {
       ...settings,
-      loan_multiplier: multInput.trim() === '' ? 3 : num(multInput),
       loan_interest_rate: num(rateInput) || 0,
-      loan_term_months: num(termInput) || 1,
       loan_qualifying_months: Math.max(0, num(qualInput)),
       loan_max_per_member: maxPerInput.trim() ? Math.max(0, num(maxPerInput)) : null,
       loan_max_pool_pct: Math.min(100, Math.max(0, num(poolPctInput ?? 100))),
-      loan_late_penalty_pct: Math.max(0, num(penaltyPctInput)),
     };
     setEditingSettings(false);
     setSettings(next);
@@ -165,31 +173,10 @@ export default function FundLoansPanel() {
     if (error) toast.error('Could not save', error.message);
   };
 
-  const applyPenalty = async () => {
-    if (!penaltyFor) return;
-    const amount = loanLatePenaltyAmount(penaltyFor, repayments, settings);
-    if (!amount) { setPenaltyFor(null); return; }
-    setSaving(true);
-    const nextPenalty = num(penaltyFor.penalty_amount) + amount;
-    if (isDemo) {
-      const next = loans.map((l) => l.id === penaltyFor.id ? { ...l, penalty_amount: nextPenalty } : l);
-      setLoans(next); saveDemo(loansKey, next);
-      setSaving(false); setPenaltyFor(null);
-      toast.success('Penalty applied', money(amount));
-      return;
-    }
-    const { error } = await createClient().from('fund_loans').update({ penalty_amount: nextPenalty }).eq('id', penaltyFor.id);
-    setSaving(false);
-    if (error) { toast.error('Could not apply penalty', error.message); return; }
-    setPenaltyFor(null);
-    toast.success('Penalty applied', money(amount));
-  };
-
   const openIssue = (row) => {
     setIssueFor(row);
-    setIPrincipal(String(Math.max(0, Math.round(row.available))));
+    setIPrincipal(row.cap != null ? String(Math.max(0, Math.round(row.available))) : '');
     setIRate(String(num(settings?.loan_interest_rate) || 10));
-    setITerm(String(num(settings?.loan_term_months) || 6));
     setIDate(new Date().toISOString().slice(0, 10));
     setINote('');
   };
@@ -199,7 +186,7 @@ export default function FundLoansPanel() {
     if (!principal || !issueFor) return;
     setSaving(true);
     const row = {
-      member_id: issueFor.id, principal, interest_rate: num(iRate) || 0, term_months: num(iTerm) || 1,
+      member_id: issueFor.id, principal, interest_rate: num(iRate) || 0,
       note: iNote.trim() || null, issued_at: new Date(iDate).toISOString(), created_by: myId,
     };
     if (isDemo) {
@@ -220,7 +207,7 @@ export default function FundLoansPanel() {
 
   const saveRepay = async () => {
     const amount = num(rAmount);
-    if (!amount || !repayFor) return;
+    if (!hasAmount(rAmount) || !repayFor) return;
     setSaving(true);
     const row = { loan_id: repayFor.id, amount, created_by: myId, created_at: new Date(rDate).toISOString() };
     if (isDemo) {
@@ -235,6 +222,52 @@ export default function FundLoansPanel() {
     if (error) { toast.error('Could not save', error.message); return; }
     setRepayFor(null);
     toast.success('Repayment logged', money(amount));
+  };
+
+  // Principal/rate feed every derived loan figure live (balance, total
+  // repayable, credit scoring) — nothing is stored redundantly, so
+  // correcting a typo here needs no separate recompute.
+  const openEditLoan = () => {
+    if (!historyLoan) return;
+    setElPrincipal(String(num(historyLoan.principal))); setElRate(String(num(historyLoan.interest_rate)));
+    setElNote(historyLoan.note || '');
+    setEditingLoan(true);
+  };
+
+  const saveEditLoan = async () => {
+    const principal = num(elPrincipal);
+    if (!principal || !historyLoan) return;
+    const patch = { principal, interest_rate: num(elRate) || 0, note: elNote.trim() || null };
+    setEditingLoan(false);
+    if (isDemo) {
+      const next = loans.map((l) => (l.id === historyLoan.id ? { ...l, ...patch } : l));
+      setLoans(next); saveDemo(loansKey, next);
+      toast.success('Loan updated');
+      return;
+    }
+    const { error } = await createClient().from('fund_loans').update(patch).eq('id', historyLoan.id);
+    if (error) { toast.error('Could not save', error.message); return; }
+    toast.success('Loan updated');
+  };
+
+  const openRepayEdit = (r) => {
+    setErAmount(String(r.amount)); setErDate(new Date(r.created_at).toISOString().slice(0, 10));
+    setEditRepayId(r.id);
+  };
+
+  const saveRepayEdit = async () => {
+    const amount = num(erAmount);
+    if (!hasAmount(erAmount) || !editRepayId) return;
+    const patch = { amount, created_at: new Date(erDate).toISOString() };
+    if (isDemo) {
+      const next = repayments.map((r) => (r.id === editRepayId ? { ...r, ...patch } : r));
+      setRepayments(next); saveDemo(repaymentsKey, next);
+      setEditRepayId(null);
+      return;
+    }
+    const { error } = await createClient().from('fund_loan_repayments').update(patch).eq('id', editRepayId);
+    if (error) { toast.error('Could not save', error.message); return; }
+    setEditRepayId(null);
   };
 
   const tKey = 'var(--color-text-primary, #E2EEFF)';
@@ -268,24 +301,20 @@ export default function FundLoansPanel() {
       <div style={{ ...card, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
         {editingSettings ? (
           <>
-            <RuleField label="Limit ×savings" value={multInput} onChange={setMultInput} suffix="×" />
             <RuleField label="Flat interest" value={rateInput} onChange={setRateInput} suffix="%" />
-            <RuleField label="Term" value={termInput} onChange={setTermInput} suffix="mo" />
             <RuleField label="Qualifying period" value={qualInput} onChange={setQualInput} suffix="mo as member" />
             <RuleField label="Max per member" value={maxPerInput} onChange={setMaxPerInput} suffix="KES, blank = no cap" />
             <RuleField label="Max pool share" value={poolPctInput} onChange={setPoolPctInput} suffix="% out on loan" />
-            <RuleField label="Late penalty" value={penaltyPctInput} onChange={setPenaltyPctInput} suffix="% once overdue" />
             <button className="fund-btn" style={{ height: 32 }} onClick={saveSettings}><Check size={13} /></button>
             <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingSettings(false)}><X size={13} /></button>
           </>
         ) : (
           <>
-            <RuleStat label="Limit" value={`${num(settings?.loan_multiplier ?? 3)}× savings`} />
+            <RuleStat label="Loan limit" value="Set by credit score — manager's call" />
             <RuleStat label="Interest" value={`${num(settings?.loan_interest_rate) || 10}% flat`} />
-            <RuleStat label="Term" value={`${num(settings?.loan_term_months) || 6} months`} />
+            <RuleStat label="Repayment period" value="1 month" />
             <RuleStat label="Qualifying period" value={num(settings?.loan_qualifying_months) > 0 ? `${num(settings.loan_qualifying_months)} months as member` : 'None'} />
             <RuleStat label="Max per member" value={settings?.loan_max_per_member ? money(settings.loan_max_per_member) : 'No cap'} />
-            <RuleStat label="Late penalty" value={num(settings?.loan_late_penalty_pct) > 0 ? `${num(settings.loan_late_penalty_pct)}% once overdue` : 'None'} />
             {canEdit && (
               <button className="fund-btn" style={{ height: 28, fontSize: 11, marginLeft: 'auto' }} onClick={openEditSettings}><Pencil size={11} /> Edit rules</button>
             )}
@@ -333,7 +362,7 @@ export default function FundLoansPanel() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
-                <div style={{ fontSize: 10.5, color: tSub }}>Up to {money(r.available)}</div>
+                <div style={{ fontSize: 10.5, color: r.credit.band.tint }}>Credit score {r.credit.score} · {r.credit.band.label}</div>
               </div>
               {canEdit && (
                 <button className="fund-btn" style={{ height: 30, fontSize: 11.5, flexShrink: 0 }} onClick={() => openIssue(r)}><Plus size={12} /> Issue</button>
@@ -380,7 +409,7 @@ export default function FundLoansPanel() {
               <div style={{ fontSize: 13, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(l.member_id)}</div>
               <div style={{ fontSize: 10.5, color: l.overdue ? '#EF4444' : tSub, display: 'flex', alignItems: 'center', gap: 3 }}>
                 {l.overdue && <AlertTriangle size={10} />}
-                {l.overdue ? 'Overdue — ' : 'Due '}{fmtDate(l.dueAt)} · {money(l.monthlyInstallment)}/mo
+                {l.overdue ? 'Overdue — due was ' : 'Due '}{fmtDate(l.dueAt)}
               </div>
             </div>
             <div style={{ fontSize: 14, fontWeight: 800, color: tKey, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{money(l.balance)}</div>
@@ -391,15 +420,6 @@ export default function FundLoansPanel() {
             >
               <Eye size={14} />
             </button>
-            {canEdit && loanLatePenaltyAmount(l, repayments, settings) > 0 && (
-              <button
-                onClick={() => setPenaltyFor(l)}
-                title="Apply a late penalty"
-                style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 8, border: 'none', background: 'rgba(239,68,68,0.16)', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <AlertTriangle size={13} />
-              </button>
-            )}
             {canEdit && (
               <button
                 onClick={() => openRepay(l)}
@@ -429,7 +449,7 @@ export default function FundLoansPanel() {
                 <div style={{ fontSize: 13, fontWeight: 700, color: tKey, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(l.member_id)}</div>
                 <div style={{ fontSize: 10.5, color: tSub }}>Issued {fmtDate(l.issued_at)}</div>
               </div>
-              <span style={{ fontSize: 11, fontWeight: 800, color: '#22C55E', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={12} /> {money(l.totalOwed)}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#22C55E', display: 'inline-flex', alignItems: 'center', gap: 3 }}><Check size={12} /> {money(l.totalRepayable)}</span>
             </div>
           ))}
         </div>
@@ -439,7 +459,9 @@ export default function FundLoansPanel() {
       <Modal isOpen={!!issueFor} onClose={() => setIssueFor(null)} title={`Issue a loan — ${issueFor?.name || ''}`} maxWidth="420px">
         {issueFor && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 12, color: tSub }}>Eligible for up to <strong style={{ color: tKey }}>{money(issueFor.available)}</strong> ({money(issueFor.savings)} in savings × {num(settings?.loan_multiplier ?? 3)}).</div>
+            <div style={{ fontSize: 12, color: tSub }}>
+              Credit score <strong style={{ color: issueFor.credit.band.tint }}>{issueFor.credit.score} · {issueFor.credit.band.label}</strong> — based on their instalment consistency and past loan repayments, mainly. There&rsquo;s no fixed limit; use your judgment{issueFor.cap != null ? `, up to the ${money(issueFor.cap)} per-member cap` : ''}.
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <label style={{ display: 'block' }}>
                 <span className="fund-label">Principal (KES)</span>
@@ -450,22 +472,16 @@ export default function FundLoansPanel() {
                 <input className="fund-input" type="date" value={iDate} onChange={(e) => setIDate(e.target.value)} />
               </label>
             </div>
-            {num(iPrincipal) > issueFor.available && (
-              <div style={{ fontSize: 11.5, color: '#F5A623' }}>This is above their {money(issueFor.available)} limit — fine if that&rsquo;s a deliberate call.</div>
+            {issueFor.cap != null && num(iPrincipal) > issueFor.available && (
+              <div style={{ fontSize: 11.5, color: '#F5A623' }}>This is above their {money(issueFor.available)} per-member cap — fine if that&rsquo;s a deliberate call.</div>
             )}
             {utilisation.poolSize > 0 && (utilisation.outstanding + num(iPrincipal)) / utilisation.poolSize * 100 > utilisation.maxPct && (
               <div style={{ fontSize: 11.5, color: '#F5A623' }}>This would push the loan pool past its {utilisation.maxPct}% cap — fine if that&rsquo;s a deliberate call.</div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <label style={{ display: 'block' }}>
-                <span className="fund-label">Interest (flat %)</span>
-                <input className="fund-input" type="number" value={iRate} onChange={(e) => setIRate(e.target.value)} />
-              </label>
-              <label style={{ display: 'block' }}>
-                <span className="fund-label">Term (months)</span>
-                <input className="fund-input" type="number" value={iTerm} onChange={(e) => setITerm(e.target.value)} />
-              </label>
-            </div>
+            <label style={{ display: 'block' }}>
+              <span className="fund-label">Interest (flat %)</span>
+              <input className="fund-input" type="number" value={iRate} onChange={(e) => setIRate(e.target.value)} />
+            </label>
             <label style={{ display: 'block' }}>
               <span className="fund-label">Note (optional)</span>
               <input className="fund-input" value={iNote} onChange={(e) => setINote(e.target.value)} placeholder="What it's for" />
@@ -473,7 +489,7 @@ export default function FundLoansPanel() {
             {num(iPrincipal) > 0 && (
               <div style={{ ...innerCard, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                 <span style={{ fontSize: 11.5, color: tSub }}>Repays as {money(loanTotalRepayable({ principal: iPrincipal, interest_rate: iRate }))} total</span>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: tKey }}>{money(loanMonthlyInstallment({ principal: iPrincipal, interest_rate: iRate, term_months: iTerm }))}/mo</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: tKey }}>due in 1 month</span>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
@@ -500,57 +516,62 @@ export default function FundLoansPanel() {
           </label>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
             <button className="fund-btn" onClick={() => setRepayFor(null)}>Cancel</button>
-            <button className="fund-btn primary" onClick={saveRepay} disabled={saving || !num(rAmount)}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="fund-btn primary" onClick={saveRepay} disabled={saving || !hasAmount(rAmount)}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </Modal>
 
-      {/* Apply a late penalty — a flat % of what's currently owed, member
-          handbook §9. Locked in once applied, never recalculated. */}
-      <Modal isOpen={!!penaltyFor} onClose={() => setPenaltyFor(null)} title={`Apply a late penalty — ${penaltyFor ? nameOf(penaltyFor.member_id) : ''}`} maxWidth="360px">
-        {penaltyFor && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 12.5, color: tKey, lineHeight: 1.5 }}>
-              This loan is overdue. Apply the chama&rsquo;s {num(settings?.loan_late_penalty_pct)}% late penalty —{' '}
-              <strong>{money(loanLatePenaltyAmount(penaltyFor, repayments, settings))}</strong>, added to the {money(loanBalance(penaltyFor, repayments))} currently owed.
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-              <button className="fund-btn" onClick={() => setPenaltyFor(null)}>Cancel</button>
-              <button className="fund-btn primary" onClick={applyPenalty} disabled={saving}>{saving ? 'Applying…' : 'Apply penalty'}</button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       {/* Loan history */}
-      <Modal isOpen={!!historyId} onClose={() => setHistoryId(null)} title={historyLoan ? `${nameOf(historyLoan.member_id)}'s loan` : 'Loan'} maxWidth="440px">
+      <Modal isOpen={!!historyId} onClose={() => { setHistoryId(null); setEditingLoan(false); setEditRepayId(null); }} title={historyLoan ? `${nameOf(historyLoan.member_id)}'s loan` : 'Loan'} maxWidth="440px">
         {historyLoan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={innerCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: tSub }}>Principal</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{money(historyLoan.principal)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: tSub }}>Total repayable ({historyLoan.interest_rate}% flat, {historyLoan.term_months}mo)</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{money(historyLoan.totalRepayable)}</span>
-              </div>
-              {num(historyLoan.penalty_amount) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: '#EF4444' }}>Late penalty applied</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#EF4444' }}>{money(historyLoan.penalty_amount)}</span>
+            {editingLoan ? (
+              <div style={innerCard}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <label style={{ display: 'block' }}>
+                      <span className="fund-label">Principal (KES)</span>
+                      <input className="fund-input" style={{ height: 34 }} type="number" autoFocus value={elPrincipal} onChange={(e) => setElPrincipal(e.target.value)} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span className="fund-label">Interest (flat %)</span>
+                      <input className="fund-input" style={{ height: 34 }} type="number" value={elRate} onChange={(e) => setElRate(e.target.value)} />
+                    </label>
+                  </div>
+                  <label style={{ display: 'block' }}>
+                    <span className="fund-label">Note (optional)</span>
+                    <input className="fund-input" style={{ height: 34 }} value={elNote} onChange={(e) => setElNote(e.target.value)} placeholder="What it's for" />
+                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button className="fund-btn" style={{ height: 32 }} onClick={() => setEditingLoan(false)}>Cancel</button>
+                    <button className="fund-btn primary" style={{ height: 32 }} onClick={saveEditLoan} disabled={!num(elPrincipal)}>Save</button>
+                  </div>
                 </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: tSub }}>Due</span>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: historyLoan.overdue ? '#EF4444' : tKey }}>{fmtDate(historyLoan.dueAt)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, color: tSub }}>Balance</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: historyLoan.balance > 0 ? tKey : '#22C55E' }}>{historyLoan.balance > 0 ? money(historyLoan.balance) : 'Fully repaid'}</span>
+            ) : (
+              <div style={innerCard}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: tSub }}>Principal</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{money(historyLoan.principal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: tSub }}>Total repayable ({historyLoan.interest_rate}% flat, 1 month)</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: tKey }}>{money(historyLoan.totalRepayable)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: tSub }}>Due</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: historyLoan.overdue ? '#EF4444' : tKey }}>{fmtDate(historyLoan.dueAt)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: canEdit ? 10 : 0 }}>
+                  <span style={{ fontSize: 11, color: tSub }}>Balance</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: historyLoan.balance > 0 ? tKey : '#22C55E' }}>{historyLoan.balance > 0 ? money(historyLoan.balance) : 'Fully repaid'}</span>
+                </div>
+                {canEdit && (
+                  <button className="fund-btn" style={{ height: 26, fontSize: 10.5 }} onClick={openEditLoan}><Pencil size={10} /> Edit loan terms</button>
+                )}
               </div>
-            </div>
-            {historyLoan.note && <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic' }}>{historyLoan.note}</div>}
+            )}
+            {historyLoan.note && !editingLoan && <div style={{ fontSize: 12, color: tSub, fontStyle: 'italic' }}>{historyLoan.note}</div>}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Repayments</div>
               {historyRepayments.length === 0 ? (
@@ -558,9 +579,23 @@ export default function FundLoansPanel() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
                   {historyRepayments.map((r) => (
-                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)' }}>
-                      <span style={{ fontSize: 12, color: tSub }}>{fmtDate(r.created_at)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums' }}>+{money(r.amount)}</span>
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)' }}>
+                      {editRepayId === r.id ? (
+                        <>
+                          <input className="fund-input" style={{ height: 30, flex: 1 }} type="number" inputMode="decimal" autoFocus value={erAmount} onChange={(e) => setErAmount(e.target.value)} placeholder="Amount" />
+                          <input className="fund-input" style={{ height: 30, flex: 1 }} type="date" value={erDate} onChange={(e) => setErDate(e.target.value)} />
+                          <button onClick={saveRepayEdit} disabled={!hasAmount(erAmount)} title="Save" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(34,197,94,0.16)', color: '#22C55E', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={13} /></button>
+                          <button onClick={() => setEditRepayId(null)} title="Cancel" style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={13} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 12, color: tSub, flex: 1 }}>{fmtDate(r.created_at)}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success-text, #22C55E)', fontVariantNumeric: 'tabular-nums' }}>+{money(r.amount)}</span>
+                          {canEdit && (
+                            <button onClick={() => openRepayEdit(r)} title="Edit this repayment" style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.06)', color: tSub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Pencil size={10} /></button>
+                          )}
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
