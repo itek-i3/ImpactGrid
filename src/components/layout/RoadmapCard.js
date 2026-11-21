@@ -8,6 +8,10 @@ import { useToast } from '@/components/ui/Toast';
 import { Map, Pencil, Plus, X, Check, TrendingUp, Square, CheckSquare, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
+// A key-result target is freeform text ("External Membership Build" is as
+// valid as "50000") — comma it up only when it's purely numeric, so a plain
+// count still reads as 50,000 without mangling text targets.
+const formatMaybeNumber = (v) => (/^-?\d+(\.\d+)?$/.test((v || '').trim()) ? Number(v).toLocaleString('en-US') : v);
 
 // Same quarter identity (tint + range) as the Hope stepper, so the two
 // year-planning features read as one family rather than two palettes.
@@ -265,7 +269,12 @@ export default function RoadmapCard() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'block' }}>
             <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Target revenue for {targetYear}</span>
-            <input type="number" inputMode="decimal" style={{ ...inputStyle, width: '100%' }} value={form.target_revenue} onChange={(e) => setForm((f) => ({ ...f, target_revenue: e.target.value }))} placeholder="e.g. 50000000" />
+            <input
+              type="text" inputMode="numeric" style={{ ...inputStyle, width: '100%' }}
+              value={form.target_revenue ? Number(form.target_revenue).toLocaleString('en-US') : ''}
+              onChange={(e) => setForm((f) => ({ ...f, target_revenue: e.target.value.replace(/\D/g, '') }))}
+              placeholder="e.g. 50,000,000"
+            />
           </label>
 
           <div>
@@ -424,7 +433,7 @@ export default function RoadmapCard() {
                                     {item.done ? <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 2 }} /> : <Square size={15} style={{ color: tSub, flexShrink: 0, marginTop: 2 }} />}
                                     <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, lineHeight: 1.45, overflowWrap: 'break-word', color: item.done ? tSub : tKey, textDecoration: item.done ? 'line-through' : 'none' }}>
                                       <span>{item.keyResult}</span>
-                                      <span style={{ fontWeight: 700, fontSize: 13, color: item.done ? tSub : q.tint }}>Target: &quot;{item.target}&quot;</span>
+                                      <span style={{ fontWeight: 700, fontSize: 13, color: item.done ? tSub : q.tint }}>Target: &quot;{formatMaybeNumber(item.target)}&quot;</span>
                                     </span>
                                     {hasInitiatives && (
                                       <button
