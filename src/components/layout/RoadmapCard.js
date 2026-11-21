@@ -293,7 +293,7 @@ export default function RoadmapCard() {
       {!hasRoadmap ? (
         <div style={{ fontSize: 13.5, color: tSub, fontStyle: 'italic' }}>No {targetYear} roadmap set yet.{canEdit ? ` Add the target revenue, objectives and key results via "Build ${targetYear} roadmap".` : ''}</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
           {roadmap?.target_revenue != null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: 'rgba(34,197,94,0.16)', color: 'var(--color-success-text, #22C55E)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TrendingUp size={17} /></div>
@@ -326,7 +326,7 @@ export default function RoadmapCard() {
               })}
             </svg>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12 }}>
               <button
                 onClick={() => setActiveQuarter(QUARTERS[(QUARTERS.findIndex((q) => q.key === activeQuarter) + 3) % 4].key)}
                 aria-label="Previous quarter"
@@ -366,26 +366,26 @@ export default function RoadmapCard() {
               const q = QUARTERS.find((x) => x.key === activeQuarter) || QUARTERS[0];
               const entries = quarterEntries[q.key];
               return (
-                <div style={{ borderTop: `2px solid ${q.tint}`, paddingTop: 10, marginTop: 6 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: q.tint }}>{q.label} · {q.range}</div>
+                <div style={{ borderTop: `2px solid ${q.tint}`, paddingTop: 16, marginTop: 10 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: q.tint }}>{q.label} · {q.range}</div>
                   {entries.length === 0 ? (
-                    <div style={{ fontSize: 12.5, color: tSub, fontStyle: 'italic', marginTop: 7 }}>No targets set.</div>
+                    <div style={{ fontSize: 13.5, color: tSub, fontStyle: 'italic', marginTop: 10 }}>No targets set.</div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 9 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 14 }}>
                       {entries.map((group, gi) => (
                         <div key={gi}>
-                          <div style={{ fontSize: 12.5, fontWeight: 800, color: tKey, lineHeight: 1.35 }}>{group.objective}</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: tKey, lineHeight: 1.4 }}>{group.objective}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                             {group.items.map((item, ii) => (
                               <div
                                 key={ii}
                                 onClick={() => toggleTargetDone(item.oi, item.ki, q.key)}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 7, cursor: canEdit ? 'pointer' : 'default' }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: canEdit ? 'pointer' : 'default' }}
                               >
-                                {item.done ? <CheckSquare size={13} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 1 }} /> : <Square size={13} style={{ color: tSub, flexShrink: 0, marginTop: 1 }} />}
-                                <span style={{ display: 'flex', flexDirection: 'column', fontSize: 12, lineHeight: 1.4, overflowWrap: 'break-word', color: tSub, textDecoration: item.done ? 'line-through' : 'none' }}>
+                                {item.done ? <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 2 }} /> : <Square size={15} style={{ color: tSub, flexShrink: 0, marginTop: 2 }} />}
+                                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, lineHeight: 1.45, overflowWrap: 'break-word', color: item.done ? tSub : tKey, textDecoration: item.done ? 'line-through' : 'none' }}>
                                   <span>{item.keyResult}</span>
-                                  <span style={{ fontWeight: 700, color: item.done ? tSub : q.tint }}>Target : &quot;{item.target}&quot;</span>
+                                  <span style={{ fontWeight: 700, fontSize: 13, color: item.done ? tSub : q.tint }}>Target: &quot;{item.target}&quot;</span>
                                 </span>
                               </div>
                             ))}
