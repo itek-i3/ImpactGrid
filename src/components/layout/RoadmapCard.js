@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '@/lib/store/useWorkspaceStore';
 import { createClient } from '@/lib/supabase/client';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useToast } from '@/components/ui/Toast';
-import { Map, Pencil, Plus, X, Check, TrendingUp, Square, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Map, Pencil, Plus, X, Check, TrendingUp, Square, CheckSquare, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 
 const money = (v) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(Number(v) || 0);
 
@@ -37,7 +37,7 @@ const WAVE_PATH = Array.from({ length: 161 }, (_, i) => {
 const WAVE_POINTS = QUARTERS.map((q) => ({ ...q, x: Q_XFRAC[q.key] * WAVE_W, y: waveY(Q_XFRAC[q.key]) }));
 
 const emptyTarget = () => ({ value: '', done: false });
-const emptyKeyResult = () => ({ text: '', targets: { Q1: emptyTarget(), Q2: emptyTarget(), Q3: emptyTarget(), Q4: emptyTarget() } });
+const emptyKeyResult = () => ({ text: '', targets: { Q1: emptyTarget(), Q2: emptyTarget(), Q3: emptyTarget(), Q4: emptyTarget() }, initiatives: [''] });
 const emptyObjective = () => ({ text: '', keyResults: [emptyKeyResult()] });
 const emptyForm = () => ({ target_revenue: '', objectives: [emptyObjective()] });
 
@@ -47,9 +47,13 @@ const emptyForm = () => ({ target_revenue: '', objectives: [emptyObjective()] })
 const normalizeTarget = (t) => (
   t && typeof t === 'object' ? { value: t.value || '', done: !!t.done } : { value: t || '', done: false }
 );
+// `initiatives` is new — an already-saved key result has none yet, so it
+// normalizes to one blank row (same convention as a brand-new key result)
+// rather than an empty array the edit form would have nothing to render.
 const normalizeKeyResult = (k) => ({
   text: k?.text || '',
   targets: { Q1: normalizeTarget(k?.targets?.Q1), Q2: normalizeTarget(k?.targets?.Q2), Q3: normalizeTarget(k?.targets?.Q3), Q4: normalizeTarget(k?.targets?.Q4) },
+  initiatives: Array.isArray(k?.initiatives) && k.initiatives.length ? k.initiatives.map((i) => i || '') : [''],
 });
 const normalizeObjective = (o) => ({
   text: o?.text || '',
@@ -81,6 +85,16 @@ export default function RoadmapCard() {
   // stepped via the pill row or the wave's own markers, instead of all four
   // competing for space at once.
   const [activeQuarter, setActiveQuarter] = useState('Q1');
+  // Which key results have their initiatives dropdown open — keyed by
+  // "oi-ki" so a key result's expanded state survives switching quarters
+  // (the same key result can carry a target in more than one quarter).
+  const [expandedKeyResults, setExpandedKeyResults] = useState(() => new Set());
+  const toggleExpanded = (oi, ki) => setExpandedKeyResults((prev) => {
+    const key = `${oi}-${ki}`;
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +123,7 @@ export default function RoadmapCard() {
       o.keyResults.forEach((k, ki) => {
         if (!k.text) return;
         const t = k.targets[q.key];
-        if (t.value) items.push({ keyResult: k.text, target: t.value, done: t.done, oi, ki });
+        if (t.value) items.push({ keyResult: k.text, target: t.value, done: t.done, oi, ki, initiatives: k.initiatives.filter((i) => i && i.trim()) });
       });
       if (items.length) quarterEntries[q.key].push({ objective: o.text, items });
     });
@@ -141,7 +155,10 @@ export default function RoadmapCard() {
   const startEdit = () => {
     setForm({
       target_revenue: roadmap?.target_revenue != null ? String(roadmap.target_revenue) : '',
-      objectives: objectives.length ? objectives.map((o) => ({ text: o.text, keyResults: o.keyResults.map((k) => ({ text: k.text, targets: { ...k.targets } })) })) : [emptyObjective()],
+      objectives: objectives.length ? objectives.map((o) => ({
+        text: o.text,
+        keyResults: o.keyResults.map((k) => ({ text: k.text, targets: { ...k.targets }, initiatives: [...k.initiatives] })),
+      })) : [emptyObjective()],
     });
     setEditing(true);
   };
@@ -163,6 +180,7 @@ export default function RoadmapCard() {
                 Q3: { value: (k.targets?.Q3?.value || '').trim(), done: !!k.targets?.Q3?.done },
                 Q4: { value: (k.targets?.Q4?.value || '').trim(), done: !!k.targets?.Q4?.done },
               },
+              initiatives: (k.initiatives || []).map((i) => (i || '').trim()).filter(Boolean),
             }))
             .filter((k) => k.text),
         }))
@@ -188,6 +206,14 @@ export default function RoadmapCard() {
   const setKeyResultTarget = (oi, ki, qKey, value) => setForm((f) => ({ ...f, objectives: f.objectives.map((o, j) => (j === oi ? { ...o, keyResults: o.keyResults.map((k, l) => (l === ki ? { ...k, targets: { ...k.targets, [qKey]: { ...k.targets[qKey], value } } } : k)) } : o)) }));
   const addKeyResult = (oi) => setForm((f) => ({ ...f, objectives: f.objectives.map((o, j) => (j === oi ? { ...o, keyResults: [...o.keyResults, emptyKeyResult()] } : o)) }));
   const removeKeyResult = (oi, ki) => setForm((f) => ({ ...f, objectives: f.objectives.map((o, j) => (j === oi ? { ...o, keyResults: o.keyResults.length > 1 ? o.keyResults.filter((_, l) => l !== ki) : [emptyKeyResult()] } : o)) }));
+
+  // A key result can carry one or several key initiatives — the concrete
+  // steps behind it. Same add/remove/edit shape as key results themselves,
+  // just one level deeper.
+  const mapKeyResult = (f, oi, ki, fn) => ({ ...f, objectives: f.objectives.map((o, j) => (j === oi ? { ...o, keyResults: o.keyResults.map((k, l) => (l === ki ? fn(k) : k)) } : o)) });
+  const setInitiativeText = (oi, ki, ii, text) => setForm((f) => mapKeyResult(f, oi, ki, (k) => ({ ...k, initiatives: k.initiatives.map((i, m) => (m === ii ? text : i)) })));
+  const addInitiative = (oi, ki) => setForm((f) => mapKeyResult(f, oi, ki, (k) => ({ ...k, initiatives: [...k.initiatives, ''] })));
+  const removeInitiative = (oi, ki, ii) => setForm((f) => mapKeyResult(f, oi, ki, (k) => ({ ...k, initiatives: k.initiatives.length > 1 ? k.initiatives.filter((_, m) => m !== ii) : [''] })));
 
   // ── tokens — matching HomeDashboard's / HopeCard's card conventions. ──
   const tKey = 'var(--color-text-primary, #E2EEFF)';
@@ -263,6 +289,16 @@ export default function RoadmapCard() {
                           {QUARTERS.map((q) => (
                             <input key={q.key} style={{ ...inputStyle, fontSize: 11.5 }} value={k.targets[q.key].value} onChange={(e) => setKeyResultTarget(oi, ki, q.key, e.target.value)} placeholder={`${q.label} target`} />
                           ))}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingLeft: 10 }}>
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: tSub, textTransform: 'uppercase', letterSpacing: '.05em' }}>Key initiatives</span>
+                          {k.initiatives.map((init, ii) => (
+                            <div key={ii} style={{ display: 'flex', gap: 6 }}>
+                              <input style={{ ...inputStyle, fontSize: 12 }} value={init} onChange={(e) => setInitiativeText(oi, ki, ii, e.target.value)} placeholder={`Initiative ${ii + 1}`} />
+                              <button onClick={() => removeInitiative(oi, ki, ii)} style={removeBtn}><X size={11} /></button>
+                            </div>
+                          ))}
+                          <button onClick={() => addInitiative(oi, ki)} style={{ ...dashedBtn, fontSize: 11 }}><Plus size={11} /> Add initiative</button>
                         </div>
                       </div>
                     ))}
@@ -376,19 +412,47 @@ export default function RoadmapCard() {
                         <div key={gi}>
                           <div style={{ fontSize: 15, fontWeight: 800, color: tKey, lineHeight: 1.4 }}>{group.objective}</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                            {group.items.map((item, ii) => (
-                              <div
-                                key={ii}
-                                onClick={() => toggleTargetDone(item.oi, item.ki, q.key)}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: canEdit ? 'pointer' : 'default' }}
-                              >
-                                {item.done ? <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 2 }} /> : <Square size={15} style={{ color: tSub, flexShrink: 0, marginTop: 2 }} />}
-                                <span style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, lineHeight: 1.45, overflowWrap: 'break-word', color: item.done ? tSub : tKey, textDecoration: item.done ? 'line-through' : 'none' }}>
-                                  <span>{item.keyResult}</span>
-                                  <span style={{ fontWeight: 700, fontSize: 13, color: item.done ? tSub : q.tint }}>Target: &quot;{item.target}&quot;</span>
-                                </span>
-                              </div>
-                            ))}
+                            {group.items.map((item, ii) => {
+                              const hasInitiatives = item.initiatives.length > 0;
+                              const expanded = expandedKeyResults.has(`${item.oi}-${item.ki}`);
+                              return (
+                                <div key={ii}>
+                                  <div
+                                    onClick={() => toggleTargetDone(item.oi, item.ki, q.key)}
+                                    style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: canEdit ? 'pointer' : 'default' }}
+                                  >
+                                    {item.done ? <CheckSquare size={15} style={{ color: 'var(--color-success-text, #22C55E)', flexShrink: 0, marginTop: 2 }} /> : <Square size={15} style={{ color: tSub, flexShrink: 0, marginTop: 2 }} />}
+                                    <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, lineHeight: 1.45, overflowWrap: 'break-word', color: item.done ? tSub : tKey, textDecoration: item.done ? 'line-through' : 'none' }}>
+                                      <span>{item.keyResult}</span>
+                                      <span style={{ fontWeight: 700, fontSize: 13, color: item.done ? tSub : q.tint }}>Target: &quot;{item.target}&quot;</span>
+                                    </span>
+                                    {hasInitiatives && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleExpanded(item.oi, item.ki); }}
+                                        aria-label={expanded ? 'Hide key initiatives' : 'Show key initiatives'}
+                                        style={{
+                                          flexShrink: 0, marginTop: 1, width: 24, height: 24, borderRadius: 7, border: '1px solid var(--color-border)',
+                                          background: expanded ? `${q.tint}1f` : 'transparent', color: expanded ? q.tint : tSub, cursor: 'pointer',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform .15s',
+                                        }}
+                                      >
+                                        <ChevronDown size={14} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {hasInitiatives && expanded && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: `2px solid ${q.tint}55` }}>
+                                      {item.initiatives.map((init, idx) => (
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, lineHeight: 1.45, color: tKey }}>
+                                          <span style={{ width: 5, height: 5, marginTop: 7, borderRadius: '50%', background: q.tint, flexShrink: 0 }} />
+                                          <span>{init}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
